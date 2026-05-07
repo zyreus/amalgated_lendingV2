@@ -1,100 +1,164 @@
-import { useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import App from './App.jsx'
-import ContactPage from './pages/ContactPage.jsx'
-import LoanProductsPage from './pages/LoanProductsPage.jsx'
-import FeaturesPage from './pages/FeaturesPage.jsx'
-import BranchesPage from './pages/BranchesPage.jsx'
-import ApplyPage from './pages/ApplyPage.jsx'
-import ChattelMortgagePage from './pages/ChattelMortgagePage.jsx'
-import RealEstateMortgagePage from './pages/RealEstateMortgagePage.jsx'
-import SalaryLoanPage from './pages/SalaryLoanPage.jsx'
-import TravelAssistanceLoanPage from './pages/TravelAssistanceLoanPage.jsx'
-import SssPensionLoanPage from './pages/SssPensionLoanPage.jsx'
-import ApplicationFormLayout from './pages/ApplicationFormLayout.jsx'
-import DocumentLoanApplyPage from './pages/DocumentLoanApplyPage.jsx'
-import DocumentLoanApplicationsPage from './admin/pages/DocumentLoanApplicationsPage.jsx'
-import DocumentLoanApplicationDetailPage from './admin/pages/DocumentLoanApplicationDetailPage.jsx'
 import SplashScreen from './components/SplashScreen.jsx'
 import { AdminApiAuthProvider } from './admin/context/AdminApiAuthProvider.jsx'
 import { ToastProvider } from './admin/context/ToastContext.jsx'
 import ProtectedAdminRoute from './admin/ProtectedAdminRoute.jsx'
-import AdminLayout from './admin/AdminLayout.jsx'
 import { AdminMuiProvider } from './admin/theme/AdminMuiProvider.jsx'
-import DashboardPage from './admin/pages/DashboardPage.jsx'
-import UsersPage from './admin/pages/UsersPage.jsx'
-import RolesPage from './admin/pages/RolesPage.jsx'
-import LoansPage from './admin/pages/LoansPage.jsx'
-import AdminNewLoanPage from './admin/pages/AdminNewLoanPage.jsx'
-import LoanDetailPage from './admin/pages/LoanDetailPage.jsx'
-import TravelLoanApplicationsPage from './admin/pages/TravelLoanApplicationsPage.jsx'
-import PaymentsPage from './admin/pages/PaymentsPage.jsx'
-import SettingsPage from './admin/pages/SettingsPage.jsx'
-import ActivityPage from './admin/pages/ActivityPage.jsx'
-import NotificationsPage from './admin/pages/NotificationsPage.jsx'
-import BorrowersPage from './admin/pages/BorrowersPage.jsx'
-import BorrowerDetailPage from './admin/pages/BorrowerDetailPage.jsx'
-import ReportsPage from './admin/pages/ReportsPage.jsx'
-import AdminChatCRM from './admin/pages/AdminChatCRM.jsx'
-import NewsletterPage from './admin/pages/NewsletterPage.jsx'
-import LendingChatWidget from './components/LendingChatWidget.jsx'
-import UnauthorizedPage from './pages/UnauthorizedPage.jsx'
 import { BorrowerAuthProvider } from './borrower/context/BorrowerAuthProvider.jsx'
 import BorrowerProtectedRoute from './borrower/BorrowerProtectedRoute.jsx'
-import BorrowerLayout from './borrower/BorrowerLayout.jsx'
-import BorrowerLoginPage from './borrower/pages/BorrowerLoginPage.jsx'
-import BorrowerForgotPasswordPage from './borrower/pages/BorrowerForgotPasswordPage.jsx'
-import BorrowerDashboardPage from './borrower/pages/BorrowerDashboardPage.jsx'
-import BorrowerPaymentsPage from './borrower/pages/BorrowerPaymentsPage.jsx'
-import BorrowerChatPage from './borrower/pages/BorrowerChatPage.jsx'
-import BorrowerSecurityPage from './borrower/pages/BorrowerSecurityPage.jsx'
-import BorrowerProfilePage from './borrower/pages/BorrowerProfilePage.jsx'
-import BorrowerLoanWizardPage from './borrower/pages/BorrowerLoanWizardPage.jsx'
-import BorrowerNotificationsPage from './borrower/pages/BorrowerNotificationsPage.jsx'
-import BorrowerApplicationsPage from './borrower/pages/BorrowerApplicationsPage.jsx'
+import { resolvedChatServerOrigin } from './utils/adminChatApi.js'
+import RouteLoadingFallback from './components/RouteLoadingFallback.jsx'
+/** Eager: avoids a lazy-chunk hydration race that broke admin/borrower sign-in behind some CDN/caches. */
 import AdminLoginPage from './admin/pages/AdminLoginPage.jsx'
 import AdminForgotPasswordPage from './admin/pages/AdminForgotPasswordPage.jsx'
-import AdminLoanProductsPage from './admin/pages/AdminLoanProductsPage.jsx'
+import BorrowerLoginPage from './borrower/pages/BorrowerLoginPage.jsx'
+import BorrowerForgotPasswordPage from './borrower/pages/BorrowerForgotPasswordPage.jsx'
+import UnauthorizedPage from './pages/UnauthorizedPage.jsx'
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx'
+import CookieBanner from './components/privacy/CookieBanner.jsx'
+import CookiePreferencesModal, { COOKIE_PREFERENCES_EVENT } from './components/privacy/CookiePreferencesModal.jsx'
+
+const ContactPage = lazy(() => import('./pages/ContactPage.jsx'))
+const LoanProductsPage = lazy(() => import('./pages/LoanProductsPage.jsx'))
+const FeaturesPage = lazy(() => import('./pages/FeaturesPage.jsx'))
+const BranchesPage = lazy(() => import('./pages/BranchesPage.jsx'))
+const ApplyPage = lazy(() => import('./pages/ApplyPage.jsx'))
+const ChattelMortgagePage = lazy(() => import('./pages/ChattelMortgagePage.jsx'))
+const RealEstateMortgagePage = lazy(() => import('./pages/RealEstateMortgagePage.jsx'))
+const SalaryLoanPage = lazy(() => import('./pages/SalaryLoanPage.jsx'))
+const TravelAssistanceLoanPage = lazy(() => import('./pages/TravelAssistanceLoanPage.jsx'))
+const SssPensionLoanPage = lazy(() => import('./pages/SssPensionLoanPage.jsx'))
+const ApplicationFormLayout = lazy(() => import('./pages/ApplicationFormLayout.jsx'))
+const DocumentLoanApplyPage = lazy(() => import('./pages/DocumentLoanApplyPage.jsx'))
+const DocumentLoanApplicationsPage = lazy(() => import('./admin/pages/DocumentLoanApplicationsPage.jsx'))
+const DocumentLoanApplicationDetailPage = lazy(() => import('./admin/pages/DocumentLoanApplicationDetailPage.jsx'))
+const AdminLayout = lazy(() => import('./admin/AdminLayout.jsx'))
+const DashboardPage = lazy(() => import('./admin/pages/DashboardPage.jsx'))
+const UsersPage = lazy(() => import('./admin/pages/UsersPage.jsx'))
+const RolesPage = lazy(() => import('./admin/pages/RolesPage.jsx'))
+const LoansPage = lazy(() => import('./admin/pages/LoansPage.jsx'))
+const AdminNewLoanPage = lazy(() => import('./admin/pages/AdminNewLoanPage.jsx'))
+const LoanDetailPage = lazy(() => import('./admin/pages/LoanDetailPage.jsx'))
+const TravelLoanApplicationsPage = lazy(() => import('./admin/pages/TravelLoanApplicationsPage.jsx'))
+const PaymentsPage = lazy(() => import('./admin/pages/PaymentsPage.jsx'))
+const SettingsPage = lazy(() => import('./admin/pages/SettingsPage.jsx'))
+const ActivityPage = lazy(() => import('./admin/pages/ActivityPage.jsx'))
+const BorrowersPage = lazy(() => import('./admin/pages/BorrowersPage.jsx'))
+const BorrowerDetailPage = lazy(() => import('./admin/pages/BorrowerDetailPage.jsx'))
+const ReportsPage = lazy(() => import('./admin/pages/ReportsPage.jsx'))
+const AdminChatCRM = lazy(() => import('./admin/pages/AdminChatCRM.jsx'))
+const NewsletterPage = lazy(() => import('./admin/pages/NewsletterPage.jsx'))
+const AdminFeedbackPage = lazy(() => import('./admin/pages/AdminFeedbackPage.jsx'))
+const BorrowerLayout = lazy(() => import('./borrower/BorrowerLayout.jsx'))
+const BorrowerDashboardPage = lazy(() => import('./borrower/pages/BorrowerDashboardPage.jsx'))
+const BorrowerPaymentsPage = lazy(() => import('./borrower/pages/BorrowerPaymentsPage.jsx'))
+const BorrowerChatPage = lazy(() => import('./borrower/pages/BorrowerChatPage.jsx'))
+const BorrowerSecurityPage = lazy(() => import('./borrower/pages/BorrowerSecurityPage.jsx'))
+const BorrowerProfilePage = lazy(() => import('./borrower/pages/BorrowerProfilePage.jsx'))
+const BorrowerLoanWizardPage = lazy(() => import('./borrower/pages/BorrowerLoanWizardPage.jsx'))
+const BorrowerApplicationsPage = lazy(() => import('./borrower/pages/BorrowerApplicationsPage.jsx'))
+const AdminLoanProductsPage = lazy(() => import('./admin/pages/AdminLoanProductsPage.jsx'))
+const ApplicationFlowPage = lazy(() => import('./pages/ApplicationFlowPage.jsx'))
+const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage.jsx'))
+
+/** Lazy on public pages only — chat UI is not needed for admin/borrower shells. */
+const LendingChatWidget = lazy(() => import('./components/LendingChatWidget.jsx'))
+
+/** Lowercase first segment for `/admin` and `/borrower` only (fixes `/ADMIN`, `/BORROWER/login`, …). */
+function normalizePortalPath(pathname) {
+  const parts = pathname.split('/').filter(Boolean)
+  if (parts.length === 0) return pathname
+  const head = parts[0].toLowerCase()
+  if (head !== 'admin' && head !== 'borrower') return pathname
+  const prefix = head === 'admin' ? '/admin' : '/borrower'
+  const rest = parts.slice(1)
+  return rest.length ? `${prefix}/${rest.join('/')}` : prefix
+}
+
+function isAdminAreaPath(pathname) {
+  const first = pathname.split('/').filter(Boolean)[0]
+  return first != null && first.toLowerCase() === 'admin'
+}
+
+function isBorrowerAreaPath(pathname) {
+  const first = pathname.split('/').filter(Boolean)[0]
+  return first != null && first.toLowerCase() === 'borrower'
+}
+
+/** Redirects synchronously so wrong-case portal URLs still match nested routes. */
+function MaybeNormalizePortalUrl({ children }) {
+  const { pathname, search, hash } = useLocation()
+  const canonical = normalizePortalPath(pathname)
+  if (canonical !== pathname) {
+    return <Navigate to={`${canonical}${search}${hash}`} replace />
+  }
+  return children
+}
 
 /** Visitor site chat — hidden in admin and borrower portal (borrower has /borrower/chat). */
 function LendingChatWidgetGate() {
   const { pathname } = useLocation()
-  if (pathname.startsWith('/admin') || pathname.startsWith('/borrower')) return null
-  // Production build without VITE_CHAT_SERVER_URL would otherwise use `window.location.origin` for Socket.IO,
-  // but the marketing site is static HTML — no `/socket.io` server → endless failed WebSocket retries.
-  const chatConfigured = (import.meta.env.VITE_CHAT_SERVER_URL || '').trim()
-  if (import.meta.env.PROD && !chatConfigured) return null
-  return <LendingChatWidget />
+  if (isAdminAreaPath(pathname) || isBorrowerAreaPath(pathname)) return null
+  const chatOrigin = resolvedChatServerOrigin()
+  if (import.meta.env.PROD && !chatOrigin) return null
+  return (
+    <Suspense fallback={null}>
+      <LendingChatWidget />
+    </Suspense>
+  )
+}
+
+/** Cookie controls appear on public + borrower pages, never in admin portal. */
+function CookieConsentGate({ cookieModalOpen, setCookieModalOpen }) {
+  const { pathname } = useLocation()
+  if (isAdminAreaPath(pathname)) return null
+
+  return (
+    <>
+      <CookieBanner onOpenPreferences={() => setCookieModalOpen(true)} />
+      <CookiePreferencesModal isOpen={cookieModalOpen} onClose={() => setCookieModalOpen(false)} />
+    </>
+  )
 }
 
 export default function Root() {
+  const [cookieModalOpen, setCookieModalOpen] = useState(false)
   const [showSplash, setShowSplash] = useState(() => {
     if (typeof window === 'undefined') return true
     const p = window.location.pathname
     if (
-      p.startsWith('/admin') ||
-      p.startsWith('/borrower') ||
       p === '/login' ||
       p === '/unauthorized' ||
       p === '/reset-password' ||
       p.startsWith('/loans/') ||
       p.startsWith('/apply/documents/') ||
-      p.startsWith('/borrower/apply-loan')
+      /^\/borrower\/apply-loan/i.test(p) ||
+      /^\/admin(\/|$)/i.test(p) ||
+      /^\/borrower(\/|$)/i.test(p)
     ) {
       return false
     }
     return true
   })
 
+  useEffect(() => {
+    const onOpenPreferences = () => setCookieModalOpen(true)
+    window.addEventListener(COOKIE_PREFERENCES_EVENT, onOpenPreferences)
+    return () => window.removeEventListener(COOKIE_PREFERENCES_EVENT, onOpenPreferences)
+  }, [])
+
   return (
     <>
       <BrowserRouter>
+        <MaybeNormalizePortalUrl>
         <AdminMuiProvider>
-          <AdminApiAuthProvider>
-            <BorrowerAuthProvider>
+          <BorrowerAuthProvider>
+            <AdminApiAuthProvider>
               <ToastProvider>
-                <Routes>
+                <Suspense fallback={<RouteLoadingFallback />}>
+                  <Routes>
                 <Route path="/admin" element={<Outlet />}>
                 <Route path="login" element={<AdminLoginPage />} />
                 <Route path="forgot-password" element={<AdminForgotPasswordPage />} />
@@ -120,30 +184,29 @@ export default function Root() {
                     <Route path="cms" element={<Navigate to="/admin/dashboard" replace />} />
                     <Route path="settings" element={<SettingsPage />} />
                     <Route path="activity" element={<ActivityPage />} />
-                    <Route path="notifications" element={<NotificationsPage />} />
+                    <Route path="notifications" element={<Navigate to="/admin/dashboard" replace />} />
                     <Route path="chat-crm" element={<AdminChatCRM />} />
+                    <Route path="feedback" element={<AdminFeedbackPage />} />
+                    <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
                   </Route>
                 </Route>
               </Route>
               <Route path="/borrower/login" element={<BorrowerLoginPage />} />
               <Route path="/borrower/forgot-password" element={<BorrowerForgotPasswordPage />} />
-              <Route
-                path="/borrower"
-                element={(
-                  <BorrowerProtectedRoute>
-                    <BorrowerLayout />
-                  </BorrowerProtectedRoute>
-                )}
-              >
-                <Route path="dashboard" element={<BorrowerDashboardPage />} />
-                <Route path="applications" element={<BorrowerApplicationsPage />} />
-                <Route path="notifications" element={<BorrowerNotificationsPage />} />
-                <Route path="payments" element={<BorrowerPaymentsPage />} />
-                <Route path="chat" element={<BorrowerChatPage />} />
-                <Route path="profile" element={<BorrowerProfilePage />} />
-                <Route path="security" element={<BorrowerSecurityPage />} />
-                <Route path="apply-loan/:applicationId" element={<BorrowerLoanWizardPage />} />
-                <Route path="apply-loan" element={<BorrowerLoanWizardPage />} />
+              <Route path="/borrower" element={<BorrowerProtectedRoute />}>
+                <Route element={<BorrowerLayout />}>
+                  <Route index element={<Navigate to="/borrower/dashboard" replace />} />
+                  <Route path="dashboard" element={<BorrowerDashboardPage />} />
+                  <Route path="applications" element={<BorrowerApplicationsPage />} />
+                  <Route path="notifications" element={<Navigate to="/borrower/dashboard" replace />} />
+                  <Route path="payments" element={<BorrowerPaymentsPage />} />
+                  <Route path="chat" element={<BorrowerChatPage />} />
+                  <Route path="profile" element={<BorrowerProfilePage />} />
+                  <Route path="security" element={<BorrowerSecurityPage />} />
+                  <Route path="apply-loan/:applicationId" element={<BorrowerLoanWizardPage />} />
+                  <Route path="apply-loan" element={<BorrowerLoanWizardPage />} />
+                  <Route path="*" element={<Navigate to="/borrower/dashboard" replace />} />
+                </Route>
               </Route>
               <Route path="/" element={<App />} />
               <Route path="/products" element={<Navigate to="/loan-products" replace />} />
@@ -152,6 +215,8 @@ export default function Root() {
               <Route path="/branches" element={<BranchesPage />} />
               <Route path="/contact" element={<ContactPage />} />
               <Route path="/apply" element={<ApplyPage />} />
+              <Route path="/application-flow" element={<ApplicationFlowPage />} />
+              <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
               <Route element={<ApplicationFormLayout />}>
                 <Route path="/apply/documents/:slug" element={<DocumentLoanApplyPage />} />
                 <Route path="/loans/chattel-mortgage" element={<ChattelMortgagePage />} />
@@ -163,12 +228,15 @@ export default function Root() {
               <Route path="/login" element={<BorrowerLoginPage />} />
               <Route path="/unauthorized" element={<UnauthorizedPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
-                </Routes>
+                  </Routes>
+                </Suspense>
                 <LendingChatWidgetGate />
+                <CookieConsentGate cookieModalOpen={cookieModalOpen} setCookieModalOpen={setCookieModalOpen} />
               </ToastProvider>
-            </BorrowerAuthProvider>
-          </AdminApiAuthProvider>
+            </AdminApiAuthProvider>
+          </BorrowerAuthProvider>
         </AdminMuiProvider>
+        </MaybeNormalizePortalUrl>
       </BrowserRouter>
       {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
     </>

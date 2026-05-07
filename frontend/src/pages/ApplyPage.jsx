@@ -12,6 +12,9 @@ import {
 import AmalgatedApplicationPrintBundle from '../components/loan/AmalgatedApplicationPrintBundle.jsx'
 import LoanProductDocumentsChecklist from '../components/loan/LoanProductDocumentsChecklist.jsx'
 import { documentProductKeyFromSlug } from '../components/loan/loanProductDocuments.js'
+import PrivacyPolicyModal from '../components/privacy/PrivacyPolicyModal.jsx'
+import PrivacyConsentCheckbox from '../components/privacy/PrivacyConsentCheckbox.jsx'
+import { PRIVACY_POLICY_VERSION } from '../components/privacy/PrivacyPolicyContent.jsx'
 import {
   deriveApplicantFromExtended,
   normalizeCoMakerStatementPayload,
@@ -52,10 +55,25 @@ export default function ApplyPage() {
   const [productsLoading, setProductsLoading] = useState(true)
   const [extendedApplication, setExtendedApplication] = useState(() => createEmptyExtendedApplication(null))
   const [coMakerStatement, setCoMakerStatement] = useState(() => createEmptyCoMakerStatement())
+  const [privacyConsent, setPrivacyConsent] = useState({
+    agreed: false,
+    agreedAt: null,
+    version: PRIVACY_POLICY_VERSION,
+  })
+  const [privacyModalOpen, setPrivacyModalOpen] = useState(false)
 
   const handleChange = (e) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
+    setErrorMsg('')
+  }
+
+  const onPrivacyConsentChange = (agreed) => {
+    setPrivacyConsent((prev) => ({
+      ...prev,
+      agreed,
+      agreedAt: agreed ? new Date().toISOString() : null,
+    }))
     setErrorMsg('')
   }
 
@@ -162,6 +180,11 @@ export default function ApplyPage() {
       setErrorMsg('Password confirmation does not match.')
       return
     }
+    if (!privacyConsent.agreed) {
+      setStatus('error')
+      setErrorMsg('You must agree to the Privacy Policy to proceed with your loan application.')
+      return
+    }
     if (showOfficialApplicationForm) {
       const derived = deriveApplicantFromExtended(extendedApplication, formData)
       if (!derived.fullName || !derived.email || !derived.phone || !derived.address) {
@@ -220,8 +243,10 @@ export default function ApplyPage() {
               loanTerm: derived.loanTerm || formData.loanTerm,
             }
           : {}),
+        loanProductSlug: selectedProduct?.slug ?? null,
         selectedInterestRate: selectedProduct?.interest_rate ?? null,
         selectedRateType: selectedProduct?.rate_type ?? null,
+        privacyConsent,
         extendedApplication: extNorm,
         coMakerStatement:
           showOfficialApplicationForm && showCoMakerOnApply && extNorm
@@ -237,6 +262,11 @@ export default function ApplyPage() {
         purpose: '',
         borrowerPassword: '',
         borrowerPasswordConfirm: '',
+      })
+      setPrivacyConsent({
+        agreed: false,
+        agreedAt: null,
+        version: PRIVACY_POLICY_VERSION,
       })
     } catch (err) {
       setStatus('error')
@@ -407,10 +437,17 @@ export default function ApplyPage() {
               <p className="rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{errorMsg}</p>
             )}
 
+            <PrivacyConsentCheckbox
+              checked={privacyConsent.agreed}
+              onChange={onPrivacyConsentChange}
+              onOpenPolicy={() => setPrivacyModalOpen(true)}
+              error={status === 'error' && errorMsg.includes('Privacy Policy') ? errorMsg : ''}
+            />
+
             <div className="flex flex-wrap items-center justify-between gap-4">
               <button
                 type="submit"
-                disabled={status === 'loading'}
+                disabled={status === 'loading' || !privacyConsent.agreed}
                 className="rounded-full bg-red-600 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-red-700 disabled:opacity-60"
               >
                 {status === 'loading' ? 'Submitting...' : 'Submit application'}
@@ -427,6 +464,7 @@ export default function ApplyPage() {
         </p>
       </main>
       <Footer />
+      <PrivacyPolicyModal open={privacyModalOpen} onClose={() => setPrivacyModalOpen(false)} />
     </div>
   )
 }

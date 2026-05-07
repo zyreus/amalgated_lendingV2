@@ -1,12 +1,18 @@
 import { borrowerApi, getBorrowerToken } from '../borrower/api/client.js'
-import { laravelRequest, publicLaravelPost } from './lendingLaravelApi.js'
+import {
+  laravelRequest,
+  publicLaravelPost,
+  formatLaravelUnreachableError,
+} from './lendingLaravelApi.js'
 
 /**
  * Public: structured requirements + product summary for document-only applications.
  */
 export async function fetchDocumentRequirementsBySlug(slug) {
-  const { res } = await laravelRequest(`/loan-products/slug/${encodeURIComponent(slug)}/requirements`)
-  if (!res) throw new Error('Could not reach lending API (check Vite proxy / Laravel).')
+  const { res, lastError } = await laravelRequest(
+    `/loan-products/slug/${encodeURIComponent(slug)}/requirements`,
+  )
+  if (!res) throw new Error(formatLaravelUnreachableError(lastError))
   const raw = await res.json().catch(() => ({}))
   if (!res.ok) {
     const msg = raw.message || raw.error || `HTTP ${res.status}`
@@ -49,13 +55,13 @@ export async function getBorrowerDocumentLoanApplications() {
  */
 export async function fetchApplicationPrintHtml(applicationId) {
   const token = getBorrowerToken()
-  const { res } = await laravelRequest(`/application/${applicationId}/print`, {
+  const { res, lastError } = await laravelRequest(`/application/${applicationId}/print`, {
     headers: {
       Accept: 'text/html',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   })
-  if (!res) throw new Error('Could not reach lending API (check Vite proxy / Laravel).')
+  if (!res) throw new Error(formatLaravelUnreachableError(lastError))
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     const msg = err.message || err.error || `HTTP ${res.status}`

@@ -16,8 +16,6 @@ export const ADMIN_NAV_GROUPS = [
       { to: '/admin/borrowers', label: 'Borrowers', perm: 'borrowers.view', icon_key: 'borrowers' },
       { to: '/admin/loan-products', label: 'Loan products', perm: 'loans.view', icon_key: 'products' },
       { to: '/admin/loans', label: 'Applications', perm: 'loans.view', icon_key: 'loans' },
-      { to: '/admin/travel-loans', label: 'Travel (wizard)', perm: 'loans.view', icon_key: 'loans' },
-      { to: '/admin/document-loan-applications', label: 'Document applications', perm: 'loans.view', icon_key: 'loans' },
       { to: '/admin/payments', label: 'Payments', perm: 'payments.manage', icon_key: 'pay' },
     ],
   },
@@ -27,6 +25,7 @@ export const ADMIN_NAV_GROUPS = [
     items: [
       { to: '/admin/reports', label: 'Reports', perm: 'reports.view', icon_key: 'report' },
       { to: '/admin/chat-crm', label: 'CRM & Chat', perm: null, icon_key: 'chat' },
+      { to: '/admin/feedback', label: 'Feedback', perm: null, icon_key: 'bell' },
       { to: '/admin/newsletter', label: 'News & announcements', perm: 'cms.manage', icon_key: 'bell' },
     ],
   },
@@ -38,7 +37,6 @@ export const ADMIN_NAV_GROUPS = [
       { to: '/admin/roles', label: 'Roles & permissions', perm: 'roles.manage', icon_key: 'roles' },
       { to: '/admin/settings', label: 'Settings', perm: 'settings.manage', icon_key: 'settings' },
       { to: '/admin/activity', label: 'Activity logs', perm: 'activity.view', icon_key: 'activity' },
-      { to: '/admin/notifications', label: 'Notifications', perm: 'notifications.view', icon_key: 'bell' },
     ],
   },
 ]

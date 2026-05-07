@@ -8,10 +8,12 @@ export default function SubPageHeader() {
 
   const navLinks = [
     { to: '/', label: 'Home' },
-    { to: '/#newsletter', label: 'News', isSection: true },
+    { label: 'Trust', isSection: true, sectionId: 'trust' },
+    { label: 'Calculator', isSection: true, sectionId: 'calculator' },
+    { label: 'News', isSection: true, sectionId: 'newsletter' },
     { to: '/loan-products', label: 'Loan Products' },
-    { to: '/features', label: 'Features' },
-    { to: '/branches', label: 'Branches' },
+    { to: '/application-flow', label: 'Application Flow' },
+    { to: '/privacy-policy', label: 'Privacy Policy' },
     { to: '/borrower/login', label: 'Borrower Log in' },
   ]
 
@@ -27,39 +29,39 @@ export default function SubPageHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-black/10 bg-white">
+    <header className="sticky top-0 z-40 w-full border-b border-brand-secondary/60 bg-brand-background-alt/95 backdrop-blur-md">
       <div className="app-container flex items-center justify-between gap-2 py-3 sm:py-4">
         <Link to="/" className="flex shrink-0 items-center gap-3 transition hover:opacity-90">
           <img src="/amalgated-lending-logo.png" alt="Amalgated Lending" className="h-11 w-11 object-contain sm:h-12 sm:w-12" />
           <span className="hidden flex-col leading-tight sm:flex sm:flex-col">
-            <span className="text-sm font-semibold tracking-wide text-black">Amalgated Lending</span>
-            <span className="text-xs text-black/70">Trusted Lending Solutions</span>
+            <span className="text-sm font-semibold tracking-wide text-brand-text">Amalgated Lending</span>
+            <span className="text-xs text-brand-text/70">Trusted Lending Solutions</span>
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-6 xl:gap-8 text-sm font-medium text-black lg:flex">
-          {navLinks.map(({ to, label, isSection }) =>
+        <nav className="hidden items-center gap-5 xl:gap-6 text-sm font-medium text-brand-text lg:flex">
+          {navLinks.map(({ to, label, isSection, sectionId }) =>
             isSection ? (
-              <button key={to} type="button" onClick={() => goToSection('newsletter')} className="transition hover:text-red-600">
+              <button key={label} type="button" onClick={() => goToSection(sectionId || 'hero')} className="nav-link">
                 {label}
               </button>
             ) : (
-              <Link key={to} to={to} className="transition hover:text-red-600">
+              <Link key={to} to={to} className="nav-link">
                 {label}
               </Link>
             )
           )}
           <Link
-            to="/contact"
-            className="inline-flex items-center justify-center rounded-full bg-red-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-red-700 hover:shadow-lg hover:shadow-red-600/25"
+            to="/apply"
+            className="inline-flex items-center justify-center rounded-full bg-brand-primary px-5 py-2.5 text-sm font-semibold text-white shadow-brand-primary transition hover:bg-brand-primary-hover hover:shadow-[0_4px_12px_rgba(220,38,38,0.4)]"
           >
-            Contact
+            Apply Now
           </Link>
         </nav>
 
         <button
           type="button"
-          className="flex h-11 min-w-[44px] items-center justify-center rounded-lg text-black hover:bg-black/10 lg:hidden"
+          className="flex h-11 min-w-[44px] items-center justify-center rounded-lg text-brand-text hover:bg-black/10 lg:hidden"
           onClick={() => setMobileOpen((o) => !o)}
           aria-expanded={mobileOpen}
           aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
@@ -77,28 +79,28 @@ export default function SubPageHeader() {
       </div>
 
       {mobileOpen && (
-        <div className="border-t border-black/10 bg-white px-4 py-4 lg:hidden">
-          {navLinks.map(({ to, label, isSection }) =>
+        <div className="border-t border-brand-secondary/40 px-4 py-4 lg:hidden">
+          {navLinks.map(({ to, label, isSection, sectionId }) =>
             isSection ? (
               <button
-                key={to}
+                key={label}
                 type="button"
-                className="block w-full rounded-lg px-3 py-2.5 text-left text-black hover:bg-red-50 hover:text-red-600"
+                className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary"
                 onClick={() => {
-                  goToSection('newsletter')
+                  goToSection(sectionId || 'hero')
                   setMobileOpen(false)
                 }}
               >
                 {label}
               </button>
             ) : (
-              <Link key={to} to={to} className="block rounded-lg px-3 py-2.5 text-black hover:bg-red-50 hover:text-red-600" onClick={() => setMobileOpen(false)}>
+              <Link key={to} to={to} className="block rounded-lg px-3 py-2.5 text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => setMobileOpen(false)}>
                 {label}
               </Link>
             )
           )}
-          <Link to="/contact" className="mt-3 block rounded-xl bg-red-600 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-red-700" onClick={() => setMobileOpen(false)}>
-            Contact
+          <Link to="/apply" className="mt-3 block rounded-xl bg-brand-primary px-4 py-3 text-center text-sm font-semibold text-white hover:bg-brand-primary-hover" onClick={() => setMobileOpen(false)}>
+            Apply Now
           </Link>
         </div>
       )}

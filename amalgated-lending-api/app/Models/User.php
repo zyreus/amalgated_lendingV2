@@ -4,16 +4,17 @@ namespace App\Models;
 
 use App\Services\BrevoMailService;
 use Illuminate\Auth\Notifications\ResetPassword as ResetPasswordNotification;
+use Illuminate\Auth\Passwords\CanResetPassword;
+use Illuminate\Contracts\Auth\CanResetPassword as CanResetPasswordContract;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Auth\Passwords\CanResetPassword;
-use Illuminate\Contracts\Auth\CanResetPassword as CanResetPasswordContract;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
 
-class User extends Authenticatable implements JWTSubject, CanResetPasswordContract
+class User extends Authenticatable implements CanResetPasswordContract, JWTSubject
 {
     use CanResetPassword;
     use HasFactory;
@@ -31,6 +32,8 @@ class User extends Authenticatable implements JWTSubject, CanResetPasswordContra
         'risk_level',
         'id_document_path',
         'id_document_name',
+        'profile_photo_path',
+        'profile_photo_name',
     ];
 
     protected $hidden = [
@@ -82,6 +85,11 @@ class User extends Authenticatable implements JWTSubject, CanResetPasswordContra
     public function faceVerifications(): HasMany
     {
         return $this->hasMany(FaceVerification::class, 'borrower_id');
+    }
+
+    public function borrowerProfile(): HasOne
+    {
+        return $this->hasOne(BorrowerProfile::class);
     }
 
     /**

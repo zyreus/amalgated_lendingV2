@@ -13,7 +13,6 @@ import AmalgatedApplicationPrintBundle from '../components/loan/AmalgatedApplica
 import { deriveApplicantFromExtended, normalizeExtendedApplicationPayload } from '../components/loan/amalgatedPayloadMerge.js'
 import { postRealEstateMortgageApplication } from '../utils/lendingApi.js'
 import { openModal } from '../utils/systemModal.js'
-import TravelSignaturePad from '../components/travel/TravelSignaturePad.jsx'
 import { buildMissingFieldsSummary, collectMissingFields, focusFirstInvalidField } from '../utils/applicationFormValidation.js'
 import { isFullApplicationPrintable } from '../components/loan/amalgatedApplicationCompleteness.js'
 import { getLoanProducts } from '../utils/loanProductsPublicApi.js'
@@ -38,8 +37,6 @@ export default function RealEstateMortgagePage() {
     docProofOfIncome: null,
     docGovernmentIds: [],
   })
-  const [signatureData, setSignatureData] = useState('')
-  const [spouseSignatureData, setSpouseSignatureData] = useState('')
   const canPrintApplication = isFullApplicationPrintable(extendedApplication, null, false)
   const [rateLabel, setRateLabel] = useState('3.88% per month (standard)')
 
@@ -100,11 +97,6 @@ export default function RealEstateMortgagePage() {
       setStatus('error')
       return
     }
-    if (!signatureData) {
-      setErrorMsg('Applicant signature is required before submission.')
-      setStatus('error')
-      return
-    }
     if (!form.borrowerPassword?.trim() || !form.borrowerPasswordConfirm?.trim()) {
       setErrorMsg('Create and confirm your borrower portal password.')
       setStatus('error')
@@ -139,10 +131,6 @@ export default function RealEstateMortgagePage() {
         propertyValue: String(px.property_value || '').trim(),
         extendedApplication: {
           ...normalizeExtendedApplicationPayload(extendedApplication, form),
-          signatures: {
-            applicant_signature_data: signatureData,
-            spouse_signature_data: spouseSignatureData,
-          },
         },
         ...documents,
       })
@@ -157,8 +145,6 @@ export default function RealEstateMortgagePage() {
         docProofOfIncome: null,
         docGovernmentIds: [],
       })
-      setSignatureData('')
-      setSpouseSignatureData('')
       openModal({ message: 'Application submitted successfully.', tone: 'success' })
     } catch (err) {
       setStatus('error')
@@ -283,7 +269,6 @@ export default function RealEstateMortgagePage() {
                   coMakerStatement={null}
                   includeCoMaker={false}
                   canPrint={canPrintApplication}
-                  applicantSignatureData={signatureData}
                 />
               </div>
 
@@ -310,20 +295,6 @@ export default function RealEstateMortgagePage() {
                     Proof of income
                     <input type="file" accept=".jpg,.jpeg,.png,.pdf" onChange={(e) => setDocuments((s) => ({ ...s, docProofOfIncome: e.target.files?.[0] || null }))} className="mt-1 w-full rounded-xl border border-brand-secondary/40 px-3 py-2 text-sm dark:border-[#374151]" />
                   </label>
-                </div>
-              </fieldset>
-
-              <fieldset className="space-y-4 rounded-xl border border-slate-200 p-4">
-                <legend className="text-sm font-semibold text-brand-text dark:text-white">Signatures</legend>
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <div>
-                    <p className="mb-2 text-sm font-medium text-brand-text dark:text-white">Applicant signature *</p>
-                    <TravelSignaturePad value={signatureData} onChange={setSignatureData} />
-                  </div>
-                  <div>
-                    <p className="mb-2 text-sm font-medium text-brand-text dark:text-white">Spouse signature (optional)</p>
-                    <TravelSignaturePad value={spouseSignatureData} onChange={setSpouseSignatureData} />
-                  </div>
                 </div>
               </fieldset>
 

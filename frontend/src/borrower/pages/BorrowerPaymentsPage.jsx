@@ -233,41 +233,75 @@ export default function BorrowerPaymentsPage() {
         <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>
       ) : null}
       {!loading && !error && tab === 'pending' && (
-        <div className={`${ui.tableScroll} mt-4`}>
-          <table className={`${ui.tableBase} ${ui.tableText} ${ui.tableMin720}`}>
-            <thead>
-              <tr className={ui.thead}>
-                <th className={`${ui.tableCell} text-left`}>Due date</th>
-                <th className={`${ui.tableCell} text-left`}>Amount due</th>
-                <th className={`${ui.tableCell} text-left`}>Amount paid</th>
-                <th className={`${ui.tableCell} text-left`}>Penalty</th>
-                <th className={`${ui.tableCell} text-left`}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pendingRows.map((p) => (
-                <tr key={p.id} className={ui.tbodyRow}>
-                  <td className={ui.tableCell}>{formatDate(p.due_date)}</td>
-                  <td className={ui.tableCell}>{formatPeso(p.amount_due)}</td>
-                  <td className={ui.tableCell}>{formatPeso(p.amount_paid)}</td>
-                  <td className={ui.tableCell}>{formatPeso(p.penalty_amount)}</td>
-                  <td className={ui.tableCell}>
+        <>
+          <div className="mt-4 space-y-3 md:hidden">
+            {pendingRows.length ? (
+              pendingRows.map((p) => (
+                <div key={p.id} className="rounded-xl border border-gray-200 bg-gray-50/80 p-3 dark:border-[#1F2937] dark:bg-[#0F172A]/50">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{formatDate(p.due_date)}</p>
                     <span className={`inline-flex rounded-full px-2 py-1 text-xs ring-1 ${paymentStatusBadge(p.status)}`}>
                       {String(p.status || '').toUpperCase()}
                     </span>
-                  </td>
+                  </div>
+                  <dl className="mt-3 space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <dt className={ui.textMuted}>Amount due</dt>
+                      <dd className="font-medium text-gray-900 dark:text-gray-100">{formatPeso(p.amount_due)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <dt className={ui.textMuted}>Amount paid</dt>
+                      <dd className="font-medium text-gray-900 dark:text-gray-100">{formatPeso(p.amount_paid)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <dt className={ui.textMuted}>Penalty</dt>
+                      <dd className="font-medium text-gray-900 dark:text-gray-100">{formatPeso(p.penalty_amount)}</dd>
+                    </div>
+                  </dl>
+                </div>
+              ))
+            ) : (
+              <p className={`rounded-xl border border-dashed border-gray-300 px-3 py-6 text-center text-sm ${ui.textMuted} dark:border-gray-600`}>
+                No pending payments.
+              </p>
+            )}
+          </div>
+          <div className={`${ui.tableScroll} mt-4 hidden md:block`}>
+            <table className={`${ui.tableBase} ${ui.tableText} ${ui.tableMin720}`}>
+              <thead>
+                <tr className={ui.thead}>
+                  <th className={`${ui.tableCell} text-left`}>Due date</th>
+                  <th className={`${ui.tableCell} text-left`}>Amount due</th>
+                  <th className={`${ui.tableCell} text-left`}>Amount paid</th>
+                  <th className={`${ui.tableCell} text-left`}>Penalty</th>
+                  <th className={`${ui.tableCell} text-left`}>Status</th>
                 </tr>
-              ))}
-              {!pendingRows.length ? (
-                <tr>
-                  <td colSpan={5} className={`${ui.tableCell} py-8 text-center ${ui.textMuted}`}>
-                    No pending payments.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {pendingRows.map((p) => (
+                  <tr key={p.id} className={ui.tbodyRow}>
+                    <td className={ui.tableCell}>{formatDate(p.due_date)}</td>
+                    <td className={ui.tableCell}>{formatPeso(p.amount_due)}</td>
+                    <td className={ui.tableCell}>{formatPeso(p.amount_paid)}</td>
+                    <td className={ui.tableCell}>{formatPeso(p.penalty_amount)}</td>
+                    <td className={ui.tableCell}>
+                      <span className={`inline-flex rounded-full px-2 py-1 text-xs ring-1 ${paymentStatusBadge(p.status)}`}>
+                        {String(p.status || '').toUpperCase()}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {!pendingRows.length ? (
+                  <tr>
+                    <td colSpan={5} className={`${ui.tableCell} py-8 text-center ${ui.textMuted}`}>
+                      No pending payments.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {!loading && !error && tab === 'history' && (

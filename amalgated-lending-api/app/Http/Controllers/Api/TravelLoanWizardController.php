@@ -11,11 +11,11 @@ use App\Models\LoanApplicationContactPerson;
 use App\Models\LoanApplicationDependent;
 use App\Models\LoanCreditMemorandum;
 use App\Models\LoanDocument;
-use App\Models\LoanProduct;
 use App\Models\Role;
 use App\Models\TravelLoanWizardForm;
 use App\Models\User;
 use App\Services\BrevoMailService;
+use App\Services\LoanProductRateResolver;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,8 +33,8 @@ class TravelLoanWizardController extends Controller
 
     public function __construct(
         private BrevoMailService $brevo,
-    ) {
-    }
+        private LoanProductRateResolver $loanProductRates,
+    ) {}
 
     public function apply(Request $request): JsonResponse
     {
@@ -88,7 +88,7 @@ class TravelLoanWizardController extends Controller
         $email = mb_strtolower(trim((string) ($personal['email'] ?? '')));
         $fullName = $this->buildFullName($personal);
         $phone = trim((string) ($personal['mobile_no'] ?? $personal['telephone_no'] ?? ''));
-        $monthlyRatePercent = $this->resolveMonthlyRatePercent('travel-assistance-loan', 3.5);
+        $monthlyRatePercent = $this->loanProductRates->resolveMonthlyRatePercent('travel-assistance-loan', 3.5, $termMonths);
         $annualRatePercent = $monthlyRatePercent * 12;
 
         try {
@@ -292,23 +292,6 @@ class TravelLoanWizardController extends Controller
         ]);
 
         return implode(' ', $parts) ?: 'Applicant';
-    }
-
-    private function resolveMonthlyRatePercent(string $slug, float $fallback): float
-    {
-        $product = LoanProduct::query()->where('slug', $slug)->first();
-        if (! $product) {
-            return $fallback;
-        }
-        $rate = (float) $product->interest_rate;
-        if ($rate <= 0) {
-            return $fallback;
-        }
-        if ((string) $product->rate_type === 'annual') {
-            return $rate / 12;
-        }
-
-        return $rate;
     }
 
     /**

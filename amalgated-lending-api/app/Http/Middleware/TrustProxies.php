@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 class TrustProxies extends Middleware
 {
     /**
-     * Shared hosting (cPanel / LiteSpeed) often terminates TLS in front of PHP; trust forwarded headers.
+     * Trust forwarded proxy headers for TLS-terminated deployments.
      *
      * @var array<int, string>|string|null
      */

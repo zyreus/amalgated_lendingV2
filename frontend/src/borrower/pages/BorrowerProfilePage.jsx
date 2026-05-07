@@ -7,7 +7,6 @@ export default function BorrowerProfilePage() {
   const { user, loadMe } = useBorrowerAuth()
   const [name, setName] = useState(user?.name || '')
   const [phone, setPhone] = useState(user?.phone || '')
-  const [idFile, setIdFile] = useState(null)
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState('')
   const [error, setError] = useState('')
@@ -37,7 +36,6 @@ export default function BorrowerProfilePage() {
       const body = new FormData()
       body.append('name', name)
       body.append('phone', phone)
-      if (idFile) body.append('id_document', idFile)
       const res = await borrowerApi('/borrower/profile', { method: 'POST', body })
       await loadMe()
       setMsg(res.message || 'Profile updated.')
@@ -67,12 +65,6 @@ export default function BorrowerProfilePage() {
             className={ui.input}
             placeholder="Phone number"
           />
-          <input
-            type="file"
-            onChange={(e) => setIdFile(e.target.files?.[0] || null)}
-            accept=".jpg,.jpeg,.png,.pdf"
-            className="w-full text-sm text-gray-700 file:mr-2 dark:text-gray-300"
-          />
           <button
             disabled={loading}
             className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
@@ -97,9 +89,9 @@ export default function BorrowerProfilePage() {
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg">
-        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Documents on file</h3>
+        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">General documents uploaded</h3>
         <p className={`mt-1 text-sm ${ui.textMuted}`}>
-          Files from your profile ID upload and from general loan applications (not travel loans).
+          General documents uploaded by the borrower, including profile ID and files from general loan applications.
         </p>
         {profileDocs.length === 0 ? (
           <p className={`mt-3 text-sm ${ui.textMuted}`}>No documents yet.</p>
@@ -107,7 +99,9 @@ export default function BorrowerProfilePage() {
           <ul className="mt-3 divide-y divide-gray-200 dark:divide-[#1F2937]">
             {profileDocs.map((d, idx) => (
               <li key={`${d.path || d.label}-${idx}`} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                <span className="text-gray-800 dark:text-gray-200">{d.label}</span>
+                <span className="text-gray-800 dark:text-gray-200">
+                  {d.label === 'Valid ID (profile)' ? 'Valid ID' : d.label}
+                </span>
                 {d.url ? (
                   <a href={d.url} target="_blank" rel="noreferrer" className="font-semibold text-red-600 hover:underline dark:text-red-400">
                     Open

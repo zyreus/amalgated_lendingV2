@@ -4,6 +4,8 @@ import { api } from '../api/client.js'
 import { useToast } from '../context/ToastContext.jsx'
 import { useAdminApiAuth } from '../context/useAdminApiAuth.js'
 import { admin, TableSkeletonRows, EmptyTableRow } from '../components/AdminUi.jsx'
+import CreateBorrowerModal from '../components/CreateBorrowerModal.jsx'
+import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
 
 function riskBadge(level) {
   const l = (level || '').toLowerCase()
@@ -27,6 +29,31 @@ function riskLabel(level) {
   return level || '—'
 }
 
+function initials(name) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (!parts.length) return 'B'
+  const first = parts[0]?.[0] || ''
+  const second = parts.length > 1 ? parts[parts.length - 1]?.[0] || '' : ''
+  return `${first}${second}`.toUpperCase()
+}
+
+function isImagePath(path) {
+  return /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(String(path || ''))
+}
+
+function borrowerAvatarPath(borrower) {
+  if (isImagePath(borrower?.profile_photo_path)) return borrower.profile_photo_path
+  if (isImagePath(borrower?.id_document_path)) return borrower.id_document_path
+  return ''
+}
+
+function fallbackAvatar(name) {
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'Borrower')}&background=fee2e2&color=b91c1c&size=96&bold=true`
+}
+
 export default function BorrowersPage() {
   const { showToast } = useToast()
   const { can } = useAdminApiAuth()
@@ -35,6 +62,7 @@ export default function BorrowersPage() {
   const [risk, setRisk] = useState('')
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState(null)
+  const [showCreateModal, setShowCreateModal] = useState(false)
 
   const load = async (page = 1) => {
     setLoading(true)
@@ -82,11 +110,21 @@ export default function BorrowersPage() {
 
   return (
     <div className="w-full min-w-0 space-y-6">
-      <div>
-        <h1 className={admin.pageTitle}>Borrowers</h1>
-        <p className={admin.pageSubtitle}>
-          Borrower profiles, credit scores, and loan counts — linked to the borrower role in Laravel.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className={admin.pageTitle}>Borrowers</h1>
+          <p className={admin.pageSubtitle}></p>
+        </div>
+
+        <div className="sticky top-2 z-20 w-full sm:static sm:z-auto sm:w-auto">
+          <button
+            type="button"
+            onClick={() => setShowCreateModal(true)}
+            className={`${admin.btnPrimary} w-full px-6 sm:w-auto`}
+          >
+            Create New Borrower
+          </button>
+        </div>
       </div>
 
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
@@ -138,7 +176,24 @@ export default function BorrowersPage() {
           rows.map((b) => (
             <div key={b.id} className={`${admin.cardNoHover} space-y-2 p-4`}>
               <div className="flex items-center justify-between gap-3">
-                <p className="font-semibold text-gray-900 dark:text-gray-100">{b.name}</p>
+                <div className="flex min-w-0 items-center gap-2">
+                  {borrowerAvatarPath(b) ? (
+                    <img
+                      src={getLaravelStorageFileUrl(borrowerAvatarPath(b))}
+                      alt={b.name || 'Borrower'}
+                      className="h-8 w-8 rounded-full border border-gray-200 object-cover dark:border-[#374151]"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null
+                        e.currentTarget.src = fallbackAvatar(b.name || 'Borrower')
+                      }}
+                    />
+                  ) : (
+                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-100 text-[11px] font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-200">
+                      {initials(b.name || 'Borrower')}
+                    </span>
+                  )}
+                  <p className="truncate font-semibold text-gray-900 dark:text-gray-100">{b.name}</p>
+                </div>
                 <span className="text-sm tabular-nums text-gray-700 dark:text-gray-200">{b.loans_count ?? '—'} loan(s)</span>
               </div>
               <p className={`text-xs break-words ${admin.tableMuted}`}>{b.email}</p>
@@ -208,7 +263,26 @@ export default function BorrowersPage() {
             ) : (
               rows.map((b) => (
                 <tr key={b.id} className={admin.tbodyRow}>
-                  <td className={`${admin.tableCell} font-medium`}>{b.name}</td>
+                  <td className={admin.tableCell}>
+                    <div className="flex items-center gap-2">
+                      {borrowerAvatarPath(b) ? (
+                        <img
+                          src={getLaravelStorageFileUrl(borrowerAvatarPath(b))}
+                          alt={b.name || 'Borrower'}
+                          className="h-8 w-8 rounded-full border border-gray-200 object-cover dark:border-[#374151]"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null
+                            e.currentTarget.src = fallbackAvatar(b.name || 'Borrower')
+                          }}
+                        />
+                      ) : (
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-100 text-[11px] font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-200">
+                          {initials(b.name || 'Borrower')}
+                        </span>
+                      )}
+                      <span className="font-medium">{b.name}</span>
+                    </div>
+                  </td>
                   <td className={`${admin.tableCell} ${admin.tableMuted}`}>{b.email}</td>
                   <td className={`${admin.tableCell} tabular-nums`}>
                     {b.credit_score != null ? Number(b.credit_score).toFixed(0) : '—'}
@@ -259,6 +333,12 @@ export default function BorrowersPage() {
           </tbody>
         </table>
       </div>
+
+      <CreateBorrowerModal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreated={async () => load(1)}
+      />
     </div>
   )
 }

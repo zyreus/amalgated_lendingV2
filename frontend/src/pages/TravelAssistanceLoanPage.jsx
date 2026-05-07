@@ -39,7 +39,6 @@ export default function TravelAssistanceLoanPage() {
     residence_sketch: null,
   })
   const [termsAccepted, setTermsAccepted] = useState(false)
-  const [signatureData, setSignatureData] = useState('')
   const [signatureDate, setSignatureDate] = useState(todayISODate())
   const [borrowerPassword, setBorrowerPassword] = useState('')
   const [borrowerPasswordConfirm, setBorrowerPasswordConfirm] = useState('')
@@ -122,7 +121,6 @@ export default function TravelAssistanceLoanPage() {
 
     const errs = validateTravelWizardClient(merged, {
       termsAccepted,
-      signatureData,
       files,
     })
 
@@ -149,7 +147,6 @@ export default function TravelAssistanceLoanPage() {
         wizard: merged,
         password: borrowerPassword,
         termsAccepted: true,
-        signatureData,
         signatureDate,
         files,
       })
@@ -174,7 +171,6 @@ export default function TravelAssistanceLoanPage() {
         residence_sketch: null,
       })
       setTermsAccepted(false)
-      setSignatureData('')
       setSignatureDate(todayISODate())
       setBorrowerPassword('')
       setBorrowerPasswordConfirm('')
@@ -301,8 +297,6 @@ export default function TravelAssistanceLoanPage() {
                   errors={fieldErrors}
                   termsAccepted={termsAccepted}
                   setTermsAccepted={setTermsAccepted}
-                  signatureData={signatureData}
-                  setSignatureData={setSignatureData}
                   signatureDate={signatureDate}
                   setSignatureDate={setSignatureDate}
                   files={files}

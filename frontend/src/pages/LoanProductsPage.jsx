@@ -146,6 +146,13 @@ export default function LoanProductsPage() {
               Compare interest rates, collateral, and terms. Use the loan calculator to estimate amortization. Subject to
               credit approval.
             </p>
+            <p className="mt-3 text-xs text-brand-text/70 sm:text-sm">
+              By applying for any product, you agree to our{' '}
+              <Link to="/privacy-policy" className="font-semibold text-brand-primary underline underline-offset-2 hover:text-brand-primary-hover">
+                Privacy Policy
+              </Link>
+              .
+            </p>
           </div>
         </section>
 
@@ -204,6 +211,13 @@ export default function LoanProductsPage() {
               <h2 className="text-xl font-semibold">Ready to apply?</h2>
               <p className="mt-2 max-w-xl text-sm text-white/75">
                 Start an application or speak with us about eligibility — we’re here to help.
+              </p>
+              <p className="mt-2 text-xs text-white/80">
+                Please review our{' '}
+                <Link to="/privacy-policy" className="font-semibold underline underline-offset-2 hover:text-white">
+                  Privacy Policy
+                </Link>{' '}
+                before submitting your application.
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-3">

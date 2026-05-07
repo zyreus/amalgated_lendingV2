@@ -15,9 +15,11 @@
     "dev:full:chat": "npm run dev:full",
     "lockfile:sync": "npm install --package-lock-only",
     "build": "npx vite build --config frontend/vite.config.js",
+    "build:laravel": "npm run build && node scripts/sync-spa-to-laravel-public.cjs",
     "build:full": "npm run build",
     "lint": "eslint .",
     "preview": "npx vite preview --config frontend/vite.config.js",
+    "perf:baseline": "node scripts/perf-baseline.cjs",
     "composer:install": "composer install --optimize-autoloader --working-dir=amalgated-lending-api",
     "composer:install:prod": "composer install --optimize-autoloader --no-dev --working-dir=amalgated-lending-api",
     "api:cache": "cd amalgated-lending-api && php artisan config:cache && php artisan route:cache && php artisan view:cache"
@@ -30,22 +32,28 @@
     "@mui/icons-material": "^7.3.9",
     "@mui/material": "^7.3.9",
     "aws-amplify": "^6.16.3",
+    "axios": "^1.16.0",
     "framer-motion": "^12.35.0",
     "gsap": "^3.14.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.1",
+    "react-to-print": "^3.3.0",
     "recharts": "^3.8.0",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "zod": "^3.25.17"
   },
   "overrides": {
-    "@aws-amplify/ui-react": "6.15.2"
+    "@aws-amplify/ui-react": "6.15.2",
+    "react": "$react",
+    "react-dom": "$react-dom"
   },
   "devDependencies": {
     "@aws-amplify/backend": "^1.2.1",
     "@aws-amplify/backend-cli": "^1.7.2",
     "@eslint/js": "^9.39.1",
     "@tailwindcss/vite": "^4.2.1",
+    "@tanstack/react-query": "^5.100.5",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
@@ -56,6 +64,7 @@
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "tailwindcss": "^4.2.1",
+    "typescript": "^5.9.3",
     "vite": "^7.3.1"
   }
 }

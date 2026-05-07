@@ -1,11 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
-import { adminSocketUrl } from '../utils/adminChatApi.js'
+import { adminSocketUrls, chatFetch } from '../utils/adminChatApi.js'
 import { api } from './api/client.js'
 import { useAdminApiAuth } from './context/useAdminApiAuth.js'
 import { admin } from './components/AdminUi.jsx'
 import { ADMIN_NAV_GROUPS } from './adminNavConfig.js'
+
+/**
+ * NotificationsPage is mounted only inside the bell-icon modal. Lazy loading
+ * keeps it out of the initial admin layout chunk so the dashboard paints faster.
+ */
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage.jsx'))
 
 function NavIcon({ name, className }) {
   const c = className || 'h-5 w-5 shrink-0'
@@ -48,7 +54,7 @@ function buildGroupedNavFromConfig(can) {
 function mergeApiNav(rows, can) {
   const filtered = rows
     .map((r, i) => normalizeNavItem(r, i))
-    .filter((r) => r.path && r.path !== '/admin/cms')
+    .filter((r) => r.path && r.path !== '/admin/cms' && r.path !== '/admin/notifications')
 
   if (!filtered.some((x) => x.path === '/admin/chat-crm')) {
     filtered.push(normalizeNavItem({ path: '/admin/chat-crm', label: 'CRM & Chat', icon_key: 'chat', match_end: false }, filtered.length))
@@ -114,6 +120,8 @@ export default function AdminLayout() {
   )
   const [navGroups, setNavGroups] = useState(() => buildGroupedNavFromConfig(can))
   const [navLoading, setNavLoading] = useState(true)
+  const [crmVisitorPing, setCrmVisitorPing] = useState(0)
+  const [crmFeedbackUnread, setCrmFeedbackUnread] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -122,7 +130,7 @@ export default function AdminLayout() {
         const res = await api('/navigation')
         const rows = (res.data || []).filter((r) => {
           const p = r.path || r.to || ''
-          return p && p !== '/admin/cms' && !String(p).includes('/admin/cms')
+          return p && p !== '/admin/cms' && p !== '/admin/notifications' && !String(p).includes('/admin/cms')
         })
         if (!cancelled) {
           if (rows.length) setNavGroups(mergeApiNav(rows, can))
@@ -140,26 +148,120 @@ export default function AdminLayout() {
   }, [can])
 
   useEffect(() => {
+    if (!location.pathname.startsWith('/admin/chat-crm')) return
+    setCrmVisitorPing(0)
+  }, [location.pathname])
+
+  useEffect(() => {
+    let cancelled = false
+    let currentSocket = null
+    const targets = adminSocketUrls()
+
+    const loadFeedbackBadge = async () => {
+      try {
+        const { res } = await chatFetch('/api/admin/stats')
+        const payload = await res?.json?.().catch(() => ({}))
+        const count = Number(payload?.stats?.feedbackUnread || 0)
+        if (!cancelled) setCrmFeedbackUnread(Math.max(0, count))
+      } catch {
+        if (!cancelled) setCrmFeedbackUnread(0)
+      }
+    }
+
+    const connectFeedbackSocket = (index) => {
+      if (cancelled || index >= targets.length) return
+      const socket = io(targets[index], { transports: ['websocket', 'polling'] })
+      currentSocket = socket
+      socket.on('connect', () => socket.emit('admin:join'))
+      socket.on('feedback:refresh', () => loadFeedbackBadge())
+      socket.on('connect_error', () => {
+        socket.removeAllListeners()
+        socket.disconnect()
+        connectFeedbackSocket(index + 1)
+      })
+    }
+
+    loadFeedbackBadge()
+    const id = setInterval(loadFeedbackBadge, 60_000)
+    connectFeedbackSocket(0)
+
+    return () => {
+      cancelled = true
+      clearInterval(id)
+      currentSocket?.removeAllListeners()
+      currentSocket?.disconnect()
+    }
+  }, [])
+
+  useEffect(() => {
     if (!user) return
-    const socket = io(adminSocketUrl(), { transports: ['websocket', 'polling'] })
-    socket.emit('admin:join')
+    let disposed = false
+    let currentSocket = null
+    const targets = adminSocketUrls()
+
     const onVisitorMessage = (payload) => {
-      if (payload?.message?.sender !== 'user') return
-      const cid = payload?.conversationId
-      if (!cid || typeof cid !== 'string') return
+      const msg = payload?.message
+      if (!msg) return
+      const sender = String(msg.sender || '').toLowerCase()
+      const isVisitorMsg =
+        sender === 'user' ||
+        sender === 'customer' ||
+        sender === 'visitor' ||
+        String(msg.sender_type || '').toLowerCase() === 'customer'
+      if (!isVisitorMsg) return
+
+      const raw = payload?.conversationId
+      const cid =
+        typeof raw === 'string' ? raw.trim() : String(raw || '').trim()
+      if (!cid) return
+
+      window.dispatchEvent(new CustomEvent('admin:statsRefresh'))
+
+      if (location.pathname.startsWith('/admin/chat-crm')) {
+        window.dispatchEvent(
+          new CustomEvent('admin:focusChatConversation', {
+            detail: { conversationId: cid },
+          }),
+        )
+        return
+      }
+
+      setCrmVisitorPing((n) => Math.min(n + 1, 99))
       const sp = new URLSearchParams()
       sp.set('view', 'chats')
       sp.set('conversation', cid)
       navigate(`/admin/chat-crm?${sp.toString()}`, { replace: true })
     }
-    socket.on('chat:newMessage', onVisitorMessage)
-    return () => {
-      socket.off('chat:newMessage', onVisitorMessage)
-      socket.disconnect()
+
+    const connectWithFallback = (index) => {
+      if (disposed || index >= targets.length) return
+      const target = targets[index]
+      const socket = io(target, { transports: ['websocket', 'polling'] })
+      currentSocket = socket
+      socket.on('connect', () => {
+        if (disposed) return
+        socket.emit('admin:join')
+      })
+      socket.on('chat:newMessage', onVisitorMessage)
+      socket.on('connect_error', () => {
+        if (disposed) return
+        socket.removeAllListeners()
+        socket.disconnect()
+        connectWithFallback(index + 1)
+      })
     }
-  }, [user, navigate])
+
+    connectWithFallback(0)
+    return () => {
+      disposed = true
+      currentSocket?.off('chat:newMessage', onVisitorMessage)
+      currentSocket?.removeAllListeners()
+      if (currentSocket?.connected) currentSocket.disconnect()
+    }
+  }, [user, navigate, location.pathname])
 
   const [notifUnread, setNotifUnread] = useState(null)
+  const [notifModalOpen, setNotifModalOpen] = useState(false)
 
   useEffect(() => {
     if (!user || !can('notifications.view')) return undefined
@@ -175,11 +277,14 @@ export default function AdminLayout() {
     fetchCount()
     const id = setInterval(fetchCount, 60_000)
     const onChange = () => fetchCount()
+    const onStatsSync = () => fetchCount()
     window.addEventListener('admin-notifications-changed', onChange)
+    window.addEventListener('admin:statsRefresh', onStatsSync)
     return () => {
       cancelled = true
       clearInterval(id)
       window.removeEventListener('admin-notifications-changed', onChange)
+      window.removeEventListener('admin:statsRefresh', onStatsSync)
     }
   }, [user, can])
 
@@ -296,11 +401,35 @@ export default function AdminLayout() {
                               {notifUnread > 99 ? '99+' : notifUnread}
                             </span>
                           ) : null}
+                          {item.path === '/admin/chat-crm' && crmVisitorPing > 0 && sidebarCollapsed ? (
+                            <span
+                              className="absolute -right-0.5 -top-1 h-2 w-2 rounded-full bg-red-600 ring-2 ring-white"
+                              title="Unread visitor chats"
+                              aria-label="CRM has live visitor activity"
+                            />
+                          ) : null}
+                          {item.path === '/admin/feedback' && crmFeedbackUnread > 0 && sidebarCollapsed ? (
+                            <span className="absolute -right-2 -top-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
+                              {crmFeedbackUnread > 99 ? '99+' : crmFeedbackUnread}
+                            </span>
+                          ) : null}
                         </span>
                         <span className={`min-w-0 flex-1 leading-snug ${sidebarCollapsed ? 'lg:sr-only' : ''}`}>{item.label}</span>
                         {item.path === '/admin/notifications' && notifUnread != null && notifUnread > 0 && !sidebarCollapsed ? (
                           <span className="ml-auto inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
                             {notifUnread > 99 ? '99+' : notifUnread}
+                          </span>
+                        ) : null}
+                        {item.path === '/admin/chat-crm' && crmVisitorPing > 0 && !sidebarCollapsed ? (
+                          <span
+                            className="ml-auto inline-flex h-2 w-2 rounded-full bg-red-600 ring-2 ring-white"
+                            title="Unread visitor chats"
+                            aria-label="CRM live"
+                          />
+                        ) : null}
+                        {item.path === '/admin/feedback' && crmFeedbackUnread > 0 && !sidebarCollapsed ? (
+                          <span className="ml-auto inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
+                            {crmFeedbackUnread > 99 ? '99+' : crmFeedbackUnread}
                           </span>
                         ) : null}
                       </NavLink>
@@ -379,8 +508,9 @@ export default function AdminLayout() {
             </div>
           </div>
           {user && can('notifications.view') ? (
-            <Link
-              to="/admin/notifications"
+            <button
+              type="button"
+              onClick={() => setNotifModalOpen(true)}
               className="relative rounded-lg border border-gray-200/90 p-2 text-gray-700 transition hover:bg-gray-100 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
               aria-label="Notifications"
             >
@@ -390,7 +520,7 @@ export default function AdminLayout() {
                   {notifUnread > 99 ? '99+' : notifUnread}
                 </span>
               ) : null}
-            </Link>
+            </button>
           ) : null}
         </header>
 
@@ -410,6 +540,39 @@ export default function AdminLayout() {
           </div>
         </main>
       </div>
+      {notifModalOpen ? (
+        <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/40 p-4 pt-20 backdrop-blur-[1px] sm:items-center sm:pt-4">
+          <button
+            type="button"
+            className="absolute inset-0"
+            aria-label="Close notifications"
+            onClick={() => setNotifModalOpen(false)}
+          />
+          <div className="relative z-10 w-full max-w-3xl rounded-2xl border border-gray-200 bg-white p-4 shadow-2xl dark:border-[#1F2937] dark:bg-[#111827] sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Notifications</h2>
+              <button
+                type="button"
+                className="rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/10"
+                onClick={() => setNotifModalOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="max-h-[70vh] overflow-y-auto pr-1">
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-10 text-sm text-gray-500 dark:text-gray-400">
+                    Loading notifications…
+                  </div>
+                }
+              >
+                <NotificationsPage embedded onNavigate={() => setNotifModalOpen(false)} />
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

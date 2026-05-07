@@ -126,7 +126,7 @@ export default function DashboardPage() {
             Loan Applications (Last 6 Months)
           </p>
           <div className="h-64 w-full min-w-0 overflow-x-auto">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={256}>
               <AreaChart data={charts?.loan_growth || []}>
                 <defs>
                   <linearGradient id="dashG1" x1="0" y1="0" x2="0" y2="1">
@@ -156,7 +156,7 @@ export default function DashboardPage() {
             Monthly Repayments
           </p>
           <div className="h-64 w-full min-w-0 overflow-x-auto">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={256}>
               <BarChart data={charts?.repayments || []}>
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
                 <XAxis dataKey="month" stroke={CHART_AXIS} fontSize={11} tickLine={false} />
@@ -174,7 +174,7 @@ export default function DashboardPage() {
           Monthly Revenue Trend
         </p>
         <div className="h-64 w-full min-w-0 overflow-x-auto">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={256}>
             <AreaChart data={charts?.revenue_trend || []}>
               <defs>
                 <linearGradient id="dashRev" x1="0" y1="0" x2="0" y2="1">

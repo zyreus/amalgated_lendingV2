@@ -1,4 +1,4 @@
-import { laravelRequest } from '../../utils/lendingLaravelApi.js'
+import { laravelRequest, formatLaravelUnreachableError } from '../../utils/lendingLaravelApi.js'
 
 const TOKEN_KEY = 'borrower_token'
 
@@ -28,9 +28,9 @@ export async function borrowerApi(path, options = {}) {
   const token = getBorrowerToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const { res } = await laravelRequest(rel, { ...options, headers })
+  const { res, lastError } = await laravelRequest(rel, { ...options, headers })
   if (!res) {
-    const err = new Error('Could not reach lending API (check Laravel URL and Vite proxy).')
+    const err = new Error(formatLaravelUnreachableError(lastError))
     err.status = 0
     throw err
   }

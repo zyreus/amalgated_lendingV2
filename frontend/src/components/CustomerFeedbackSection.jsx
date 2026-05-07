@@ -1,4 +1,5 @@
-import { motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 
 const FEEDBACK_ITEMS = [
   {
@@ -28,18 +29,38 @@ const FEEDBACK_ITEMS = [
 ]
 
 function Stars({ value }) {
+  const reduceMotion = useReducedMotion()
   return (
     <div className="flex items-center gap-1" aria-label={`${value} out of 5 stars`}>
-      {[1, 2, 3, 4, 5].map((star) => (
-        <span key={star} className={star <= value ? 'text-amber-400' : 'text-gray-300'}>
+      {[1, 2, 3, 4, 5].map((star, idx) => (
+        <motion.span
+          key={star}
+          className={star <= value ? 'text-amber-400' : 'text-gray-300'}
+          initial={reduceMotion ? false : { opacity: 0, scale: 0.85 }}
+          animate={reduceMotion ? {} : { opacity: 1, scale: 1 }}
+          transition={{ duration: 0.2, delay: reduceMotion ? 0 : idx * 0.04 }}
+        >
           ★
-        </span>
+        </motion.span>
       ))}
     </div>
   )
 }
 
 export default function CustomerFeedbackSection() {
+  const [index, setIndex] = useState(0)
+  const reduceMotion = useReducedMotion()
+
+  useEffect(() => {
+    if (reduceMotion) return undefined
+    const timer = window.setInterval(() => {
+      setIndex((prev) => (prev + 1) % FEEDBACK_ITEMS.length)
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [reduceMotion])
+
+  const active = FEEDBACK_ITEMS[index]
+
   return (
     <section id="customer-feedback" className="border-t border-brand-secondary/25 bg-brand-background py-16">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -59,24 +80,35 @@ export default function CustomerFeedbackSection() {
           </p>
         </motion.div>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {FEEDBACK_ITEMS.map((item, index) => (
+        <div className="mt-8 mx-auto max-w-3xl">
+          <AnimatePresence mode="wait">
             <motion.article
-              key={item.id}
-              initial={{ opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-80px' }}
-              transition={{ duration: 0.45, delay: index * 0.08 }}
+              key={active.id}
+              initial={reduceMotion ? false : { opacity: 0, x: 18 }}
+              animate={reduceMotion ? {} : { opacity: 1, x: 0 }}
+              exit={reduceMotion ? {} : { opacity: 0, x: -18 }}
+              transition={{ duration: 0.35 }}
               className="rounded-2xl border border-black/10 bg-white p-5 shadow-[0_8px_22px_rgba(0,0,0,0.06)]"
             >
-              <Stars value={item.rating} />
-              <p className="mt-3 text-sm leading-relaxed text-brand-text/85">{item.comment}</p>
+              <Stars value={active.rating} />
+              <p className="mt-3 text-sm leading-relaxed text-brand-text/85">{active.comment}</p>
               <div className="mt-4 border-t border-black/10 pt-3">
-                <p className="text-sm font-semibold text-brand-text">{item.name}</p>
-                <p className="text-xs text-brand-text/60">{item.role}</p>
+                <p className="text-sm font-semibold text-brand-text">{active.name}</p>
+                <p className="text-xs text-brand-text/60">{active.role}</p>
               </div>
             </motion.article>
-          ))}
+          </AnimatePresence>
+          <div className="mt-4 flex justify-center gap-2">
+            {FEEDBACK_ITEMS.map((item, dotIndex) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setIndex(dotIndex)}
+                className={`h-2.5 rounded-full transition-all ${dotIndex === index ? 'w-6 bg-brand-primary' : 'w-2.5 bg-black/20 hover:bg-black/30'}`}
+                aria-label={`Show testimonial ${dotIndex + 1}`}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </section>

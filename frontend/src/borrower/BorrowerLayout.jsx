@@ -1,12 +1,39 @@
-import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { useBorrowerAuth } from './context/useBorrowerAuth.js'
 import { borrowerApi } from './api/client.js'
+import { getLaravelStorageFileUrl } from '../utils/lendingLaravelApi.js'
+import { COOKIE_PREFERENCES_EVENT } from '../components/privacy/CookiePreferencesModal.jsx'
+
+/**
+ * BorrowerNotificationsPage is only ever mounted inside the notifications modal
+ * (toggled with the bell icon). Lazy loading keeps it out of the initial
+ * borrower portal bundle so the dashboard paints faster.
+ */
+const BorrowerNotificationsPage = lazy(() => import('./pages/BorrowerNotificationsPage.jsx'))
+
+function initials(name) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (!parts.length) return 'B'
+  const first = parts[0]?.[0] || ''
+  const second = parts.length > 1 ? parts[parts.length - 1]?.[0] || '' : ''
+  return `${first}${second}`.toUpperCase()
+}
+
+function isImagePath(path) {
+  return /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(String(path || ''))
+}
+
+function fallbackAvatar(name) {
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'Borrower')}&background=fee2e2&color=b91c1c&size=96&bold=true`
+}
 
 const nav = [
   { to: '/borrower/dashboard', label: 'Dashboard' },
   { to: '/borrower/applications', label: 'Applications' },
-  { to: '/borrower/notifications', label: 'Notifications' },
   { to: '/borrower/apply-loan', label: 'Apply (wizard)' },
   { to: '/borrower/payments', label: 'Payments' },
   { to: '/borrower/chat', label: 'Chat' },
@@ -19,6 +46,16 @@ export default function BorrowerLayout() {
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [notifUnread, setNotifUnread] = useState(null)
+  const [notifModalOpen, setNotifModalOpen] = useState(false)
+  const avatarUrl = isImagePath(user?.profile_photo_path)
+    ? getLaravelStorageFileUrl(user?.profile_photo_path)
+    : isImagePath(user?.profile_photo_url)
+      ? getLaravelStorageFileUrl(user?.profile_photo_url)
+      : isImagePath(user?.id_document_path)
+        ? getLaravelStorageFileUrl(user?.id_document_path)
+        : isImagePath(user?.id_document_url)
+          ? getLaravelStorageFileUrl(user?.id_document_url)
+          : null
 
   useEffect(() => {
     if (!user) return undefined
@@ -62,9 +99,26 @@ export default function BorrowerLayout() {
         <div className="flex h-full min-h-0 flex-col">
           <div className="shrink-0 border-b border-gray-200 px-5 py-5 dark:border-[#1F2937]">
             <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#DC2626]">Borrower Portal</p>
-            <p className="mt-1 truncate text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">
-              {user?.name || 'Borrower'}
-            </p>
+            <div className="mt-2 flex items-center gap-3">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={user?.name || 'Borrower'}
+                  className="h-9 w-9 rounded-full border border-gray-200 object-cover dark:border-[#374151]"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null
+                    e.currentTarget.src = fallbackAvatar(user?.name || 'Borrower')
+                  }}
+                />
+              ) : (
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-red-100 text-xs font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-200">
+                  {initials(user?.name || 'Borrower')}
+                </span>
+              )}
+              <p className="min-w-0 truncate text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+                {user?.name || 'Borrower'}
+              </p>
+            </div>
           </div>
 
           <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 space-y-0.5">
@@ -95,12 +149,30 @@ export default function BorrowerLayout() {
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-4">
             <div className="min-w-0">
               <p className="text-xs uppercase tracking-[0.2em] text-[#DC2626]">Borrower Portal</p>
-              <h1 className="truncate text-lg font-semibold text-gray-900 dark:text-gray-100">{user?.name || 'Borrower'}</h1>
+              <div className="mt-1 flex items-center gap-2">
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt={user?.name || 'Borrower'}
+                    className="h-8 w-8 rounded-full border border-gray-200 object-cover dark:border-[#374151]"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null
+                      e.currentTarget.src = fallbackAvatar(user?.name || 'Borrower')
+                    }}
+                  />
+                ) : (
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-100 text-xs font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-200">
+                    {initials(user?.name || 'Borrower')}
+                  </span>
+                )}
+                <h1 className="truncate text-lg font-semibold text-gray-900 dark:text-gray-100">{user?.name || 'Borrower'}</h1>
+              </div>
             </div>
 
             <div className="ml-auto flex items-center gap-2">
-              <Link
-                to="/borrower/notifications"
+              <button
+                type="button"
+                onClick={() => setNotifModalOpen(true)}
                 className="relative rounded-lg border border-gray-200 p-2 text-gray-800 transition-colors duration-300 hover:bg-gray-100 dark:border-[#1F2937] dark:text-gray-100 dark:hover:bg-[#1F2937]"
                 aria-label="Notifications"
               >
@@ -116,7 +188,7 @@ export default function BorrowerLayout() {
                     {notifUnread > 99 ? '99+' : notifUnread}
                   </span>
                 ) : null}
-              </Link>
+              </button>
               <button
                 type="button"
                 onClick={() => setMobileOpen((v) => !v)}
@@ -131,6 +203,13 @@ export default function BorrowerLayout() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
                   )}
                 </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent(COOKIE_PREFERENCES_EVENT))}
+                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 transition-colors duration-300 hover:bg-gray-100 dark:border-[#1F2937] dark:text-gray-200 dark:hover:bg-[#1F2937] sm:text-sm"
+              >
+                Cookie Settings
               </button>
               <button
                 type="button"
@@ -152,6 +231,39 @@ export default function BorrowerLayout() {
           </div>
         </main>
       </div>
+      {notifModalOpen ? (
+        <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/40 p-4 pt-20 backdrop-blur-[1px] sm:items-center sm:pt-4">
+          <button
+            type="button"
+            className="absolute inset-0"
+            aria-label="Close notifications"
+            onClick={() => setNotifModalOpen(false)}
+          />
+          <div className="relative z-10 w-full max-w-3xl rounded-2xl border border-gray-200 bg-white p-4 shadow-2xl dark:border-[#1F2937] dark:bg-[#111827] sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Notifications</h2>
+              <button
+                type="button"
+                className="rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/10"
+                onClick={() => setNotifModalOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="max-h-[70vh] overflow-y-auto pr-1">
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-10 text-sm text-gray-500 dark:text-gray-400">
+                    Loading notifications…
+                  </div>
+                }
+              >
+                <BorrowerNotificationsPage embedded />
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

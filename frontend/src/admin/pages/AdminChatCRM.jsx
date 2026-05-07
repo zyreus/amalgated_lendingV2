@@ -34,9 +34,10 @@ export default function AdminChatCRM() {
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-[var(--admin-surface)] transition-colors duration-300">
         <AdminChatDashboard
           onLogout={logout}
-          canViewAnalytics={can('dashboard.view') || can('activity.view')}
+          canViewAnalytics
           canManageLoans={can('loans.view')}
           canViewBorrowers={can('borrowers.view')}
+          canAssignStaff={can('users.view')}
         />
       </div>
     </div>

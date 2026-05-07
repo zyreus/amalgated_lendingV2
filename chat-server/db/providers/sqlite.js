@@ -194,6 +194,7 @@ db.exec(`
     rating INTEGER NOT NULL,
     name TEXT DEFAULT 'Anonymous',
     email TEXT,
+    subject TEXT,
     comment TEXT NOT NULL,
     is_read INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
@@ -284,9 +285,21 @@ db.exec(`
     updated_at TEXT DEFAULT (datetime('now'))
   );
 `)
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON messages (conversation_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages (conversation_id, id);
+  CREATE INDEX IF NOT EXISTS idx_conversations_status_updated ON conversations (status, updated_at);
+  CREATE INDEX IF NOT EXISTS idx_visitor_visits_visit_id ON visitor_visits (visit_id);
+`)
 save()
 try {
   run(`ALTER TABLE partnerships ADD COLUMN status TEXT DEFAULT 'new'`)
+  save()
+} catch {
+  /* column may already exist */
+}
+try {
+  run(`ALTER TABLE feedback ADD COLUMN subject TEXT`)
   save()
 } catch {
   /* column may already exist */
@@ -560,8 +573,18 @@ export async function getConversation(id) {
   return get(`SELECT * FROM conversations WHERE id = ?`, [id])
 }
 
-export async function getAllConversations() {
-  return all(`SELECT * FROM conversations WHERE status != 'archived' ORDER BY updated_at DESC`)
+export async function getAllConversations(options = {}) {
+  const limit = Math.min(Math.max(Number(options.limit) || 200, 1), 1000)
+  const includeArchived = Boolean(options.includeArchived)
+  const where = includeArchived ? '' : `WHERE status != 'archived'`
+  return all(
+    `SELECT id, visitor_name, visitor_email, status, mode, admin_unread_count, admin_last_read_at, created_at, updated_at
+     FROM conversations
+     ${where}
+     ORDER BY updated_at DESC
+     LIMIT ?`,
+    [limit],
+  )
 }
 
 export async function updateStatus(id, status) {
@@ -593,8 +616,17 @@ export async function clearConversationUnread(conversationId) {
   run(`UPDATE conversations SET admin_unread_count = 0, admin_last_read_at = datetime('now') WHERE id = ?`, [conversationId])
 }
 
-export async function getMessages(conversationId) {
-  return all(`SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC`, [conversationId])
+export async function getMessages(conversationId, options = {}) {
+  const limit = Math.min(Math.max(Number(options.limit) || 100, 1), 500)
+  const offset = Math.max(Number(options.offset) || 0, 0)
+  const afterId = Math.max(Number(options.afterId) || 0, 0)
+  if (afterId > 0) {
+    return all(
+      `SELECT * FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id ASC LIMIT ?`,
+      [conversationId, afterId, limit],
+    )
+  }
+  return all(`SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?`, [conversationId, limit, offset])
 }
 
 export async function getArchivedConversations() {
@@ -1305,20 +1337,20 @@ export async function setNewsletterContent(content) {
 // ── Customer feedback ──
 
 export async function createFeedback(data = {}) {
-  const { id, conversationId = null, rating, name = 'Anonymous', email = null, comment } = data || {}
+  const { id, conversationId = null, rating, name = 'Anonymous', email = null, subject = null, comment } = data || {}
   run(
-    `INSERT INTO feedback (id, conversation_id, rating, name, email, comment, is_read) VALUES (?, ?, ?, ?, ?, ?, 0)`,
-    [id, conversationId, rating, name, email, comment],
+    `INSERT INTO feedback (id, conversation_id, rating, name, email, subject, comment, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+    [id, conversationId, rating, name, email, subject, comment],
   )
   return get(
-    `SELECT id, conversation_id, rating, name, email, comment, is_read, created_at FROM feedback WHERE id = ?`,
+    `SELECT id, conversation_id, rating, name, email, subject, comment, is_read, created_at FROM feedback WHERE id = ?`,
     [id],
   )
 }
 
 export async function getFeedback() {
   return all(
-    `SELECT id, conversation_id, rating, name, email, comment, is_read, created_at
+    `SELECT id, conversation_id, rating, name, email, subject, comment, is_read, created_at
      FROM feedback
      ORDER BY created_at DESC`,
   )

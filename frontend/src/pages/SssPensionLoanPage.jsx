@@ -17,7 +17,6 @@ import { LOAN_PRODUCT_KEYS } from '../components/loan/loanProductDocuments.js'
 import { deriveApplicantFromExtended, normalizeCoMakerStatementPayload, normalizeExtendedApplicationPayload } from '../components/loan/amalgatedPayloadMerge.js'
 import { postSssPensionLoanApplication } from '../utils/lendingApi.js'
 import { openModal } from '../utils/systemModal.js'
-import TravelSignaturePad from '../components/travel/TravelSignaturePad.jsx'
 import { buildMissingFieldsSummary, collectMissingFields, focusFirstInvalidField } from '../utils/applicationFormValidation.js'
 import { isFullApplicationPrintable } from '../components/loan/amalgatedApplicationCompleteness.js'
 import { getLoanProducts } from '../utils/loanProductsPublicApi.js'
@@ -49,9 +48,6 @@ export default function SssPensionLoanPage() {
     docBankStatements: [],
     docGovernmentIds: [],
   })
-  const [signatureData, setSignatureData] = useState('')
-  const [spouseSignatureData, setSpouseSignatureData] = useState('')
-  const [coMakerSignatureData, setCoMakerSignatureData] = useState('')
   const [rateLabel, setRateLabel] = useState('2.24% per month')
 
   useEffect(() => {
@@ -151,17 +147,6 @@ export default function SssPensionLoanPage() {
       setStatus('error')
       return
     }
-    if (!signatureData) {
-      setErrorMsg('Applicant signature is required before submission.')
-      setStatus('error')
-      return
-    }
-    if (addCoMaker && !coMakerSignatureData) {
-      setErrorMsg('Co-maker signature is required when co-maker is included.')
-      setStatus('error')
-      return
-    }
-
     setStatus('loading')
     try {
       const cmPhone = String(coMakerStatement.residence_tel || coMakerStatement.business_tel || '').trim()
@@ -180,11 +165,6 @@ export default function SssPensionLoanPage() {
         age: String(px.age || '').trim(),
         extendedApplication: {
           ...normalizeExtendedApplicationPayload(extendedApplication, form),
-          signatures: {
-            applicant_signature_data: signatureData,
-            spouse_signature_data: spouseSignatureData,
-            comaker_signature_data: coMakerSignatureData,
-          },
         },
         coMakerStatement: addCoMaker ? normalizeCoMakerStatementPayload(coMakerStatement, form, extendedApplication) : undefined,
         coMakerId: addCoMaker && coMakerByUserId ? form.coMakerId : '',
@@ -208,9 +188,6 @@ export default function SssPensionLoanPage() {
         docBankStatements: [],
         docGovernmentIds: [],
       })
-      setSignatureData('')
-      setSpouseSignatureData('')
-      setCoMakerSignatureData('')
       openModal({ message: 'Application submitted successfully.', tone: 'success' })
     } catch (err) {
       setStatus('error')
@@ -379,7 +356,6 @@ export default function SssPensionLoanPage() {
                     coMakerStatement={addCoMaker ? coMakerStatement : null}
                     includeCoMaker={addCoMaker}
                     canPrint={canPrintApplication}
-                    applicantSignatureData={signatureData}
                   />
                 </fieldset>
               </div>
@@ -407,26 +383,6 @@ export default function SssPensionLoanPage() {
                     Proof of billing
                     <input type="file" accept=".jpg,.jpeg,.png,.pdf" onChange={(e) => setDocuments((s) => ({ ...s, docProofOfBilling: e.target.files?.[0] || null }))} className="mt-1 w-full rounded-xl border border-brand-secondary/40 px-3 py-2 text-sm dark:border-[#374151]" />
                   </label>
-                </div>
-              </fieldset>
-
-              <fieldset className="space-y-4 rounded-xl border border-slate-200 p-4">
-                <legend className="text-sm font-semibold text-brand-text dark:text-white">Signatures</legend>
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <div>
-                    <p className="mb-2 text-sm font-medium text-brand-text dark:text-white">Applicant signature *</p>
-                    <TravelSignaturePad value={signatureData} onChange={setSignatureData} />
-                  </div>
-                  <div>
-                    <p className="mb-2 text-sm font-medium text-brand-text dark:text-white">Spouse signature (optional)</p>
-                    <TravelSignaturePad value={spouseSignatureData} onChange={setSpouseSignatureData} />
-                  </div>
-                  {addCoMaker ? (
-                    <div className="sm:col-span-2">
-                      <p className="mb-2 text-sm font-medium text-brand-text dark:text-white">Co-maker signature *</p>
-                      <TravelSignaturePad value={coMakerSignatureData} onChange={setCoMakerSignatureData} />
-                    </div>
-                  ) : null}
                 </div>
               </fieldset>
 

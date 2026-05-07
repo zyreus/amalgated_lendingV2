@@ -8,7 +8,6 @@ import AmalgatedLoanApplicationForm from '../components/loan/AmalgatedLoanApplic
 import LoanProductDocumentsChecklist from '../components/loan/LoanProductDocumentsChecklist.jsx'
 import LoanProductExtraSection from '../components/loan/LoanProductExtraSection.jsx'
 import CoMakerStatementForm from '../components/loan/CoMakerStatementForm.jsx'
-import TravelSignaturePad from '../components/travel/TravelSignaturePad.jsx'
 import { LOAN_PRODUCT_KEYS } from '../components/loan/loanProductDocuments.js'
 import { createEmptyCoMakerStatement, createEmptyExtendedApplication } from '../components/loan/amalgatedApplicationFormState.js'
 import AmalgatedApplicationPrintBundle from '../components/loan/AmalgatedApplicationPrintBundle.jsx'
@@ -56,8 +55,6 @@ export default function SalaryLoanPage() {
     docBorrowerGovernmentIds: [],
     docCoMakerGovernmentIds: [],
   })
-  const [signatureData, setSignatureData] = useState('')
-  const [coMakerSignatureData, setCoMakerSignatureData] = useState('')
   const canPrintApplication = isFullApplicationPrintable(extendedApplication, coMakerStatement, true)
   const [rateLabel, setRateLabel] = useState('1.50% per month')
 
@@ -167,16 +164,6 @@ export default function SalaryLoanPage() {
       setStatus('error')
       return
     }
-    if (!signatureData) {
-      setErrorMsg('Applicant signature is required before submission.')
-      setStatus('error')
-      return
-    }
-    if (!coMakerSignatureData) {
-      setErrorMsg('Co-maker signature is required before submission.')
-      setStatus('error')
-      return
-    }
     const cmPhone = String(coMakerStatement.residence_tel || coMakerStatement.business_tel || '').trim()
     if (!coMakerByUserId) {
       const cmEmail = String(coMakerStatement.email || '').trim().toLowerCase()
@@ -204,10 +191,6 @@ export default function SalaryLoanPage() {
         employerName: String(px.employer_name || '').trim(),
         extendedApplication: {
           ...normalizeExtendedApplicationPayload(extendedApplication, form),
-          signatures: {
-            applicant_signature_data: signatureData,
-            comaker_signature_data: coMakerSignatureData,
-          },
         },
         coMakerStatement: normalizeCoMakerStatementPayload(coMakerStatement, form, extendedApplication),
         coMakerId: coMakerByUserId ? form.coMakerId : '',
@@ -229,8 +212,6 @@ export default function SalaryLoanPage() {
         docBorrowerGovernmentIds: [],
         docCoMakerGovernmentIds: [],
       })
-      setSignatureData('')
-      setCoMakerSignatureData('')
       openModal({ message: 'Application submitted successfully.', tone: 'success' })
     } catch (err) {
       setStatus('error')
@@ -382,7 +363,6 @@ export default function SalaryLoanPage() {
                     coMakerStatement={coMakerStatement}
                     includeCoMaker
                     canPrint={canPrintApplication}
-                    applicantSignatureData={signatureData}
                   />
                 </fieldset>
               </div>
@@ -446,20 +426,6 @@ export default function SalaryLoanPage() {
                       className="mt-1 w-full rounded-xl border border-brand-secondary/40 px-3 py-2 text-sm dark:border-[#374151]"
                     />
                   </label>
-                </div>
-              </fieldset>
-
-              <fieldset className="space-y-4 rounded-xl border border-slate-200 p-4">
-                <legend className="text-sm font-semibold text-brand-text dark:text-white">Signatures</legend>
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <div>
-                    <p className="mb-2 text-sm font-medium text-brand-text dark:text-white">Applicant signature *</p>
-                    <TravelSignaturePad value={signatureData} onChange={setSignatureData} />
-                  </div>
-                  <div>
-                    <p className="mb-2 text-sm font-medium text-brand-text dark:text-white">Co-maker signature *</p>
-                    <TravelSignaturePad value={coMakerSignatureData} onChange={setCoMakerSignatureData} />
-                  </div>
                 </div>
               </fieldset>
 

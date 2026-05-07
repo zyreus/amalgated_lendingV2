@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import Groq from 'groq-sdk';
@@ -136,6 +137,8 @@ import {
   getCmsSectionByPageAndKey,
 } from './db/provider.js';
 import { sendNotificationEmails, isEmailConfigured, sendTestEmail, sendCustomEmail, sendApplicationConfirmationEmail } from './lib/email.js';
+import { syncOutboundChatMessage, syncOutboundFeedback } from './lib/laravelSupportSync.js';
+import { deterministicSyncUuid } from './lib/syncDedupeUuid.js';
 
 const app = express();
 if (process.env.TRUST_PROXY === '1' || process.env.NODE_ENV === 'production') {
@@ -143,13 +146,74 @@ if (process.env.TRUST_PROXY === '1' || process.env.NODE_ENV === 'production') {
 }
 
 /** Comma-separated browser origins; empty = allow all (local dev). Set in production. */
-const chatCorsOrigins = (process.env.CHAT_CORS_ORIGINS || '')
-  .split(',')
-  .map((s) => s.trim().replace(/\/$/, ''))
-  .filter(Boolean);
+const normalizeCorsOrigin = (value) => {
+  const raw = String(value || '').trim().replace(/\/$/, '');
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  // Support bare domains in env values, e.g. amalgatedlending.com
+  return `https://${raw}`;
+};
+const defaultChatCorsOrigins = [
+  'https://amalgatedlending.com',
+  'https://www.amalgatedlending.com',
+  'https://chat.amalgatedlending.com',
+  'https://hrisdemo.agctek.co',
+];
+const chatCorsOrigins = [
+  ...new Set(
+    [...defaultChatCorsOrigins, ...(process.env.CHAT_CORS_ORIGINS || '').split(/[\s,]+/)]
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map(normalizeCorsOrigin)
+      .filter(Boolean),
+  ),
+];
+const isAllowedChatOrigin = (origin) => {
+  const normalized = normalizeCorsOrigin(origin);
+  if (!normalized) return true;
+  if (chatCorsOrigins.includes(normalized)) return true;
+  try {
+    const { hostname } = new URL(normalized);
+    if (process.env.NODE_ENV !== 'production') {
+      // Dev ergonomics: allow local/LAN origins regardless of Vite port.
+      if (
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname === '0.0.0.0' ||
+        hostname === '[::1]' ||
+        hostname.startsWith('192.168.') ||
+        hostname.startsWith('10.') ||
+        hostname.startsWith('172.16.')
+      ) {
+        return true;
+      }
+    }
+    // Allow Amalgated Lending site variants behind Cloudflare/proxies.
+    if (hostname === 'amalgatedlending.com' || hostname.endsWith('.amalgatedlending.com')) return true;
+    if (hostname === 'hrisdemo.agctek.co' || hostname.endsWith('.agctek.co')) return true;
+  } catch {
+    return false;
+  }
+  return false;
+};
+/**
+ * Credentialed CORS requires a single reflected origin (literal match to the request's Origin).
+ * Use the browser-sent Origin string, not generic `true`, so ACAO stays one deterministic value at the origin layer.
+ * If you still see "multiple values" errors in production, the edge is ALSO sending ACAO — remove duplicate proxy headers.
+ */
 const chatCorsConfig =
   chatCorsOrigins.length > 0
-    ? { origin: chatCorsOrigins, credentials: true }
+    ? {
+        origin(origin, callback) {
+          const raw = typeof origin === 'string' ? origin.trim() : '';
+          if (!raw || !isAllowedChatOrigin(raw)) {
+            callback(null, false);
+            return;
+          }
+          callback(null, raw);
+        },
+        credentials: true,
+      }
     : { origin: true };
 if (process.env.NODE_ENV === 'production' && chatCorsOrigins.length === 0) {
   console.warn('[chat] NODE_ENV=production but CHAT_CORS_ORIGINS is empty — all origins allowed. Set CHAT_CORS_ORIGINS for stricter CORS.');
@@ -157,15 +221,275 @@ if (process.env.NODE_ENV === 'production' && chatCorsOrigins.length === 0) {
 
 let port = Number(process.env.PORT) || 8010;
 const httpServer = createServer(app);
+/**
+ * Keep Socket.IO / Engine.IO CORS disabled — Express `cors(chatCorsConfig)` already answers preflights.
+ * Enabling `cors` on Socket.IO as well often stacks with reverse-proxy `add_header` and breaks browsers
+ * ("Access-Control-Allow-Origin contains multiple values").
+ *
+ * Tuning notes (safe defaults):
+ *  - `pingInterval` / `pingTimeout` slightly higher than defaults so flaky mobile networks
+ *    don't churn through reconnects (each reconnect rebuilds presence + history fan-out).
+ *  - `maxHttpBufferSize` capped at 1 MB to avoid one huge frame stalling the event loop.
+ *  - `perMessageDeflate` only kicks in for big frames so small status pings stay cheap.
+ */
 const io = new Server(httpServer, {
-  cors: { ...chatCorsConfig, methods: ['GET', 'POST'] },
+  cors: false,
+  pingInterval: 25_000,
+  pingTimeout: 60_000,
+  maxHttpBufferSize: 1024 * 1024,
+  perMessageDeflate: { threshold: 1024 },
 });
+const CHAT_PERF_LOG =
+  ['1', 'true', 'yes', 'on'].includes(String(process.env.CHAT_PERF_LOG || '').toLowerCase().trim());
+
+function nowMs() {
+  return Date.now();
+}
+
+/** Visitor sockets per conversation (website widget); supports multiple tabs. */
+const visitorPresenceCounts = new Map();
+
+function trackVisitorOnline(conversationId) {
+  const id = String(conversationId || '').trim();
+  if (!id) return;
+  visitorPresenceCounts.set(id, (visitorPresenceCounts.get(id) || 0) + 1);
+  io.to('admin').emit('visitor:presence', { conversationId: id, online: true });
+}
+
+function trackVisitorOffline(conversationId) {
+  const id = String(conversationId || '').trim();
+  if (!id) return;
+  const next = (visitorPresenceCounts.get(id) || 0) - 1;
+  if (next <= 0) visitorPresenceCounts.delete(id);
+  else visitorPresenceCounts.set(id, next);
+  io.to('admin').emit('visitor:presence', {
+    conversationId: id,
+    online: visitorPresenceCounts.has(id),
+  });
+}
+
+/** Latest measured AI reply durations (ms from user message to stream complete), newest first. */
+const recentAiReplyMetrics = [];
+
+function recordAiReplyMetric(conversationId, delayMs) {
+  const id = String(conversationId || '').trim();
+  const ms = Math.max(0, Number(delayMs) || 0);
+  recentAiReplyMetrics.unshift({ conversationId: id, delayMs: ms, at: new Date().toISOString() });
+  while (recentAiReplyMetrics.length > 50) recentAiReplyMetrics.pop();
+  io.to('admin').emit('ai:metrics:refresh');
+}
+
+function perfLog(stage, startedAt, details = {}) {
+  if (!CHAT_PERF_LOG) return;
+  const elapsedMs = Math.max(0, nowMs() - startedAt);
+  console.log(`[chat][perf] ${stage}`, { elapsed_ms: elapsedMs, ...details });
+}
+
+let adminConversationRefreshTimer = null;
+let adminAnalyticsRefreshTimer = null;
+/**
+ * Debounced fan-out to the admin room. The admin frontend listens for
+ * `conversations:refresh` / `analytics:refresh` and re-fetches the
+ * conversation list / analytics dashboard when it sees them.
+ *
+ * The previous implementation recursed into itself instead of emitting,
+ * which silently never fired the events; this restores the intended
+ * debounce + single emit behaviour without changing the public contract.
+ */
+function emitConversationsRefresh() {
+  if (adminConversationRefreshTimer) return;
+  adminConversationRefreshTimer = setTimeout(() => {
+    adminConversationRefreshTimer = null;
+    try {
+      io.to('admin').emit('conversations:refresh');
+    } catch (err) {
+      console.warn('[chat] conversations:refresh emit failed', err?.message || err);
+    }
+  }, 150);
+}
+
+function emitAnalyticsRefresh() {
+  if (adminAnalyticsRefreshTimer) return;
+  adminAnalyticsRefreshTimer = setTimeout(() => {
+    adminAnalyticsRefreshTimer = null;
+    try {
+      io.to('admin').emit('analytics:refresh');
+    } catch (err) {
+      console.warn('[chat] analytics:refresh emit failed', err?.message || err);
+    }
+  }, 500);
+}
+
+function extractClientIpFromHeaders(headers, fallback = '') {
+  const h = headers || {};
+  const cf = String(h['cf-connecting-ip'] || '').trim();
+  if (cf) return cf;
+  const xff = String(h['x-forwarded-for'] || '').split(',')[0]?.trim();
+  if (xff) return xff;
+  const xri = String(h['x-real-ip'] || '').trim();
+  if (xri) return xri;
+  return String(fallback || '').trim();
+}
+
+function parseDeviceMetaFromHeaders(headers) {
+  const h = headers || {};
+  const ua = String(h['user-agent'] || '');
+  const { device, browser } = parseUserAgent(ua);
+  const saveData = String(h['save-data'] || '').toLowerCase() === 'on';
+  const secMobile = String(h['sec-ch-ua-mobile'] || '').trim();
+  const effectiveType = String(h['ect'] || h['x-network-type'] || '').toLowerCase().trim();
+  const isBot = /bot|crawler|spider|headless|preview|facebookexternalhit|whatsapp|telegrambot|slurp|bingpreview/i.test(ua);
+  let os = 'Unknown';
+  if (/windows/i.test(ua)) os = 'Windows';
+  else if (/android/i.test(ua)) os = 'Android';
+  else if (/iphone|ipad|ipod|ios/i.test(ua)) os = 'iOS';
+  else if (/mac os|macintosh/i.test(ua)) os = 'macOS';
+  else if (/linux/i.test(ua)) os = 'Linux';
+  const isMobile = device === 'Mobile' || secMobile === '?1';
+  return { ua, device, browser, os, isBot, isMobile, saveData, effectiveType };
+}
+
+function classifyTrafficProfile(meta) {
+  if (meta.isBot) return { routingTier: 'bot', contentProfile: 'lite', cacheHint: 'aggressive' };
+  if (meta.saveData || ['2g', '3g', 'slow-2g'].includes(meta.effectiveType)) {
+    return { routingTier: 'edge-economy', contentProfile: 'lite', cacheHint: 'aggressive' };
+  }
+  if (meta.isMobile) return { routingTier: 'edge-mobile', contentProfile: 'balanced', cacheHint: 'normal' };
+  return { routingTier: 'edge-standard', contentProfile: 'full', cacheHint: 'normal' };
+}
 
 app.use(cors(chatCorsConfig));
+/**
+ * gzip every JSON / HTML / JS / CSS response above 1 KB.
+ * Massive win for the chat history endpoints (large JSON arrays) and for the SPA
+ * bundle when this server also serves `../dist`. Skipped automatically for
+ * Server-Sent-Events streams because `compression` checks res.getHeader('Content-Type').
+ */
+app.use(
+  compression({
+    threshold: 1024,
+    filter: (req, res) => {
+      if (req.headers['x-no-compression']) return false;
+      return compression.filter(req, res);
+    },
+  }),
+);
 app.use(express.json());
 
-// Serve CMS uploads at /uploads/cms
-app.use('/uploads', express.static(path.join(__dirname, 'storage', 'app', 'public', 'uploads'), { fallthrough: true }));
+function createRateLimiter({ windowMs, limit }) {
+  const bucket = new Map();
+  return (req, res, next) => {
+    const now = Date.now();
+    const key = `${getClientIp(req)}:${req.path}`;
+    const record = bucket.get(key);
+    if (!record || now - record.start > windowMs) {
+      bucket.set(key, { start: now, count: 1 });
+      return next();
+    }
+    if (record.count >= limit) {
+      return res.status(429).json({ ok: false, message: 'Too many requests. Please try again shortly.' });
+    }
+    record.count += 1;
+    bucket.set(key, record);
+    return next();
+  };
+}
+
+// Capture client IP + device/network metadata once for every HTTP request.
+app.use((req, res, next) => {
+  const ip = extractClientIpFromHeaders(req.headers, req.ip || req.socket?.remoteAddress || '');
+  const meta = parseDeviceMetaFromHeaders(req.headers);
+  const traffic = classifyTrafficProfile(meta);
+  req.clientMeta = {
+    ip,
+    ...meta,
+    ...traffic,
+  };
+  res.setHeader('X-Traffic-Tier', traffic.routingTier);
+  res.setHeader('X-Content-Profile', traffic.contentProfile);
+  next();
+});
+
+app.use((req, res, next) => {
+  const host = String(req?.headers?.host || '').toLowerCase().split(':')[0];
+  if (host === 'www.amalgatedlending.com') {
+    return res.redirect(301, `https://amalgatedlending.com${req.originalUrl || '/'}`);
+  }
+  next();
+});
+
+const limitAdminLogin = createRateLimiter({ windowMs: 60 * 1000, limit: 10 });
+const limitPublicChat = createRateLimiter({ windowMs: 10 * 1000, limit: 40 });
+
+const INTERNAL_BROADCAST_SECRET = String(process.env.CHAT_INTERNAL_BROADCAST_SECRET || '').trim();
+
+function requireInternalChatBroadcast(req, res, next) {
+  if (!INTERNAL_BROADCAST_SECRET) {
+    return res.status(503).json({
+      ok: false,
+      message: 'Relay not configured — set CHAT_INTERNAL_BROADCAST_SECRET on chat-server.',
+    });
+  }
+  const hdr = String(req.headers['x-chat-broadcast-secret'] || '').trim();
+  if (!hdr || hdr !== INTERNAL_BROADCAST_SECRET) {
+    return res.status(403).json({ ok: false, message: 'Forbidden.' });
+  }
+  next();
+}
+
+/**
+ * Laravel → Socket.IO relay: staff replies created in Laravel `chat_messages` reach visitors without Pusher.
+ * POST JSON { conversation_id, message: { id?, sender, content, created_at?, admin_name? } }
+ */
+app.post('/api/internal/chat-broadcast/message', requireInternalChatBroadcast, (req, res) => {
+  try {
+    const conversationId = String(req.body?.conversation_id || '').trim();
+    const m = req.body?.message || {};
+    const content = String(m.content || '').trim();
+    if (!conversationId || !content) {
+      return res.status(422).json({ ok: false, message: 'conversation_id and message.content are required.' });
+    }
+    const payload = {
+      conversation_id: conversationId,
+      id: m.id != null ? m.id : `laravel-${Date.now()}`,
+      sender: String(m.sender || 'admin').toLowerCase() === 'admin' ? 'admin' : String(m.sender || 'admin'),
+      content,
+      created_at: m.created_at || new Date().toISOString(),
+      admin_name: m.admin_name || null,
+    };
+    io.to(conversationId).emit('chat:message', payload);
+    io.to('admin').emit('chat:newMessage', { conversationId, message: payload });
+    emitConversationsRefresh();
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      message: e instanceof Error ? e.message : 'Unable to relay message.',
+    });
+  }
+});
+
+/**
+ * Serve CMS uploads at /uploads/cms.
+ *
+ * Files in here are content-hashed by the CMS upload pipeline (timestamp + random
+ * suffix in the filename) so a 30-day cache is safe; we also send `immutable` for
+ * better hit ratios on Cloudflare / browser caches and a small `Vary` to keep
+ * compressed/uncompressed clients separated.
+ */
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, 'storage', 'app', 'public', 'uploads'), {
+    fallthrough: true,
+    maxAge: '30d',
+    etag: true,
+    lastModified: true,
+    setHeaders(res) {
+      res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+      res.setHeader('Vary', 'Accept-Encoding');
+    },
+  }),
+);
 
 // Handle invalid JSON, multer, and any other API errors as JSON (not HTML 500)
 app.use((err, req, res, next) => {
@@ -485,20 +809,68 @@ app.post('/api/inquiry', async (req, res) => {
   if (!name?.trim() || !email?.trim() || !message?.trim()) {
     return res.status(400).json({ ok: false, message: 'Name, email, and message are required.' });
   }
+  const cleanName = name.trim();
+  const cleanEmail = email.trim();
+  const cleanPhone = (phone || '').trim() || null;
+  const cleanCompany = (company || '').trim() || null;
+  const cleanMessage = message.trim();
+  const sourcePage = (source_page || '').trim() || '/contact';
+  let conversationId = null;
+
+  try {
+    conversationId = crypto.randomUUID();
+    await createConversation(conversationId);
+    await updateVisitor(conversationId, cleanName, cleanEmail);
+    await updateMode(conversationId, 'human');
+    await updateStatus(conversationId, 'open');
+
+    const chatMessage = [
+      cleanMessage,
+      '',
+      `Name: ${cleanName}`,
+      `Email: ${cleanEmail}`,
+      `Phone: ${cleanPhone || 'N/A'}`,
+      `Company: ${cleanCompany || 'N/A'}`,
+    ].join('\n');
+
+    await addMessage(conversationId, 'user', chatMessage);
+    await incrementConversationUnread(conversationId);
+    await createOrUpdateVisit(conversationId, conversationId, {
+      pages_visited: JSON.stringify([sourcePage]),
+      message_count: 1,
+      source_page: sourcePage,
+      browser: 'contact-form',
+    });
+
+    const userMsg = {
+      conversation_id: conversationId,
+      sender: 'user',
+      content: chatMessage,
+      created_at: new Date().toISOString(),
+    };
+    io.to(conversationId).emit('chat:message', userMsg);
+    io.to('admin').emit('chat:newMessage', { conversationId, message: userMsg });
+    emitConversationsRefresh();
+  } catch (err) {
+    conversationId = null;
+    console.error('[api][inquiry][chat]', err?.message || err);
+  }
+
   try {
     const lead = await createLead({
-      name: name.trim(),
-      email: email.trim(),
-      phone: (phone || '').trim() || null,
-      company: (company || '').trim() || null,
-      inquiry_message: message.trim(),
-      conversation_id: null,
-      source_page: (source_page || '').trim() || '/contact',
+      name: cleanName,
+      email: cleanEmail,
+      phone: cleanPhone,
+      company: cleanCompany,
+      inquiry_message: cleanMessage,
+      conversation_id: conversationId,
+      source_page: sourcePage,
     });
     io.to('admin').emit('admin:newLead', lead);
-    return res.json({ ok: true });
+    emitAnalyticsRefresh();
+    return res.json({ ok: true, conversation_id: conversationId, lead_id: lead?.id || null });
   } catch (err) {
-    console.error('[api][inquiry]', err?.message || err);
+    console.error('[api][inquiry][lead]', err?.message || err);
     return res.status(500).json({ ok: false, message: 'Unable to submit inquiry at this time.' });
   }
 });
@@ -506,12 +878,10 @@ app.post('/api/inquiry', async (req, res) => {
 // ── AI Setup (Amalgated Holdings) ──
 
 const SYSTEM_PROMPT = `You are the helpful AI assistant for Amalgated Holdings.
-Amalgated Holdings is a diversified group of companies. Be professional, friendly, and concise.
-Help visitors with general enquiries, company information, and how to get in touch.
-Base your answers on the "Website and company details" below. Use that information for contact info, addresses, and company facts.
-If the user asks something not covered by the provided details, say so politely and suggest they contact the team or leave their details for a follow-up.
-If you don't know something specific, suggest they contact the team directly or leave their details so someone can follow up.
-When your instructions include a "Lending assistant" section, you are assisting the Amalgated Lending website: follow that section and "Typical customer topics" for common borrower questions—never invent rates, approvals, or legal guarantees.`;
+Be professional, concise, and accurate.
+Use only provided website/company details for contacts, addresses, and company facts.
+If information is not available, say so briefly and suggest contacting the team.
+When a "Lending assistant" section is included, follow it strictly and never invent rates, approvals, legal claims, or guarantees.`;
 
 // Static company/office info (aligned with the website Contact page) for AI context
 const WEBSITE_KNOWLEDGE = `
@@ -523,7 +893,13 @@ const WEBSITE_KNOWLEDGE = `
 - Visitors can send an inquiry via the contact form on the website or use the chat to leave their details for the team to follow up.
 `;
 
+let websiteContextCache = null;
+let websiteContextCachedAt = 0;
+const WEBSITE_CONTEXT_CACHE_MS = Math.max(30_000, Number(process.env.WEBSITE_CONTEXT_CACHE_MS || 180_000) || 180_000);
 async function getWebsiteContext() {
+  if (websiteContextCache && (Date.now() - websiteContextCachedAt) < WEBSITE_CONTEXT_CACHE_MS) {
+    return websiteContextCache;
+  }
   const settings = await getSiteSettings();
   const site = settings.site || {};
   const contactEmail = [site.contactEmail].flat().find(Boolean);
@@ -536,7 +912,9 @@ async function getWebsiteContext() {
     if (contactPhone) parts.push(`- General contact phone: ${contactPhone}`);
     if (address) parts.push(`- Address: ${address}`);
   }
-  return parts.join('\n');
+  websiteContextCache = parts.join('\n');
+  websiteContextCachedAt = Date.now();
+  return websiteContextCache;
 }
 
 function sanitizeGroqApiKey(raw) {
@@ -556,6 +934,39 @@ const GROQ_MODEL_CANDIDATES = [
   ),
 ];
 const aiContexts = new Map();
+const aiQueues = new Map();
+const MAX_CONTEXT_MESSAGES = Number.isFinite(Number(process.env.AI_MAX_CONTEXT_MESSAGES))
+  ? Math.max(6, Number(process.env.AI_MAX_CONTEXT_MESSAGES))
+  : 12;
+const MAX_CONTEXT_CHARS = Number.isFinite(Number(process.env.AI_MAX_CONTEXT_CHARS))
+  ? Math.max(4000, Number(process.env.AI_MAX_CONTEXT_CHARS))
+  : 12000;
+const FAST_LENDING_FAQ_RE =
+  /\b(apply|application|requirements?|documents?|rates?|interest|monthly|amort|office|address|location|hello|hi|thanks|eligib|qualified|processing time|status|payment|repay|penalty|ofw|borrower portal)\b/i;
+
+function shouldUseFastLendingFaq(conversationId, userMessage, options = {}) {
+  if (typeof conversationId !== 'string' || !conversationId.startsWith('lending-')) return false;
+  const text = String(userMessage || '').trim();
+  if (!text) return false;
+  if (options?.forceAi === true) return false;
+  return FAST_LENDING_FAQ_RE.test(text);
+}
+
+function estimateMessageChars(msg) {
+  return String(msg?.content || '').length;
+}
+
+function trimContextMessages(messages) {
+  if (!Array.isArray(messages) || messages.length <= 1) return messages;
+  const [system, ...rest] = messages;
+  let totalChars = rest.reduce((sum, m) => sum + estimateMessageChars(m), 0);
+  let pruned = [...rest];
+  while (pruned.length > MAX_CONTEXT_MESSAGES || totalChars > MAX_CONTEXT_CHARS) {
+    const removed = pruned.shift();
+    totalChars -= estimateMessageChars(removed);
+  }
+  return [system, ...pruned];
+}
 
 function extractGroqAssistantText(completion) {
   const msg = completion?.choices?.[0]?.message;
@@ -578,7 +989,7 @@ function isGroqModelReplaceableError(err) {
   return /model.*not found|invalid model|decommission|does not exist|has been deprecated|no longer available/i.test(msg);
 }
 
-async function groqChatCreate(messages) {
+async function groqChatCreate(messages, { stream = false } = {}) {
   let lastErr = null;
   for (const model of GROQ_MODEL_CANDIDATES) {
     try {
@@ -589,6 +1000,7 @@ async function groqChatCreate(messages) {
         messages,
         max_tokens: Number.isFinite(maxTok) && maxTok > 0 ? Math.min(2048, maxTok) : 512,
         temperature: Number.isFinite(temp) && temp >= 0 && temp <= 2 ? temp : 0.65,
+        stream,
       });
     } catch (err) {
       lastErr = err;
@@ -706,61 +1118,144 @@ function getHoldingsFallbackReply(userMessage, lang) {
   return `Thanks for reaching out to Amalgated Holdings, a diversified group of companies. For general enquiries, call ${phone} or use the contact form on amalgatedholdings.com. How can I help you today?`
 }
 
-async function getAIReply(conversationId, userMessage, lang) {
+function optimizeReplyForProfile(reply, contentProfile) {
+  const text = String(reply || '').trim();
+  if (!text || contentProfile !== 'lite') return text;
+  const compact = text.replace(/\s+/g, ' ').trim();
+  if (compact.length <= 280) return compact;
+  const firstSentences = compact.match(/[^.!?]+[.!?]+/g)?.slice(0, 2).join(' ').trim();
+  return (firstSentences && firstSentences.length >= 40 ? firstSentences : compact.slice(0, 280)).trim();
+}
+
+async function prepareAiContext(conversationId, userMessage, lang, options = {}) {
   const l = normalizeLang(lang);
   const fromLending =
     typeof conversationId === 'string' && conversationId.startsWith('lending-');
-  const userText = String(userMessage || '').trim().slice(0, 8000);
-
-  const fallback = () =>
-    Promise.resolve(
-      fromLending ? getLendingFallbackReply(userText, l) : getHoldingsFallbackReply(userText, l),
-    );
+  const contentProfile = options?.contentProfile || 'full';
+  const rawUserText = String(userMessage || '').trim().slice(0, 8000);
+  const userText = contentProfile === 'lite'
+    ? `${rawUserText}\n\nPlease respond briefly in at most 2 short sentences.`
+    : rawUserText;
 
   if (!groqApiKey || !groq) {
-    return fallback();
+    return {
+      key: `${conversationId}:${l}`,
+      lang: l,
+      userText,
+      fallbackReply: fromLending ? getLendingFallbackReply(userText, l) : getHoldingsFallbackReply(userText, l),
+      context: null,
+    };
   }
 
   const key = `${conversationId}:${l}`;
+  if (!aiContexts.has(key)) {
+    const websiteContext = await getWebsiteContext();
+    const lendingBlock = fromLending
+      ? `\n${LENDING_AI_APPEND}\n\n${LENDING_CUSTOMER_FAQ}\n`
+      : '\n';
+    aiContexts.set(key, [{
+      role: 'system',
+      content: `${SYSTEM_PROMPT}${lendingBlock}\nWebsite and company details:\n${websiteContext}\n\nAlways reply in ${languageName(l)}. If the user switches language, follow the latest selected language.`,
+    }]);
+  }
+  const ctx = aiContexts.get(key);
+  ctx.push({ role: 'user', content: userText });
+  aiContexts.set(key, trimContextMessages(ctx));
+  return {
+    key,
+    lang: l,
+    userText,
+    fallbackReply: fromLending ? getLendingFallbackReply(userText, l) : getHoldingsFallbackReply(userText, l),
+    context: aiContexts.get(key),
+  };
+}
+
+async function getAIReply(conversationId, userMessage, lang, options = {}) {
   try {
-    if (!aiContexts.has(key)) {
-      const websiteContext = await getWebsiteContext();
-      const lendingBlock = fromLending
-        ? `\n${LENDING_AI_APPEND}\n\n${LENDING_CUSTOMER_FAQ}\n`
-        : '\n';
-      aiContexts.set(key, [{
-        role: 'system',
-        content: `${SYSTEM_PROMPT}${lendingBlock}\nWebsite and company details:\n${websiteContext}\n\nAlways reply in ${languageName(l)}. If the user switches language, follow the latest selected language.`,
-      }]);
+    if (shouldUseFastLendingFaq(conversationId, userMessage, options)) {
+      return getLendingFallbackReply(String(userMessage || '').trim(), normalizeLang(lang));
     }
-    const ctx = aiContexts.get(key);
-    ctx.push({ role: 'user', content: userText });
-    if (ctx.length > 21) {
-      aiContexts.set(key, [ctx[0], ...ctx.slice(-20)]);
-    }
-    const completion = await groqChatCreate(ctx);
+    const prep = await prepareAiContext(conversationId, userMessage, lang, options);
+    if (!prep.context) return prep.fallbackReply;
+    const completion = await groqChatCreate(prep.context);
     const reply = extractGroqAssistantText(completion);
     if (!reply) {
-      ctx.pop();
-      return fallback();
+      const ctx = aiContexts.get(prep.key) || [];
+      if (ctx?.length && ctx[ctx.length - 1]?.role === 'user') ctx.pop();
+      return prep.fallbackReply;
     }
-    ctx.push({ role: 'assistant', content: reply });
-    return reply;
+    const ctx = aiContexts.get(prep.key) || [];
+    const optimizedReply = optimizeReplyForProfile(reply, options?.contentProfile);
+    ctx.push({ role: 'assistant', content: optimizedReply });
+    aiContexts.set(prep.key, trimContextMessages(ctx));
+    return optimizedReply;
   } catch (err) {
     console.error('[ai]', err?.message || err);
-    try {
-      const ctx = aiContexts.get(`${conversationId}:${l}`);
-      if (ctx?.length && ctx[ctx.length - 1]?.role === 'user') ctx.pop();
-    } catch {
-      /* ignore */
-    }
-    return fallback();
+    return (typeof conversationId === 'string' && conversationId.startsWith('lending-'))
+      ? getLendingFallbackReply(String(userMessage || '').trim(), normalizeLang(lang))
+      : getHoldingsFallbackReply(String(userMessage || '').trim(), normalizeLang(lang));
   }
+}
+
+async function streamAIReply(conversationId, userMessage, lang, handlers = {}, options = {}) {
+  if (shouldUseFastLendingFaq(conversationId, userMessage, options)) {
+    const fastReply = getLendingFallbackReply(String(userMessage || '').trim(), normalizeLang(lang));
+    handlers.onChunk?.(fastReply);
+    handlers.onComplete?.(fastReply);
+    return fastReply;
+  }
+  const prep = await prepareAiContext(conversationId, userMessage, lang, options);
+  if (!prep.context) {
+    handlers.onChunk?.(prep.fallbackReply);
+    handlers.onComplete?.(prep.fallbackReply);
+    return prep.fallbackReply;
+  }
+  let aggregated = '';
+  try {
+    const stream = await groqChatCreate(prep.context, { stream: true });
+    const emitChunks = options?.contentProfile !== 'lite';
+    for await (const part of stream) {
+      const delta = String(part?.choices?.[0]?.delta?.content || '');
+      if (!delta) continue;
+      aggregated += delta;
+      if (emitChunks) handlers.onChunk?.(delta);
+    }
+    const finalText = optimizeReplyForProfile(aggregated.trim(), options?.contentProfile);
+    if (!finalText) {
+      const ctx = aiContexts.get(prep.key) || [];
+      if (ctx?.length && ctx[ctx.length - 1]?.role === 'user') ctx.pop();
+      handlers.onChunk?.(prep.fallbackReply);
+      handlers.onComplete?.(prep.fallbackReply);
+      return prep.fallbackReply;
+    }
+    const ctx = aiContexts.get(prep.key) || [];
+    ctx.push({ role: 'assistant', content: finalText });
+    aiContexts.set(prep.key, trimContextMessages(ctx));
+    handlers.onComplete?.(finalText);
+    return finalText;
+  } catch (err) {
+    console.error('[ai][stream]', err?.message || err);
+    handlers.onChunk?.(prep.fallbackReply);
+    handlers.onComplete?.(prep.fallbackReply);
+    return prep.fallbackReply;
+  }
+}
+
+function enqueueAiTask(conversationId, task) {
+  const previous = aiQueues.get(conversationId) || Promise.resolve();
+  const next = previous
+    .catch(() => {})
+    .then(task)
+    .catch((err) => {
+      console.error('[ai][queue]', err?.message || err);
+    });
+  aiQueues.set(conversationId, next);
+  return next;
 }
 
 // ── Partnerships (Partner With Us form) ──
 
-app.post('/api/partnerships', async (req, res) => {
+app.post('/api/partnerships', limitPublicChat, async (req, res) => {
   const { full_name, company, email, phone, partnership_type, message } = req.body || {};
   if (!full_name?.trim() || !email?.trim()) {
     return res.status(400).json({ ok: false, message: 'Full name and email are required.' });
@@ -791,22 +1286,32 @@ app.post('/api/partnerships', async (req, res) => {
 
 // ── Customer Feedback (DB-backed) ──
 
-app.post('/api/feedback', async (req, res) => {
-  const { conversationId, rating, name, email, comment } = req.body || {};
+app.post('/api/feedback', limitPublicChat, async (req, res) => {
+  const { conversationId, rating, name, email, subject, comment } = req.body || {};
   const numRating = Number(rating);
   if (!Number.isFinite(numRating) || numRating <= 0 || !comment?.trim()) {
     return res.status(400).json({ ok: false, message: 'Rating and comment are required.' });
   }
   try {
+    const normalizedSubject = String(subject || '').trim().slice(0, 191) || null;
     await createFeedback({
       id: crypto.randomUUID(),
       conversationId: conversationId || null,
       rating: numRating,
       name: (name || '').trim() || 'Anonymous',
       email: (email || '').trim() || null,
+      subject: normalizedSubject,
       comment: comment.trim(),
     });
     io.to('admin').emit('feedback:refresh');
+    syncOutboundFeedback({
+      sessionId: conversationId || '',
+      rating: numRating,
+      subject: normalizedSubject,
+      name: (name || '').trim() || null,
+      email: (email || '').trim() || null,
+      comment: comment.trim(),
+    }).catch(() => {});
     return res.json({ ok: true });
   } catch (err) {
     console.error('[api][feedback]', err?.message || err);
@@ -818,8 +1323,80 @@ app.post('/api/feedback', async (req, res) => {
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 
+function normalizeLaravelMeUrl(value) {
+  const raw = String(value || '').trim().replace(/\/$/, '');
+  if (!raw) return '';
+  if (/\/api\/v1\/admin\/me$/i.test(raw)) return raw;
+  if (/\/api\/v1$/i.test(raw)) return `${raw}/admin/me`;
+  if (/\/api$/i.test(raw)) return `${raw}/v1/admin/me`;
+  return `${raw}/api/v1/admin/me`;
+}
+
+function getLaravelAdminVerifyCandidates() {
+  const candidates = [];
+  const add = (value) => {
+    const normalized = normalizeLaravelMeUrl(value);
+    if (!normalized || candidates.includes(normalized)) return;
+    candidates.push(normalized);
+  };
+
+  add(process.env.LENDING_LARAVEL_ADMIN_ME_URL);
+  add(process.env.LENDING_API_URL);
+  add(process.env.LENDING_API_BASE_URL);
+  add(process.env.LENDING_API_VERIFY_URL);
+
+  // Local dev first, then production API host.
+  add('http://127.0.0.1:8001');
+  add('https://api.amalgatedlending.com');
+
+  return candidates;
+}
+
+async function resolveLaravelAdminFromToken(token) {
+  const bearer = String(token || '').trim();
+  if (!bearer) return null;
+
+  for (const url of getLaravelAdminVerifyCandidates()) {
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${bearer}`,
+        },
+      });
+
+      if (!res.ok) {
+        continue;
+      }
+
+      const data = await res.json().catch(() => null);
+      const user = data?.user;
+      if (!user || typeof user !== 'object') {
+        continue;
+      }
+
+      const permissions = Array.isArray(user.permissions)
+        ? user.permissions.map((permission) => String(permission?.slug || '').trim()).filter(Boolean)
+        : [];
+
+      return {
+        id: user.id ?? null,
+        username: String(user.username || user.email || user.name || 'lending_admin').trim(),
+        role: String(user.role || 'admin').trim() || 'admin',
+        permissions,
+      };
+    } catch {
+      // Try the next configured Laravel API host.
+    }
+  }
+
+  return null;
+}
+
 function getClientIp(req) {
-  return req.ip || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+  return req?.clientMeta?.ip
+    || extractClientIpFromHeaders(req?.headers, req?.ip || req?.socket?.remoteAddress || '');
 }
 
 const ALL_PERMISSIONS = [
@@ -851,8 +1428,8 @@ function requireAdmin(req, res, next) {
   }
 }
 
-/** Accepts Node JWT OR LENDING_ADMIN_API_SECRET (for Amalgated Lending admin portal → Node chat/CRM). */
-function requireAdminOrLendingSecret(req, res, next) {
+/** Accepts Node JWT, Laravel admin JWT, or LENDING_ADMIN_API_SECRET. */
+async function requireAdminOrLendingSecret(req, res, next) {
   const secret = process.env.LENDING_ADMIN_API_SECRET;
   const auth = req.headers.authorization;
   if (secret && auth?.startsWith('Bearer ')) {
@@ -863,6 +1440,12 @@ function requireAdminOrLendingSecret(req, res, next) {
         role: 'staff',
         permissions: ['manage_tickets', 'view_dashboard'],
       };
+      return next();
+    }
+
+    const laravelAdmin = await resolveLaravelAdminFromToken(token);
+    if (laravelAdmin) {
+      req.admin = laravelAdmin;
       return next();
     }
   }
@@ -891,7 +1474,7 @@ function requirePermissionAny(...permissions) {
   };
 }
 
-app.post('/api/admin/login', async (req, res) => {
+app.post('/api/admin/login', limitAdminLogin, async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ ok: false, message: 'Username and password are required.' });
@@ -980,7 +1563,7 @@ app.get('/api/admin/verify', (req, res) => {
 
 // ── Admin: Feedback ──
 
-app.get('/api/admin/feedback', requireAdminOrLendingSecret, requirePermission('manage_tickets'), async (_req, res) => {
+app.get('/api/admin/feedback', requireAdminOrLendingSecret, requirePermissionAny('manage_tickets', 'view_dashboard'), async (_req, res) => {
   res.json(await getFeedback());
 });
 
@@ -1006,7 +1589,7 @@ app.get('/api/admin/stats', requireAdminOrLendingSecret, requirePermission('view
   });
 });
 
-app.delete('/api/admin/feedback/:id', requireAdminOrLendingSecret, requirePermission('manage_tickets'), async (req, res) => {
+app.delete('/api/admin/feedback/:id', requireAdminOrLendingSecret, requirePermissionAny('manage_tickets', 'view_dashboard'), async (req, res) => {
   await deleteFeedback(req.params.id);
   io.to('admin').emit('feedback:refresh');
   res.json({ ok: true });
@@ -1074,7 +1657,7 @@ app.post('/api/admin/bulk', requireAdminOrLendingSecret, async (req, res) => {
       if (action === 'markRead') await clearConversationUnread(id);
       if (action === 'markUnread') await incrementConversationUnread(id);
     }
-    io.to('admin').emit('conversations:refresh');
+    emitConversationsRefresh();
     return res.json({ ok: true });
   }
 
@@ -1131,16 +1714,25 @@ app.put('/api/admin/settings', requireAdmin, requirePermission('manage_settings'
 });
 
 // ── Public settings (no auth) – partnership types, chat config for frontend
-app.get('/api/public/settings', async (_req, res) => {
+app.get('/api/public/settings', async (req, res) => {
   try {
     const { flat } = await getSettings();
+    const profile = req.clientMeta || {};
+    const isLite = profile.contentProfile === 'lite';
     res.json({
       ok: true,
       partnership_types: Array.isArray(flat?.partnership_types) ? flat.partnership_types : ['Real Estate', 'Retail & Distribution', 'Financial Services', 'LPG Operations', 'IT & Technology', 'Other'],
       chat_enabled: flat?.chat_enabled !== false,
       chat_availability: flat?.chat_availability || 'online',
-      chat_auto_reply: flat?.chat_auto_reply || '',
+      chat_auto_reply: isLite
+        ? String(flat?.chat_auto_reply || '').replace(/\s+/g, ' ').trim().slice(0, 240)
+        : (flat?.chat_auto_reply || ''),
       chat_working_hours: flat?.chat_working_hours || '',
+      delivery_profile: {
+        routing_tier: profile.routingTier || 'edge-standard',
+        content_profile: profile.contentProfile || 'full',
+        cache_hint: profile.cacheHint || 'normal',
+      },
     });
   } catch (err) {
     console.error('[api][public][settings]', err?.message || err);
@@ -1451,8 +2043,10 @@ app.get('/api/admin/activity-logs', requireAdmin, requirePermission('manage_sett
   }
 });
 
-app.get('/api/admin/conversations', requireAdminOrLendingSecret, requirePermission('manage_tickets'), async (_req, res) => {
-  res.json(await getAllConversations());
+app.get('/api/admin/conversations', requireAdminOrLendingSecret, requirePermission('manage_tickets'), async (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000);
+  const includeArchived = ['1', 'true', 'yes'].includes(String(req.query.archived || '').toLowerCase().trim());
+  res.json(await getAllConversations({ limit, includeArchived }));
 });
 
 app.get('/api/admin/conversations/archived', requireAdminOrLendingSecret, requirePermission('manage_tickets'), async (_req, res) => {
@@ -1460,8 +2054,12 @@ app.get('/api/admin/conversations/archived', requireAdminOrLendingSecret, requir
 });
 
 app.get('/api/admin/conversations/:id/messages', requireAdminOrLendingSecret, requirePermission('manage_tickets'), async (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 150, 1), 500);
+  const offset = Math.max(Number(req.query.offset) || 0, 0);
+  const afterId = Math.max(Number(req.query.after_id) || 0, 0);
   await clearConversationUnread(req.params.id);
-  res.json(await getMessages(req.params.id));
+  const messages = await getMessages(req.params.id, { limit, offset, afterId });
+  res.json(messages);
 });
 
 app.patch('/api/admin/conversations/:id/status', requireAdminOrLendingSecret, requirePermission('manage_tickets'), async (req, res) => {
@@ -1487,14 +2085,14 @@ app.patch('/api/admin/conversations/:id/mode', requireAdminOrLendingSecret, requ
 
 app.patch('/api/admin/conversations/:id/archive', requireAdminOrLendingSecret, requirePermission('manage_tickets'), async (req, res) => {
   await archiveConversation(req.params.id);
-  io.to('admin').emit('conversations:refresh');
+  emitConversationsRefresh();
   io.to(req.params.id).emit('conversation:statusChanged', { status: 'archived' });
   res.json({ ok: true });
 });
 
 app.delete('/api/admin/conversations/:id', requireAdminOrLendingSecret, requirePermission('manage_tickets'), async (req, res) => {
   await deleteConversation(req.params.id);
-  io.to('admin').emit('conversations:refresh');
+  emitConversationsRefresh();
   res.json({ ok: true });
 });
 
@@ -1537,6 +2135,32 @@ app.patch('/api/admin/leads/:id', requireAdminOrLendingSecret, requirePermission
   }
   io.to('admin').emit('leads:refresh');
   res.json(await getLeadById(Number(id)));
+});
+
+app.post('/api/admin/leads/:id/email', requireAdminOrLendingSecret, requirePermission('manage_tickets'), async (req, res) => {
+  const { subject, body } = req.body || {};
+  if (!subject?.trim() || !body?.trim()) {
+    return res.status(400).json({ ok: false, message: 'Subject and message are required.' });
+  }
+  const lead = await getLeadById(Number(req.params.id));
+  if (!lead || !lead.email) return res.status(404).json({ ok: false, message: 'Lead not found' });
+  if (!isEmailConfigured()) {
+    return res.status(400).json({ ok: false, message: 'No email provider configured.' });
+  }
+  try {
+    const text = String(body || '');
+    const htmlBody = text.replace(/\n/g, '<br>');
+    await sendCustomEmail({
+      to: lead.email,
+      subject: String(subject).trim(),
+      html: `<!DOCTYPE html><html><body style="font-family: system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">${htmlBody}</body></html>`,
+      text,
+    });
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('[api] leads/email', err?.message || err);
+    return res.status(500).json({ ok: false, message: err?.message || 'Failed to send email.' });
+  }
 });
 
 // ── Admin: Subscribers (Careers & News) ──
@@ -1935,9 +2559,15 @@ const emptyAnalytics = () => ({
   recentViewers: [],
   recentMessaged: [],
 });
+const analyticsCache = new Map();
 
 app.get('/api/admin/analytics', requireAdminOrLendingSecret, async (req, res) => {
   const { since = '-7 days' } = req.query;
+  const cacheKey = String(since || '-7 days');
+  const cached = analyticsCache.get(cacheKey);
+  if (cached && (Date.now() - cached.cachedAt) < 15000) {
+    return res.json(cached.payload);
+  }
   let visitsRaw = [];
   let allVisitsRaw = [];
   try {
@@ -1945,7 +2575,9 @@ app.get('/api/admin/analytics', requireAdminOrLendingSecret, async (req, res) =>
     allVisitsRaw = await getAllVisits();
   } catch (err) {
     console.error('[api][admin][analytics]', err?.message || err);
-    return res.json(emptyAnalytics());
+    const payload = emptyAnalytics();
+    analyticsCache.set(cacheKey, { cachedAt: Date.now(), payload });
+    return res.json(payload);
   }
 
   // Basic hygiene: ignore obvious internal traffic + bots,
@@ -2010,7 +2642,7 @@ app.get('/api/admin/analytics', requireAdminOrLendingSecret, async (req, res) =>
     }
   });
 
-  res.json({
+  const payload = {
     visits: visits.length,
     totalVisits: allVisits.length,
     totalMessages,
@@ -2026,8 +2658,33 @@ app.get('/api/admin/analytics', requireAdminOrLendingSecret, async (req, res) =>
     recentVisits: visits.slice(0, 50),
     recentViewers: viewers.slice(0, 30),
     recentMessaged: messaged.slice(0, 30),
-  });
+  };
+  analyticsCache.set(cacheKey, { cachedAt: Date.now(), payload });
+  res.json(payload);
 });
+
+app.get(
+  '/api/admin/ai-session-metrics',
+  requireAdminOrLendingSecret,
+  requirePermission('manage_tickets'),
+  (_req, res) => {
+    const samples = recentAiReplyMetrics.slice(0, 50);
+    const averageAiResponseMs =
+      samples.length > 0
+        ? Math.round(samples.reduce((acc, row) => acc + (row.delayMs || 0), 0) / samples.length)
+        : null;
+    const visitorOnlineByConversation = {};
+    visitorPresenceCounts.forEach((count, id) => {
+      if (count > 0) visitorOnlineByConversation[id] = true;
+    });
+    res.json({
+      activeVisitorSessions: visitorPresenceCounts.size,
+      averageAiResponseMs,
+      recentAiReplies: recentAiReplyMetrics.slice(0, 10),
+      visitorOnlineByConversation,
+    });
+  },
+);
 
 // ── Admin: Tickets ──
 
@@ -2144,105 +2801,181 @@ app.post('/api/tickets/:id/notes', requireAdmin, async (req, res) => {
 
 function getSocketClientIp(socket) {
   const req = socket.request;
-  return req?.headers?.['x-forwarded-for']?.split(',')[0]?.trim() || req?.connection?.remoteAddress || socket.handshake?.address || '';
+  return extractClientIpFromHeaders(
+    req?.headers,
+    req?.connection?.remoteAddress || socket.handshake?.address || '',
+  );
+}
+
+function getSocketClientMeta(socket) {
+  const req = socket.request || {};
+  const baseMeta = parseDeviceMetaFromHeaders(req.headers || socket.handshake?.headers || {});
+  const traffic = classifyTrafficProfile(baseMeta);
+  return {
+    ip: getSocketClientIp(socket),
+    ...baseMeta,
+    ...traffic,
+  };
 }
 
 io.on('connection', (socket) => {
-  const ua = socket.handshake?.headers?.['user-agent'];
-  const { device, browser } = parseUserAgent(ua);
-  const ip = getSocketClientIp(socket);
+  const clientMeta = getSocketClientMeta(socket);
+  const { ip, device, browser } = clientMeta;
+  socket.data.clientMeta = clientMeta;
 
   socket.on('visitor:join', async (payload) => {
-    const conversationId = typeof payload === 'string' ? payload : payload?.conversationId;
-    const source_page = typeof payload === 'object' ? payload?.source_page : undefined;
-    const lang = typeof payload === 'object' ? payload?.lang : undefined;
-    if (!conversationId) return;
-    await createConversation(conversationId);
-    socket.join(conversationId);
-    socket.data.conversationId = conversationId;
-    socket.data.role = 'visitor';
-    socket.data.lang = normalizeLang(lang);
+    try {
+      const rawConversationId = typeof payload === 'string' ? payload : payload?.conversationId;
+      const conversationId = String(rawConversationId || '').trim();
+      const source_page = typeof payload === 'object' ? payload?.source_page : undefined;
+      const lang = typeof payload === 'object' ? payload?.lang : undefined;
+      if (!conversationId) return;
+      await createConversation(conversationId);
+      socket.join(conversationId);
+      trackVisitorOnline(conversationId);
+      socket.data.conversationId = conversationId;
+      socket.data.role = 'visitor';
+      socket.data.lang = normalizeLang(lang);
+      socket.data.clientMeta = clientMeta;
 
-    const pages = source_page ? [source_page] : [];
-    await createOrUpdateVisit(conversationId, conversationId, {
-      ip,
-      location: 'Unknown',
-      device,
-      browser,
-      pages_visited: JSON.stringify(pages),
-      message_count: 0,
-    });
-    io.to('admin').emit('conversations:refresh');
-    io.to('admin').emit('analytics:refresh');
-    resolveLocationFromIp(conversationId, ip, () => {});
+      const pages = source_page ? [source_page] : [];
+      await createOrUpdateVisit(conversationId, conversationId, {
+        ip,
+        location: 'Unknown',
+        device,
+        browser,
+        pages_visited: JSON.stringify(pages),
+        message_count: 0,
+      });
+      emitConversationsRefresh();
+      emitAnalyticsRefresh();
+      resolveLocationFromIp(conversationId, ip, () => {});
 
-    const msgs = await getMessages(conversationId);
-    socket.emit('chat:history', msgs);
+      const msgs = await getMessages(conversationId);
+      socket.emit('chat:history', msgs);
+    } catch (err) {
+      console.error('[socket][visitor:join]', err?.message || err);
+    }
   });
 
-  socket.on('admin:join', () => {
-    socket.join('admin');
-    socket.data.role = 'admin';
+  socket.on('admin:join', (payload) => {
+    const token = String(payload?.token || '').trim();
+    const secret = String(payload?.secret || '').trim();
+    if (secret && lendingAdminSecret && secret === lendingAdminSecret) {
+      socket.join('admin');
+      socket.data.role = 'admin';
+      return;
+    }
+    if (!token) {
+      socket.emit('chat:error', { message: 'Admin auth token required.' });
+      return;
+    }
+    try {
+      const admin = jwt.verify(token, JWT_SECRET);
+      socket.data.admin = admin;
+      socket.data.role = 'admin';
+      socket.join('admin');
+    } catch {
+      socket.emit('chat:error', { message: 'Admin authentication failed.' });
+    }
   });
 
   socket.on('admin:joinConversation', (conversationId) => {
+    if (socket.data.role !== 'admin') return;
     socket.join(conversationId);
   });
 
   socket.on('admin:leaveConversation', (conversationId) => {
+    if (socket.data.role !== 'admin') return;
     socket.leave(conversationId);
   });
 
   socket.on('visitor:message', async (payload) => {
-    const { conversationId, content, source_page, lang } =
+    const { conversationId: rawConversationId, content, source_page, lang, dedupe_key: rawClientDedupe } =
       typeof payload === 'object' ? payload : { conversationId: payload?.conversationId, content: payload?.content };
-    if (!content?.trim()) return;
+    const conversationId = String(rawConversationId || '').trim();
+    if (!conversationId || !content?.trim()) return;
+    const startedAt = nowMs();
     const langCode = normalizeLang(lang || socket.data.lang);
+    const contentText = content.trim();
+    try {
+      await createConversation(conversationId);
+      await Promise.all([
+        addMessage(conversationId, 'user', contentText),
+        incrementConversationUnread(conversationId),
+      ]);
+      perfLog('visitor:message.persisted_user_message', startedAt, { conversation_id: conversationId });
 
-    await createConversation(conversationId);
-    await addMessage(conversationId, 'user', content.trim());
-    await incrementConversationUnread(conversationId);
-
-    const visit = await getVisitByVisitId(conversationId);
-    if (visit) {
-      let pages = [];
-      try {
-        pages = JSON.parse(visit.pages_visited || '[]');
-      } catch {
-        pages = [];
-      }
-      if (source_page && !pages.includes(source_page)) pages.push(source_page);
-      const started = visit.started_at ? new Date(visit.started_at).getTime() : Date.now();
-      const durationSec = Math.floor((Date.now() - started) / 1000);
-      await createOrUpdateVisit(conversationId, conversationId, {
-        pages_visited: JSON.stringify(pages),
-        message_count: (visit.message_count || 0) + 1,
-        visit_duration_seconds: durationSec,
-      });
-      io.to('admin').emit('analytics:refresh');
-    } else {
-      await createOrUpdateVisit(conversationId, conversationId, {
-        ip: getSocketClientIp(socket),
-        device,
-        browser,
-        pages_visited: source_page ? JSON.stringify([source_page]) : '[]',
-        message_count: 1,
-      });
-      io.to('admin').emit('analytics:refresh');
-    }
+      Promise.resolve()
+        .then(async () => {
+          const visit = await getVisitByVisitId(conversationId);
+          if (visit) {
+            let pages = [];
+            try {
+              pages = JSON.parse(visit.pages_visited || '[]');
+            } catch {
+              pages = [];
+            }
+            if (source_page && !pages.includes(source_page)) pages.push(source_page);
+            const started = visit.started_at ? new Date(visit.started_at).getTime() : Date.now();
+            const durationSec = Math.floor((Date.now() - started) / 1000);
+            await createOrUpdateVisit(conversationId, conversationId, {
+              pages_visited: JSON.stringify(pages),
+              message_count: (visit.message_count || 0) + 1,
+              visit_duration_seconds: durationSec,
+            });
+          } else {
+            await createOrUpdateVisit(conversationId, conversationId, {
+              ip: getSocketClientIp(socket),
+              device,
+              browser,
+              pages_visited: source_page ? JSON.stringify([source_page]) : '[]',
+              message_count: 1,
+            });
+          }
+          emitAnalyticsRefresh();
+        })
+        .catch((err) => {
+          console.error('[socket][visitor:message][analytics]', err?.message || err);
+        });
 
     const userMsg = {
       conversation_id: conversationId,
       sender: 'user',
-      content: content.trim(),
+      content: contentText,
       created_at: new Date().toISOString(),
     };
     io.to(conversationId).emit('chat:message', userMsg);
     io.to('admin').emit('chat:newMessage', { conversationId, message: userMsg });
+    perfLog('visitor:message.emitted_user_message', startedAt, { conversation_id: conversationId });
+
+    /** Mirror visitor text → Laravel warehouse (admin CRM inbox). Dedupe aligns with widget HTTP fallback. */
+    try {
+      const clientDedupe = String(rawClientDedupe || '').trim();
+      const isUuidLike =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientDedupe);
+      syncOutboundChatMessage({
+        sessionId: conversationId,
+        visitorId: conversationId,
+        senderType: 'customer',
+        message: contentText,
+        dedupeKey: isUuidLike
+          ? clientDedupe
+          : deterministicSyncUuid('visitor-msg', [conversationId, contentText, String(startedAt)]),
+        conversationPatch: {
+          unread_increment: 1,
+          last_responder_type: 'customer',
+        },
+      }).catch(() => {});
+    } catch {
+      /* ignore sync errors — Node CRM still authoritative for realtime */
+    }
 
     const convo = await getConversation(conversationId);
-    if (convo?.mode === 'ai') {
-      if (wantsLeadCapture(content.trim())) {
+    if (convo?.mode !== 'ai') {
+      socket.emit('chat:expectNoAiStream', { reason: 'human' });
+    } else {
+      if (wantsLeadCapture(contentText)) {
         const askMsg = t(langCode, 'leadAsk');
         await addMessage(conversationId, 'ai', askMsg);
         const aiMsg = {
@@ -2252,72 +2985,202 @@ io.on('connection', (socket) => {
           created_at: new Date().toISOString(),
         };
         io.to(conversationId).emit('chat:message', aiMsg);
-        io.to(conversationId).emit('chat:requestLeadDetails', { inquiry_message: content.trim() });
+        io.to(conversationId).emit('chat:requestLeadDetails', { inquiry_message: contentText });
         io.to('admin').emit('chat:newMessage', { conversationId, message: aiMsg });
+        perfLog('visitor:message.lead_capture_reply', startedAt, { conversation_id: conversationId });
+        syncOutboundChatMessage({
+          sessionId: conversationId,
+          visitorId: conversationId,
+          senderType: 'ai',
+          message: askMsg,
+          dedupeKey: deterministicSyncUuid('ai-leadcapture-reply', [
+            conversationId,
+            String(startedAt),
+            askMsg.slice(0, 200),
+          ]),
+        }).catch(() => {});
       } else {
-        io.to(conversationId).emit('chat:typing', { sender: 'ai' });
-        try {
-          const reply = await getAIReply(conversationId, content.trim(), langCode);
-          await addMessage(conversationId, 'ai', reply);
-          const aiMsg = {
+        // Queue AI work per conversation so multiple rapid messages don't block each other or interleave responses.
+        enqueueAiTask(conversationId, async () => {
+          io.to(conversationId).emit('chat:typing', { sender: 'ai' });
+          const streamId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          io.to(conversationId).emit('chat:streamStart', {
             conversation_id: conversationId,
             sender: 'ai',
-            content: reply,
+            stream_id: streamId,
             created_at: new Date().toISOString(),
-          };
-          io.to(conversationId).emit('chat:message', aiMsg);
-          io.to('admin').emit('chat:newMessage', { conversationId, message: aiMsg });
-        } catch (err) {
-          console.error('[ai]', err.message);
-          const errMsg = {
-            conversation_id: conversationId,
-            sender: 'ai',
-            content: t(langCode, 'aiError'),
-            created_at: new Date().toISOString(),
-          };
-          io.to(conversationId).emit('chat:message', errMsg);
-        }
-        io.to(conversationId).emit('chat:typingStop');
+          });
+          let finalReply = '';
+          try {
+            const contentProfile = socket.data?.clientMeta?.contentProfile || 'full';
+            finalReply = await streamAIReply(conversationId, contentText, langCode, {
+              onChunk: (delta) => {
+                io.to(conversationId).emit('chat:streamDelta', {
+                  conversation_id: conversationId,
+                  sender: 'ai',
+                  stream_id: streamId,
+                  delta,
+                });
+              },
+            }, { contentProfile });
+            await addMessage(conversationId, 'ai', finalReply);
+            const aiMsg = {
+              conversation_id: conversationId,
+              sender: 'ai',
+              content: finalReply,
+              created_at: new Date().toISOString(),
+            };
+            io.to(conversationId).emit('chat:streamEnd', {
+              conversation_id: conversationId,
+              sender: 'ai',
+              stream_id: streamId,
+              content: finalReply,
+              created_at: aiMsg.created_at,
+            });
+            perfLog('visitor:message.ai_stream_completed', startedAt, {
+              conversation_id: conversationId,
+              reply_chars: String(finalReply || '').length,
+            });
+            recordAiReplyMetric(conversationId, nowMs() - startedAt);
+            syncOutboundChatMessage({
+              sessionId: conversationId,
+              visitorId: conversationId,
+              senderType: 'ai',
+              message: finalReply,
+              aiLogMs: nowMs() - startedAt,
+              dedupeKey: deterministicSyncUuid('ai-stream-final', [conversationId, streamId]),
+              conversationPatch: await getConversation(conversationId).then((c) => ({
+                mode: c?.mode,
+                status: c?.status === 'resolved' ? c.status : 'open',
+              })),
+            }).catch(() => {});
+          } catch (err) {
+            console.error('[ai]', err?.message || err);
+            const errorText = t(langCode, 'aiError');
+            io.to(conversationId).emit('chat:streamEnd', {
+              conversation_id: conversationId,
+              sender: 'ai',
+              stream_id: streamId,
+              content: errorText,
+              created_at: new Date().toISOString(),
+            });
+            syncOutboundChatMessage({
+              sessionId: conversationId,
+              visitorId: conversationId,
+              senderType: 'system',
+              message: errorText,
+              dedupeKey: deterministicSyncUuid('ai-stream-fail', [conversationId, streamId]),
+              conversationPatch: { last_responder_type: 'system' },
+            }).catch(() => {});
+          } finally {
+            io.to(conversationId).emit('chat:typingStop');
+            emitConversationsRefresh();
+          }
+        });
       }
     }
 
-    io.to('admin').emit('conversations:refresh');
+      emitConversationsRefresh();
+    } catch (err) {
+      console.error('[socket][visitor:message]', err?.message || err);
+      socket.emit('chat:error', { message: 'Unable to send message right now.' });
+    }
   });
 
   socket.on('visitor:leadDetails', async ({ conversationId, name, email, phone, company, inquiry_message, source_page, lang }) => {
-    if (!conversationId || !name?.trim() || !email?.trim()) return;
-    const langCode = normalizeLang(lang || socket.data.lang);
-    const lead = await createLead({
-      name: name.trim(),
-      email: email.trim(),
-      phone: (phone || '').trim() || null,
-      company: (company || '').trim() || null,
-      inquiry_message: (inquiry_message || '').trim() || null,
-      conversation_id: conversationId,
-      source_page: (source_page || '').trim() || null,
-    });
-    const thankMsg = t(langCode, 'leadThanks');
-    await addMessage(conversationId, 'ai', thankMsg);
-    const aiMsg = {
-      conversation_id: conversationId,
-      sender: 'ai',
-      content: thankMsg,
-      created_at: new Date().toISOString(),
-    };
-    io.to(conversationId).emit('chat:message', aiMsg);
-    io.to(conversationId).emit('chat:leadCaptured');
-    io.to('admin').emit('chat:newMessage', { conversationId, message: aiMsg });
-    io.to('admin').emit('admin:newLead', lead);
-    io.to('admin').emit('conversations:refresh');
+    try {
+      if (!conversationId || !name?.trim() || !email?.trim()) return;
+      const langCode = normalizeLang(lang || socket.data.lang);
+      const lead = await createLead({
+        name: name.trim(),
+        email: email.trim(),
+        phone: (phone || '').trim() || null,
+        company: (company || '').trim() || null,
+        inquiry_message: (inquiry_message || '').trim() || null,
+        conversation_id: conversationId,
+        source_page: (source_page || '').trim() || null,
+      });
+      const thankMsg = t(langCode, 'leadThanks');
+      await addMessage(conversationId, 'ai', thankMsg);
+      const aiMsg = {
+        conversation_id: conversationId,
+        sender: 'ai',
+        content: thankMsg,
+        created_at: new Date().toISOString(),
+      };
+      io.to(conversationId).emit('chat:message', aiMsg);
+      io.to(conversationId).emit('chat:leadCaptured');
+      io.to('admin').emit('chat:newMessage', { conversationId, message: aiMsg });
+      io.to('admin').emit('admin:newLead', lead);
+      emitConversationsRefresh();
+      syncOutboundChatMessage({
+        sessionId: conversationId,
+        visitorId: conversationId,
+        senderType: 'ai',
+        message: thankMsg,
+        dedupeKey: deterministicSyncUuid('ai-lead-thanks', [conversationId, String(lead.id), thankMsg.slice(0, 160)]),
+      }).catch(() => {});
+    } catch (err) {
+      console.error('[socket][visitor:leadDetails]', err?.message || err);
+    }
+  });
+
+  socket.on('visitor:feedback', async (payload, ack) => {
+    try {
+      const conversationId = String(payload?.conversationId || socket.data?.conversationId || '').trim() || null;
+      const rating = Number(payload?.rating);
+      const name = String(payload?.name || '').trim() || 'Anonymous';
+      const emailRaw = String(payload?.email || '').trim();
+      const email = emailRaw && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw) ? emailRaw : null;
+      const subject = String(payload?.subject || '').trim().slice(0, 191) || null;
+      const comment = String(payload?.comment || '').trim();
+
+      if (!Number.isFinite(rating) || rating <= 0 || !comment) {
+        ack?.({ ok: false, message: 'Rating and comment are required.' });
+        return;
+      }
+
+      await createFeedback({
+        id: crypto.randomUUID(),
+        conversationId,
+        rating,
+        name,
+        email,
+        subject,
+        comment,
+      });
+      io.to('admin').emit('feedback:refresh');
+      syncOutboundFeedback({ sessionId: conversationId || '', rating, subject, name, email, comment }).catch(() => {});
+      ack?.({ ok: true });
+    } catch (err) {
+      console.error('[socket][visitor:feedback]', err?.message || err);
+      ack?.({ ok: false, message: 'Unable to submit feedback right now.' });
+    }
   });
 
   socket.on('visitor:requestAgent', async ({ conversationId, name, email, concern, phone, company, source_page }) => {
-    await createConversation(conversationId);
-    await updateMode(conversationId, 'human');
-    await updateStatus(conversationId, 'open');
-    if (name) await updateVisitor(conversationId, name, email || '');
+    try {
+      if (!conversationId) return;
+      await createConversation(conversationId);
+      await updateMode(conversationId, 'human');
+      await updateStatus(conversationId, 'open');
+      if (name) await updateVisitor(conversationId, name, email || '');
 
-    await addMessage(conversationId, 'user', `[Agent Request] Name: ${name || 'N/A'} | Email: ${email || 'N/A'} | Concern: ${concern || 'N/A'}`);
+      const agentIntro = `[Agent Request] Name: ${name || 'N/A'} | Email: ${email || 'N/A'} | Concern: ${concern || 'N/A'}`;
+      await addMessage(conversationId, 'user', agentIntro);
+      syncOutboundChatMessage({
+        sessionId: conversationId,
+        visitorId: conversationId,
+        senderType: 'customer',
+        message: agentIntro,
+        dedupeKey: deterministicSyncUuid('visitor-agent-intake', [
+          conversationId,
+          name || '',
+          email || '',
+          String(concern || '').slice(0, 200),
+        ]),
+        conversationPatch: { unread_increment: 1 },
+      }).catch(() => {});
 
     // Save a lead so it appears in Admin → Leads
     if (name?.trim() && email?.trim()) {
@@ -2337,24 +3200,42 @@ io.on('connection', (socket) => {
       }
     }
 
-    const sysMsg = {
-      conversation_id: conversationId,
-      sender: 'ai',
-      content: "You've been connected to our support queue. A representative will be with you shortly.",
-      created_at: new Date().toISOString(),
-    };
-    await addMessage(conversationId, 'ai', sysMsg.content);
-    io.to(conversationId).emit('chat:message', sysMsg);
-    io.to('admin').emit('conversations:refresh');
+      const sysMsg = {
+        conversation_id: conversationId,
+        sender: 'ai',
+        content: "You've been connected to our support queue. A representative will be with you shortly.",
+        created_at: new Date().toISOString(),
+      };
+      await addMessage(conversationId, 'ai', sysMsg.content);
+      io.to(conversationId).emit('chat:message', sysMsg);
+      emitConversationsRefresh();
+      syncOutboundChatMessage({
+        sessionId: conversationId,
+        visitorId: conversationId,
+        senderType: 'system',
+        message: sysMsg.content,
+        dedupeKey: deterministicSyncUuid('sys-agent-queue', [conversationId, sysMsg.created_at]),
+        conversationPatch: {
+          escalated: true,
+          mode: 'human',
+          status: 'in_progress',
+          guest_name: name?.trim(),
+          guest_email: email?.trim(),
+        },
+      }).catch(() => {});
+    } catch (err) {
+      console.error('[socket][visitor:requestAgent]', err?.message || err);
+    }
   });
 
   socket.on('admin:message', async ({ conversationId, content, adminName }) => {
-    if (!content?.trim()) return;
-
-    await addMessage(conversationId, 'admin', content.trim(), adminName || 'Support Agent');
-    await updateMode(conversationId, 'human');
-    await updateStatus(conversationId, 'in_progress');
-    await clearConversationUnread(conversationId);
+    if (socket.data.role !== 'admin') return;
+    if (!conversationId || !content?.trim()) return;
+    try {
+      await addMessage(conversationId, 'admin', content.trim(), adminName || 'Support Agent');
+      await updateMode(conversationId, 'human');
+      await updateStatus(conversationId, 'in_progress');
+      await clearConversationUnread(conversationId);
 
     const adminMsg = {
       conversation_id: conversationId,
@@ -2363,11 +3244,28 @@ io.on('connection', (socket) => {
       content: content.trim(),
       created_at: new Date().toISOString(),
     };
-    io.to(conversationId).emit('chat:message', adminMsg);
-    io.to(conversationId).emit('conversation:modeChanged', { conversationId, mode: 'human' });
-    io.to('admin').emit('chat:newMessage', { conversationId, message: adminMsg });
-    io.to('admin').emit('conversation:updated', await getConversation(conversationId));
-    io.to('admin').emit('conversations:refresh');
+      io.to(conversationId).emit('chat:message', adminMsg);
+      io.to(conversationId).emit('conversation:modeChanged', { conversationId, mode: 'human' });
+      io.to('admin').emit('chat:newMessage', { conversationId, message: adminMsg });
+      io.to('admin').emit('conversation:updated', await getConversation(conversationId));
+      emitConversationsRefresh();
+      syncOutboundChatMessage({
+        sessionId: conversationId,
+        visitorId: conversationId,
+        senderType: 'admin',
+        senderName: adminName || 'Support Agent',
+        message: content.trim(),
+        dedupeKey: deterministicSyncUuid('admin-node-msg', [
+          conversationId,
+          adminMsg.created_at,
+          adminName || 'agent',
+          content.trim(),
+        ]),
+        conversationPatch: { mode: 'human', status: 'in_progress', needs_human: true },
+      }).catch(() => {});
+    } catch (err) {
+      console.error('[socket][admin:message]', err?.message || err);
+    }
   });
 
   socket.on('admin:typing', ({ conversationId }) => {
@@ -2376,6 +3274,12 @@ io.on('connection', (socket) => {
 
   socket.on('admin:typingStop', ({ conversationId }) => {
     io.to(conversationId).emit('chat:typingStop');
+  });
+
+  socket.on('disconnect', () => {
+    if (socket.data?.role === 'visitor' && socket.data?.conversationId) {
+      trackVisitorOffline(socket.data.conversationId);
+    }
   });
 });
 
@@ -2389,13 +3293,55 @@ app.get('/health', (_req, res) =>
 const distParent = path.join(__dirname, '..', 'dist');
 const distLocal = path.join(__dirname, 'dist');
 const clientDir = fs.existsSync(distParent) ? distParent : distLocal;
+const CHAT_SUBDOMAIN = String(process.env.CHAT_SUBDOMAIN || 'chat.amalgatedlending.com').toLowerCase();
+
+function requestHost(req) {
+  return String(req?.headers?.host || '').toLowerCase().split(':')[0];
+}
+
+function isChatSubdomainRequest(req) {
+  const host = requestHost(req);
+  return Boolean(host) && host === CHAT_SUBDOMAIN;
+}
 
 if (fs.existsSync(clientDir)) {
-  app.use(express.static(clientDir, { fallthrough: true }));
+  /**
+   * Serve the Vite SPA. Hashed asset names (Vite output) are safe to cache for a
+   * year + immutable; index.html itself is never cached so SPA shell updates
+   * always reach users on next page load.
+   */
+  app.use(
+    express.static(clientDir, {
+      fallthrough: true,
+      etag: true,
+      lastModified: true,
+      setHeaders(res, filePath) {
+        const isHashedAsset = /\\assets\\|\/assets\//.test(filePath);
+        if (isHashedAsset) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        } else {
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+        }
+        res.setHeader('Vary', 'Accept-Encoding');
+      },
+    }),
+  );
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
       return res.status(404).end();
     }
+    // Keep chat subdomain focused on CRM/chat interface only.
+    if (
+      isChatSubdomainRequest(req) &&
+      !req.path.startsWith('/admin/chat-crm') &&
+      !req.path.startsWith('/assets/') &&
+      req.path !== '/favicon.ico'
+    ) {
+      return res.redirect(302, '/admin/chat-crm');
+    }
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(clientDir, 'index.html'), (err) => {
       if (err) next(err);
     });
@@ -2407,6 +3353,9 @@ if (fs.existsSync(clientDir)) {
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/socket.io') || req.path.startsWith('/health') || req.path.startsWith('/uploads')) {
         return next();
+      }
+      if (isChatSubdomainRequest(req) && !req.path.startsWith('/admin/chat-crm')) {
+        return res.redirect(302, `${devFrontend}/admin/chat-crm`);
       }
       res.redirect(302, devFrontend + req.originalUrl);
     });

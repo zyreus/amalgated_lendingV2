@@ -1,12 +1,12 @@
-import { laravelRequest } from './lendingLaravelApi.js'
+import { laravelRequest, formatLaravelUnreachableError } from './lendingLaravelApi.js'
 import { filterLoanProductsForDisplay } from './loanProductDisplayFilter.js'
 
 /**
  * Public loan catalog (no auth). Uses `/api/v1/public/...` with same base resolution as admin.
  */
 export async function getLoanProducts() {
-  const { res } = await laravelRequest('/public/loan-products')
-  if (!res) throw new Error('Could not reach lending API (check VITE_LENDING_API_URL).')
+  const { res, lastError } = await laravelRequest('/public/loan-products')
+  if (!res) throw new Error(formatLaravelUnreachableError(lastError))
   const raw = await res.json().catch(() => ({}))
   if (!res.ok) {
     const msg = raw.message || raw.error || `HTTP ${res.status}`
@@ -34,12 +34,12 @@ export async function postLoanCalculator(payload) {
   if (payload.principal != null && payload.principal !== '') {
     body.principal = Number(payload.principal)
   }
-  const { res } = await laravelRequest('/public/loan-products/calculate', {
+  const { res, lastError } = await laravelRequest('/public/loan-products/calculate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res) throw new Error('Could not reach lending API.')
+  if (!res) throw new Error(formatLaravelUnreachableError(lastError))
   const raw = await res.json().catch(() => ({}))
   if (!res.ok) {
     const msg = raw.message || `HTTP ${res.status}`

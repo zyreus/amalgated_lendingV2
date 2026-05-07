@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { borrowerApi } from '../borrower/api/client.js'
 import { admin as ui } from '../admin/components/AdminUi.jsx'
+import { loadFaceIOSdk } from '../utils/loadFaceIOSdk.js'
 
 function extractFacePayload(userData) {
   if (!userData || typeof userData !== 'object') {
@@ -50,8 +51,9 @@ export default function FaceIOLiveness({ borrowerId, onVerified, onFailed }) {
       setSdkError('Setup required: add VITE_FACEIO_PUBLIC_ID to your Vite env, then restart Vite.')
       return
     }
+    const loaded = await loadFaceIOSdk()
     const FaceIOConstructor = typeof window !== 'undefined' ? window.faceIO : null
-    if (typeof FaceIOConstructor !== 'function') {
+    if (!loaded || typeof FaceIOConstructor !== 'function') {
       setSdkError('FaceIO script failed to load. Refresh the page.')
       return
     }

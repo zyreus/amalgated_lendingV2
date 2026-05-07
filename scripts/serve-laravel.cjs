@@ -3,7 +3,7 @@
  * API lives at: amalgated-lending/amalgated-lending-api (relative to this repo root).
  *
  * Skips ports where something else answers (GET /api/v1/health is not this app) and
- * binds the next free port in range so duplicate `php artisan serve` on 8000 does not block dev.
+ * binds the next free port in range so duplicate local runs can move to +1 ports.
  */
 const { spawn } = require('child_process')
 const fs = require('fs')
@@ -22,6 +22,7 @@ const apiDir = path.resolve(__dirname, '..', 'amalgated-lending-api')
 const artisan = path.join(apiDir, 'artisan')
 const routerScript = path.join(apiDir, 'server-router.php')
 const rootEnv = path.resolve(__dirname, '..', '.env')
+const RANGE = 40
 
 loadDotenvLite(rootEnv)
 
@@ -38,9 +39,8 @@ if (!fs.existsSync(routerScript)) {
   process.exit(1)
 }
 
-const RANGE = 40
 const MIN_PHP_MAJOR = 8
-const MIN_PHP_MINOR = 3
+const MIN_PHP_MINOR = 2
 
 function parsePhpVersion(text) {
   const match = String(text || '').match(/PHP\s+(\d+)\.(\d+)\.(\d+)/i)
@@ -89,7 +89,7 @@ async function main() {
       ? `${phpCheck.version.major}.${phpCheck.version.minor}.${phpCheck.version.patch}`
       : 'unknown'
     process.stderr.write(
-      `Laravel 12 in amalgated-lending-api requires PHP ${MIN_PHP_MAJOR}.${MIN_PHP_MINOR}+.\n` +
+      `Laravel in amalgated-lending-api requires PHP ${MIN_PHP_MAJOR}.${MIN_PHP_MINOR}+.\n` +
         `Detected PHP version: ${detected} (binary: ${php}).\n` +
         `Set PHP_BINARY to a PHP ${MIN_PHP_MAJOR}.${MIN_PHP_MINOR}+ executable and retry.\n`,
     )
@@ -101,25 +101,8 @@ async function main() {
     process.exit(1)
   }
   const memoryLimit = process.env.LARAVEL_PHP_MEMORY_LIMIT || '256M'
-  const phpDir = path.dirname(php)
-  const runtimeExtDir = path.join(phpDir, 'ext')
-  const runtimePhpFlags = [
-    '-d',
-    `memory_limit=${memoryLimit}`,
-    '-d',
-    `extension_dir=${runtimeExtDir}`,
-    '-d',
-    'extension=mbstring',
-    '-d',
-    'extension=pdo_mysql',
-    '-d',
-    'extension=fileinfo',
-    '-d',
-    'extension=openssl',
-    '-d',
-    'extension=curl',
-  ]
-  const preferred = Math.max(8000, parseInt(getLaravelPort(), 10) || 8000)
+  const runtimePhpFlags = ['-d', `memory_limit=${memoryLimit}`]
+  const preferred = Math.max(8001, parseInt(getLaravelPort(), 10) || 8001)
   const end = preferred + RANGE
 
   for (let p = preferred; p <= end; p++) {
@@ -140,7 +123,7 @@ async function main() {
     }
     writeBindPort(p)
     process.stderr.write(
-      `Laravel dev server → http://127.0.0.1:${p} (php -S; set LARAVEL_PORT in .env to change the start of the scan)\n`,
+      `Laravel dev server → http://127.0.0.1:${p} (auto-fallback enabled; set LARAVEL_PORT in .env to change the start port)\n`,
     )
     const child = spawn(
       php,
@@ -173,7 +156,7 @@ async function main() {
     code: 'NO_FREE_PORT',
   })
   process.stderr.write(
-    `No free port found from ${preferred} to ${end} (all in use or wrong app). Stop other servers or set LARAVEL_PORT.\n`,
+    `No free port found from ${preferred} to ${end} (all in use or wrong app). Stop other servers or change LARAVEL_PORT.\n`,
   )
   process.exit(1)
 }

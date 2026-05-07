@@ -80,14 +80,22 @@ class PasswordResetController extends Controller
 
     public function reset(Request $request): JsonResponse
     {
-        $request->validate([
+        $data = $request->validate([
             'token' => 'required|string',
             'email' => 'required|email',
             'password' => 'required|string|min:8|max:72|confirmed',
         ]);
 
+        $normalizedEmail = mb_strtolower(trim((string) $data['email']));
+        $normalizedPayload = [
+            'token' => (string) $data['token'],
+            'email' => $normalizedEmail,
+            'password' => (string) $data['password'],
+            'password_confirmation' => (string) $data['password_confirmation'],
+        ];
+
         $status = Password::reset(
-            $request->only('email', 'password', 'password_confirmation', 'token'),
+            $normalizedPayload,
             function (User $user, string $password) {
                 $user->forceFill([
                     'password' => Hash::make($password),
@@ -98,6 +106,15 @@ class PasswordResetController extends Controller
         );
 
         if ($status === Password::PASSWORD_RESET) {
+            // Extra safety: keep reset and login lookup aligned (login is case-insensitive by email/username).
+            $resolved = User::query()->whereRaw('LOWER(email) = ?', [$normalizedEmail])->first();
+            if ($resolved) {
+                $resolved->forceFill([
+                    'password' => Hash::make((string) $data['password']),
+                ])->setRememberToken(Str::random(60));
+                $resolved->save();
+            }
+
             return response()->json([
                 'ok' => true,
                 'message' => 'Your password has been reset. You can sign in with the new password.',

@@ -11,7 +11,7 @@ function fmtDate(iso) {
   }
 }
 
-export default function BorrowerNotificationsPage() {
+export default function BorrowerNotificationsPage({ embedded = false }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
 
@@ -52,14 +52,16 @@ export default function BorrowerNotificationsPage() {
   }
 
   return (
-    <div className="w-full min-w-0 space-y-6">
+    <div className={`w-full min-w-0 ${embedded ? 'space-y-4' : 'space-y-6'}`}>
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Notifications</h1>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            Payment reminders and account updates. Mark items as read when you’ve seen them.
-          </p>
-        </div>
+        {!embedded ? (
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Notifications</h1>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              Payment reminders and account updates. Mark items as read when you’ve seen them.
+            </p>
+          </div>
+        ) : <span />}
         <button
           type="button"
           onClick={markAll}

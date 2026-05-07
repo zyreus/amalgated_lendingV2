@@ -80,7 +80,7 @@ export default function BranchesPage() {
             {mainOffices.map((office) => (
               <article key={office.name} className="branch-card overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm transition hover:shadow-md">
                 <div className="aspect-[3/2] w-full overflow-hidden bg-black/5">
-                  <img src={office.image} alt={office.name} className="h-full w-full object-cover" onError={(e) => { e.target.onerror = null; e.target.src = getPlaceholderImage(office.name) }} />
+                  <img src={office.image} alt={office.name} className="h-full w-full object-cover" loading="lazy" decoding="async" onError={(e) => { e.target.onerror = null; e.target.src = getPlaceholderImage(office.name) }} />
                 </div>
                 <div className="p-5 sm:p-6">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600">{office.name}</p>

@@ -93,7 +93,7 @@ function getPaymentReference(payment) {
 /** Full URL to borrower-uploaded receipt (served by Laravel `/storage`, not Vite). */
 function getReceiptPublicUrl(payment) {
   const u = payment?.receipt_url
-  if (u && /^https?:\/\//i.test(String(u))) return String(u).trim()
+  if (u && String(u).trim()) return getLaravelStorageFileUrl(String(u).trim())
   const path = payment?.receipt_path
   if (!path || !String(path).trim()) return ''
   return getLaravelStorageFileUrl(path)

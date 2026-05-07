@@ -25,7 +25,8 @@ class AdminPanelProvider extends PanelProvider
         return $panel
             ->default()
             ->id('admin')
-            ->path(env('FILAMENT_PATH', 'admin'))
+            // Default `filament` so `/admin` is reserved for the Vite React staff app (see frontend Root.jsx).
+            ->path(env('FILAMENT_PATH', 'filament'))
             ->login()
             ->brandName(config('app.name'))
             ->colors([

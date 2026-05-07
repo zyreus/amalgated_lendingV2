@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { io } from 'socket.io-client'
-import { adminSocketUrl, chatFetch, hasChatServerAuth } from '../utils/adminChatApi.js'
-import { api as adminApi } from '../admin/api/client.js'
+import { adminSocketUrls, chatFetch, chatJson, hasChatServerAuth } from '../utils/adminChatApi.js'
+import { api as adminApi, getToken as getAdminToken } from '../admin/api/client.js'
 import { downloadCsv } from '../admin/utils/export.js'
 
 const STATUS_BADGE = {
@@ -25,11 +25,23 @@ const FILTER_LABEL = {
   resolved: 'Resolved',
   archived: 'Archived',
 }
+/** Laravel `/admin/chat/conversations` warehouse buckets (`bucket` query param). */
+const VISITOR_QUEUE_BUCKETS = [
+  { id: 'all', label: 'All queues' },
+  { id: 'new', label: 'Needs attention' },
+  { id: 'pending_response', label: 'Pending response' },
+  { id: 'escalated', label: 'Escalated / human requested' },
+  { id: 'ai_handled', label: 'AI handled' },
+  { id: 'human_handled', label: 'Human / staff' },
+  { id: 'feedback_only', label: 'Has visitor feedback' },
+]
 
 const LEAD_STATUS = {
   new: 'New',
-  ongoing: 'Ongoing',
-  closed: 'Closed',
+  contacted: 'Contacted',
+  qualified: 'Qualified',
+  converted: 'Converted',
+  lost: 'Lost',
 }
 const TICKET_PRIORITY = {
   low: 'Low',
@@ -41,6 +53,34 @@ const TICKET_STATUS = {
   open: 'Open',
   pending: 'Pending',
   closed: 'Closed',
+}
+const CHAT_TIME_ZONE = 'Asia/Manila'
+const CHAT_POLL_MS = 8000
+
+function responseTimeTextClass(ms) {
+  if (ms == null || Number.isNaN(Number(ms))) return 'text-slate-500'
+  const n = Number(ms)
+  if (n < 800) return 'text-emerald-600'
+  if (n <= 2000) return 'text-amber-600'
+  return 'text-red-600'
+}
+
+/**
+ * CRM session indicator: green = visitor online + AI mode, yellow = AI mode but visitor offline, red = human mode.
+ * @param {{ id: string, mode?: string }} c
+ * @param {Record<string, boolean>} presenceMap
+ */
+function visitorAiConnectionDot(c, presenceMap) {
+  if (c.mode === 'human') {
+    return { title: 'Human agent (handoff)', className: 'bg-red-500' }
+  }
+  if (presenceMap[c.id]) {
+    return { title: 'Visitor online — realtime AI connected', className: 'bg-emerald-500' }
+  }
+  return {
+    title: 'Visitor not connected — they should wait for green on their screen before sending',
+    className: 'bg-amber-400',
+  }
 }
 
 const AVATAR_COLORS = [
@@ -76,12 +116,42 @@ function getInitials(name) {
 }
 
 function fmtTime(d) {
-  return new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const date = d instanceof Date ? d : new Date(d)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: CHAT_TIME_ZONE })
 }
 
 function fmtDate(d) {
   const date = new Date(d)
+  if (Number.isNaN(date.getTime())) return ''
   return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${fmtTime(d)}`
+}
+
+function messageKey(msg) {
+  const idStr = msg?.id != null && msg.id !== '' ? String(msg.id) : ''
+  const volatilePrefix =
+    idStr.startsWith('tmp-') ||
+    idStr.startsWith('t-') ||
+    idStr.startsWith('stream-') ||
+    idStr.startsWith('laravel-')
+  if (idStr && !volatilePrefix && /^\d+$/.test(idStr)) {
+    return `id:${idStr}`
+  }
+  const sid = msg?.conversation_id || msg?.session_id || ''
+  const body = String(msg?.content ?? msg?.message ?? '').slice(0, 240)
+  return `fp:${sid}|${String(msg?.sender || '')}|${body}|${String(msg?.created_at || '')}`
+}
+
+function mergeMessageRows(prev, incoming) {
+  const all = [...(prev || []), ...(incoming || [])]
+  const byKey = new Map()
+  all.forEach((m) => byKey.set(messageKey(m), m))
+  return Array.from(byKey.values()).sort((a, b) => {
+    const ta = new Date(a?.created_at || 0).getTime()
+    const tb = new Date(b?.created_at || 0).getTime()
+    if (ta !== tb) return ta - tb
+    return String(a?.id || '').localeCompare(String(b?.id || ''))
+  })
 }
 
 /** Short human-friendly ref for long conversation IDs (avoid full UUID in lists). */
@@ -138,6 +208,7 @@ export default function AdminChatDashboard({
   canViewAnalytics = true,
   canManageLoans = false,
   canViewBorrowers = false,
+  canAssignStaff = false,
 }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const [conversations, setConversations] = useState([])
@@ -168,6 +239,7 @@ export default function AdminChatDashboard({
   const [analytics, setAnalytics] = useState(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [analyticsError, setAnalyticsError] = useState(null)
+  const [warehouseAnalytics, setWarehouseAnalytics] = useState(null)
   const [tickets, setTickets] = useState([])
   const [ticketReadFilter, setTicketReadFilter] = useState('all')
   const [ticketStatusFilter, setTicketStatusFilter] = useState('all')
@@ -180,12 +252,14 @@ export default function AdminChatDashboard({
   const [leadEmailSending, setLeadEmailSending] = useState(false)
   const [leadEmailError, setLeadEmailError] = useState('')
   const [convoSearch, setConvoSearch] = useState('')
+  const [visitorQueueBucket, setVisitorQueueBucket] = useState('all')
   const [crmProfileOpen, setCrmProfileOpen] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [internalNotes, setInternalNotes] = useState('')
-  const [mockVisitorTyping, setMockVisitorTyping] = useState(false)
   const [socketConnected, setSocketConnected] = useState(false)
   const [socketConnectError, setSocketConnectError] = useState(null)
+  const [visitorPresenceMap, setVisitorPresenceMap] = useState({})
+  const [aiSessionMetrics, setAiSessionMetrics] = useState(null)
   /** Chats view: Node widget visitors vs Laravel borrower portal (same DB as /admin/leads messages). */
   const [chatInboxTab, setChatInboxTab] = useState('visitor')
   const [borrowerLeads, setBorrowerLeads] = useState([])
@@ -194,6 +268,10 @@ export default function AdminChatDashboard({
   const [borrowerInboxSearch, setBorrowerInboxSearch] = useState('')
   const [borrowerInput, setBorrowerInput] = useState('')
   const [borrowerSending, setBorrowerSending] = useState(false)
+  /** Laravel staff list for `/warehouse-assign` (requires `users.view`). */
+  const [assignStaffRows, setAssignStaffRows] = useState([])
+  const [warehouseActionError, setWarehouseActionError] = useState('')
+  const [conversationWarehouseBusy, setConversationWarehouseBusy] = useState(false)
   const socketRef = useRef(null)
   const scrollRef = useRef(null)
   const inputRef = useRef(null)
@@ -204,33 +282,58 @@ export default function AdminChatDashboard({
   const fetchTicketsRef = useRef(async () => {})
   const fetchAnalyticsRef = useRef(async () => {})
   const fetchFeedbackRef = useRef(async () => {})
+  const fetchAiSessionMetricsRef = useRef(async () => {})
   const activeIdRef = useRef(null)
+  const latestMessageIdByConversationRef = useRef(new Map())
+  const messagesRequestSeqRef = useRef(0)
+  const conversationsRequestSeqRef = useRef(0)
+  const fetchMessagesRef = useRef(async () => {})
+  const fetchBorrowerMessagesRef = useRef(async () => {})
+  const fetchBorrowerLeadsRef = useRef(async () => {})
+  const viewRef = useRef(null)
+  const chatInboxTabRef = useRef(null)
+  const activeBorrowerLeadIdRef = useRef(null)
 
   const fetchConversations = useCallback(async () => {
+    const requestSeq = ++conversationsRequestSeqRef.current
     try {
-      const { res } = await chatFetch('/api/admin/conversations')
-      if (res.status === 401) {
-        return
+      const params = new URLSearchParams({ limit: '250' })
+      if (visitorQueueBucket && visitorQueueBucket !== 'all') {
+        params.set('bucket', visitorQueueBucket)
+      } else if (filter && filter !== 'all') {
+        params.set('status', filter)
       }
-      const data = await res.json()
-      setConversations(data)
+      const data = await adminApi(`/admin/chat/conversations?${params}`)
+      if (requestSeq !== conversationsRequestSeqRef.current) return
+      setConversations(Array.isArray(data) ? data : [])
     } catch {
-      /* ignore */
+      if (requestSeq === conversationsRequestSeqRef.current) setConversations([])
+    }
+  }, [visitorQueueBucket, filter])
+
+  const fetchMessages = useCallback(async (id, options = {}) => {
+    if (!id) return
+    const afterId = Math.max(Number(options?.afterId) || 0, 0)
+    const requestSeq = ++messagesRequestSeqRef.current
+    try {
+      const q = new URLSearchParams()
+      if (afterId > 0) q.set('after_id', String(afterId))
+      q.set('limit', afterId > 0 ? '120' : '200')
+      const data = await adminApi(`/admin/chat/conversations/${encodeURIComponent(id)}/messages?${q}`)
+      if (requestSeq !== messagesRequestSeqRef.current) return
+      const rows = Array.isArray(data) ? data : []
+      if (!rows.length) return
+      setMessages((prev) => (afterId > 0 ? mergeMessageRows(prev, rows) : rows))
+      const maxId = rows.reduce((acc, row) => Math.max(acc, Number(row?.id) || 0), 0)
+      if (maxId > 0) latestMessageIdByConversationRef.current.set(id, maxId)
+    } catch {
+      if (requestSeq === messagesRequestSeqRef.current && afterId === 0) setMessages([])
     }
   }, [])
 
-  const fetchMessages = useCallback(async (id) => {
-    try {
-      const { res } = await chatFetch(`/api/admin/conversations/${id}/messages`)
-      if (res.status === 401) {
-        return
-      }
-      const data = await res.json()
-      setMessages(data)
-    } catch {
-      /* ignore */
-    }
-  }, [])
+  useEffect(() => {
+    fetchMessagesRef.current = fetchMessages
+  }, [fetchMessages])
 
   const fetchBorrowerLeads = useCallback(async () => {
     try {
@@ -273,18 +376,41 @@ export default function AdminChatDashboard({
     }
   }, [borrowerInput, activeBorrowerLeadId, fetchBorrowerMessages, fetchBorrowerLeads])
 
+  useEffect(() => {
+    fetchBorrowerMessagesRef.current = fetchBorrowerMessages
+  }, [fetchBorrowerMessages])
+
+  useEffect(() => {
+    fetchBorrowerLeadsRef.current = fetchBorrowerLeads
+  }, [fetchBorrowerLeads])
+
+  useEffect(() => {
+    viewRef.current = view
+  }, [view])
+
+  useEffect(() => {
+    chatInboxTabRef.current = chatInboxTab
+  }, [chatInboxTab])
+
+  useEffect(() => {
+    activeBorrowerLeadIdRef.current = activeBorrowerLeadId
+  }, [activeBorrowerLeadId])
+
   const fetchFeedback = useCallback(async () => {
     setFeedbackLoading(true)
     try {
       const { res } = await chatFetch('/api/admin/feedback')
-      if (res.status === 401) {
+      if (!res || res.status === 401 || res.status === 403) {
+        setFeedbackList([])
         return
       }
-      setFeedbackList(await res.json())
+      const data = await res.json().catch(() => [])
+      setFeedbackList(Array.isArray(data) ? data : [])
     } catch {
-      /* ignore */
+      setFeedbackList([])
+    } finally {
+      setFeedbackLoading(false)
     }
-    setFeedbackLoading(false)
   }, [])
 
   const fetchLeads = useCallback(async () => {
@@ -292,8 +418,10 @@ export default function AdminChatDashboard({
       const params = new URLSearchParams()
       if (leadsFilter) params.set('status', leadsFilter)
       if (leadsSearch) params.set('search', leadsSearch)
-      const res = await adminApi(`/admin/leads?${params}`)
-      setLeads((res?.data?.data || []).map(normalizeLead))
+      const { res } = await chatFetch(`/api/admin/leads?${params}`)
+      if (res?.status === 401 || res?.status === 403) return
+      const data = await res?.json?.().catch(() => [])
+      setLeads((Array.isArray(data) ? data : []).map(normalizeLead))
     } catch {
       /* ignore */
     }
@@ -306,7 +434,7 @@ export default function AdminChatDashboard({
     try {
       const aq = new URLSearchParams({ since: '-7 days' })
       const { res } = await chatFetch(`/api/admin/analytics?${aq}`)
-      if (res.status === 401) {
+      if (!res || res.status === 401) {
         return
       }
       const data = await res.json().catch(() => ({}))
@@ -320,16 +448,36 @@ export default function AdminChatDashboard({
       setAnalyticsError('Network error — is the API running?')
       setAnalytics((prev) => prev || null)
     }
+    try {
+      const wh = await adminApi('/admin/chat/support-analytics?days=30')
+      if (wh?.ok && wh.totals) setWarehouseAnalytics(wh)
+      else setWarehouseAnalytics(null)
+    } catch {
+      setWarehouseAnalytics(null)
+    }
     setAnalyticsLoading(false)
   }, [])
 
   const fetchTickets = useCallback(async () => {
     try {
       const { res } = await chatFetch('/api/admin/tickets')
-      if (res.status === 401) {
+      if (!res || res.status === 401) {
         return
       }
       setTickets(await res.json())
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const fetchAiSessionMetrics = useCallback(async () => {
+    try {
+      const { res, data } = await chatJson('/api/admin/ai-session-metrics')
+      if (!res?.ok || !data) return
+      setAiSessionMetrics(data)
+      if (data.visitorOnlineByConversation && typeof data.visitorOnlineByConversation === 'object') {
+        setVisitorPresenceMap(data.visitorOnlineByConversation)
+      }
     } catch {
       /* ignore */
     }
@@ -341,7 +489,13 @@ export default function AdminChatDashboard({
     fetchTicketsRef.current = fetchTickets
     fetchAnalyticsRef.current = fetchAnalytics
     fetchFeedbackRef.current = fetchFeedback
-  }, [fetchLeads, fetchConversations, fetchTickets, fetchAnalytics, fetchFeedback])
+    fetchAiSessionMetricsRef.current = fetchAiSessionMetrics
+  }, [fetchLeads, fetchConversations, fetchTickets, fetchAnalytics, fetchFeedback, fetchAiSessionMetrics])
+
+  useEffect(() => {
+    if (view !== 'chats' || chatInboxTab !== 'visitor') return
+    fetchAiSessionMetrics()
+  }, [view, chatInboxTab, fetchAiSessionMetrics])
 
   useEffect(() => {
     activeIdRef.current = activeId
@@ -363,10 +517,45 @@ export default function AdminChatDashboard({
 
   useEffect(() => {
     if (view !== 'chats' || chatInboxTab !== 'borrower' || !activeBorrowerLeadId) return
-    fetchBorrowerMessages(activeBorrowerLeadId)
-    const iv = setInterval(() => fetchBorrowerMessages(activeBorrowerLeadId), 3000)
-    return () => clearInterval(iv)
-  }, [view, chatInboxTab, activeBorrowerLeadId, fetchBorrowerMessages])
+    if (socketConnected) return
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      fetchBorrowerMessages(activeBorrowerLeadId)
+    }
+    tick()
+    const iv = setInterval(tick, CHAT_POLL_MS)
+    const onVis = () => {
+      if (typeof document !== 'undefined' && !document.hidden) tick()
+    }
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVis)
+    return () => {
+      clearInterval(iv)
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [view, chatInboxTab, activeBorrowerLeadId, fetchBorrowerMessages, socketConnected])
+
+  useEffect(() => {
+    if (view !== 'chats' || chatInboxTab !== 'visitor') return
+    if (socketConnected) return
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      fetchConversations()
+      if (activeIdRef.current) {
+        const afterId = Number(latestMessageIdByConversationRef.current.get(activeIdRef.current) || 0)
+        fetchMessages(activeIdRef.current, { afterId: afterId > 0 ? afterId : 0 })
+      }
+    }
+    tick()
+    const iv = setInterval(tick, CHAT_POLL_MS)
+    const onVis = () => {
+      if (typeof document !== 'undefined' && !document.hidden) tick()
+    }
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVis)
+    return () => {
+      clearInterval(iv)
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [view, chatInboxTab, activeId, fetchConversations, fetchMessages, socketConnected])
 
   useEffect(() => {
     if (view !== 'chats' || chatInboxTab !== 'borrower') return
@@ -376,15 +565,36 @@ export default function AdminChatDashboard({
 
   const bulkAction = async (resource, action, ids) => {
     if (!ids?.length) return
+    if (resource === 'conversations') {
+      try {
+        for (const rawId of ids) {
+          const enc = encodeURIComponent(rawId)
+          if (action === 'delete') {
+            await adminApi(`/admin/chat/conversations/${enc}/warehouse`, { method: 'DELETE' })
+          } else if (action === 'markRead') {
+            await adminApi(`/admin/chat/conversations/${enc}/warehouse-status`, {
+              method: 'PATCH',
+              body: JSON.stringify({ unread_admin: 0 }),
+            })
+          } else if (action === 'markUnread') {
+            await adminApi(`/admin/chat/conversations/${enc}/warehouse-status`, {
+              method: 'PATCH',
+              body: JSON.stringify({ unread_admin: 1 }),
+            })
+          }
+        }
+        setChatSelected({})
+        fetchConversations()
+      } catch {
+        /* ignore */
+      }
+      return
+    }
     const { res } = await chatFetch('/api/admin/bulk', {
       method: 'POST',
       body: JSON.stringify({ resource, action, ids }),
     })
     if (!res.ok) return
-    if (resource === 'conversations') {
-      setChatSelected({})
-      fetchConversations()
-    }
     if (resource === 'feedback') {
       setFeedbackSelected({})
       fetchFeedback()
@@ -400,9 +610,13 @@ export default function AdminChatDashboard({
 
   useEffect(() => {
     fetchConversations()
-  }, [fetchConversations])
+    fetchLeads()
+    fetchFeedback()
+    fetchTickets()
+  }, [fetchConversations, fetchLeads, fetchFeedback, fetchTickets])
 
   useEffect(() => {
+    setWarehouseActionError('')
     if (!activeId) {
       setInternalNotes('')
       return
@@ -438,8 +652,19 @@ export default function AdminChatDashboard({
 
   useEffect(() => {
     if (view !== 'analytics') return
-    const id = setInterval(() => fetchAnalytics(), 15000)
-    return () => clearInterval(id)
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      fetchAnalytics()
+    }
+    const id = setInterval(tick, 15000)
+    const onVis = () => {
+      if (typeof document !== 'undefined' && !document.hidden) tick()
+    }
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVis)
+    return () => {
+      clearInterval(id)
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVis)
+    }
   }, [view, fetchAnalytics])
 
   useEffect(() => {
@@ -460,63 +685,203 @@ export default function AdminChatDashboard({
   }, [view])
 
   useEffect(() => {
-    const socket = io(adminSocketUrl(), { transports: ['websocket', 'polling'] })
-    socketRef.current = socket
-    setSocketConnected(socket.connected)
-    setSocketConnectError(null)
-    socket.on('connect', () => {
-      setSocketConnected(true)
-      setSocketConnectError(null)
-    })
-    socket.on('disconnect', () => setSocketConnected(false))
-    socket.on('connect_error', (err) => {
-      setSocketConnected(false)
-      setSocketConnectError(err?.message || 'Cannot reach chat server (start chat-server on port 8010).')
-    })
-    socket.emit('admin:join')
-    socket.on('conversations:refresh', () => fetchConversationsRef.current())
-    socket.on('conversation:updated', (convo) => {
-      if (!convo?.id) return
-      setConversations((prev) =>
-        prev.map((c) => (c.id === convo.id ? { ...c, ...convo } : c)),
-      )
-      if (activeIdRef.current === convo.id) setActiveConvo((c) => (c ? { ...c, ...convo } : c))
-    })
-    socket.on('conversation:modeChanged', ({ conversationId: cid, mode }) => {
-      if (!cid) return
-      setActiveConvo((c) => (c?.id === cid && c ? { ...c, mode } : c))
-      setConversations((prev) =>
-        prev.map((c) => (c.id === cid ? { ...c, mode } : c)),
-      )
-    })
-    socket.on('tickets:refresh', () => fetchTicketsRef.current())
-    socket.on('analytics:refresh', () => fetchAnalyticsRef.current())
-    socket.on('feedback:refresh', () => fetchFeedbackRef.current())
-    socket.on('leads:refresh', () => fetchLeadsRef.current())
-    socket.on('admin:newLead', (lead) => {
-      setNewLeadAlert(lead)
-      fetchLeadsRef.current()
-      setTimeout(() => setNewLeadAlert(null), 6000)
-    })
-    socket.on('chat:message', (msg) => {
-      setMessages((prev) =>
-        msg.conversation_id === activeIdRef.current ? [...prev, msg] : prev,
-      )
-    })
-    socket.on('chat:newMessage', ({ conversationId, message }) => {
-      if (conversationId === activeIdRef.current && message) {
-        const normalized = {
-          id: message.id || `t-${Date.now()}`,
-          sender: message.sender,
-          content: message.content,
-          created_at: message.created_at,
-          admin_name: message.admin_name,
+    let disposed = false
+    let currentSocket = null
+    const targets = adminSocketUrls()
+
+    const attachHandlers = (socket) => {
+      socket.on('visitor:presence', ({ conversationId, online }) => {
+        const id = String(conversationId || '').trim()
+        if (!id) return
+        setVisitorPresenceMap((prev) => {
+          const next = { ...prev }
+          if (online) next[id] = true
+          else delete next[id]
+          return next
+        })
+      })
+      socket.on('ai:metrics:refresh', () => {
+        fetchAiSessionMetricsRef.current()
+      })
+      socket.on('conversations:refresh', () => fetchConversationsRef.current())
+      socket.on('conversation:updated', (convo) => {
+        if (!convo?.id) return
+        setConversations((prev) =>
+          prev.map((c) => (c.id === convo.id ? { ...c, ...convo } : c)),
+        )
+        if (activeIdRef.current === convo.id) setActiveConvo((c) => (c ? { ...c, ...convo } : c))
+      })
+      socket.on('conversation:modeChanged', ({ conversationId: cid, mode }) => {
+        if (!cid) return
+        setActiveConvo((c) => (c?.id === cid && c ? { ...c, mode } : c))
+        setConversations((prev) =>
+          prev.map((c) => (c.id === cid ? { ...c, mode } : c)),
+        )
+      })
+      socket.on('tickets:refresh', () => fetchTicketsRef.current())
+      socket.on('analytics:refresh', () => fetchAnalyticsRef.current())
+      socket.on('feedback:refresh', () => fetchFeedbackRef.current())
+      socket.on('leads:refresh', () => fetchLeadsRef.current())
+      socket.on('admin:newLead', (lead) => {
+        setNewLeadAlert(lead)
+        fetchLeadsRef.current()
+        setTimeout(() => setNewLeadAlert(null), 6000)
+      })
+      socket.on('chat:message', (msg) => {
+        const msgConvoId = String(msg?.conversation_id || msg?.session_id || '').trim()
+        const msgId = Number(msg?.id || 0)
+        if (msgConvoId && msgId > 0) {
+          const prevMax = Number(latestMessageIdByConversationRef.current.get(msgConvoId) || 0)
+          if (msgId > prevMax) latestMessageIdByConversationRef.current.set(msgConvoId, msgId)
         }
-        setMessages((prev) => [...prev, normalized])
-      }
-      fetchConversationsRef.current()
-    })
-    return () => socket.disconnect()
+        const active = String(activeIdRef.current || '')
+        const relates =
+          (msg?.conversation_id && String(msg.conversation_id) === active) ||
+          (msg?.session_id && String(msg.session_id) === active)
+        setMessages((prev) => (relates ? mergeMessageRows(prev, [msg]) : prev))
+      })
+      socket.on('chat:newMessage', ({ conversationId, message }) => {
+        const cid = String(conversationId || '')
+        const msgId = Number(message?.id || 0)
+        if (cid && msgId > 0) {
+          const prevMax = Number(latestMessageIdByConversationRef.current.get(cid) || 0)
+          if (msgId > prevMax) latestMessageIdByConversationRef.current.set(cid, msgId)
+        }
+        const active = String(activeIdRef.current || '')
+        if (cid === active && message) {
+          const normalized = {
+            id: message.id || `t-${Date.now()}`,
+            sender: message.sender,
+            content: message.content,
+            created_at: message.created_at,
+            admin_name: message.admin_name,
+          }
+          setMessages((prev) => mergeMessageRows(prev, [normalized]))
+        }
+        if (!cid) return
+        setConversations((prev) => {
+          const idx = prev.findIndex((c) => c.id === cid)
+          if (idx < 0) return prev
+          const current = prev[idx]
+          const nextRow = {
+            ...current,
+            last_message: message
+              ? {
+                  id: message.id || current?.last_message?.id,
+                  content: message.content ?? current?.last_message?.content ?? '',
+                  sender: message.sender ?? current?.last_message?.sender ?? 'user',
+                  created_at: message.created_at || new Date().toISOString(),
+                  admin_name: message.admin_name ?? current?.last_message?.admin_name ?? null,
+                }
+              : current.last_message,
+            last_message_at: message?.created_at || current.last_message_at,
+            updated_at: message?.created_at || current.updated_at,
+            unread_count:
+              cid !== active
+                ? Math.max(0, Number(current?.unread_count || 0) + 1)
+                : 0,
+            admin_unread_count:
+              cid !== active
+                ? Math.max(
+                    0,
+                    Number(current?.admin_unread_count ?? current?.unread_count ?? 0) + 1,
+                  )
+                : 0,
+          }
+          const next = prev.slice()
+          next[idx] = nextRow
+          return next
+        })
+      })
+      socket.on('chat:streamStart', ({ conversation_id: cid, stream_id: streamId, created_at }) => {
+        if (!cid || !streamId || cid !== activeIdRef.current) return
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `stream-${streamId}`,
+            sender: 'ai',
+            content: '',
+            created_at: created_at || new Date().toISOString(),
+          },
+        ])
+      })
+      socket.on('chat:streamDelta', ({ conversation_id: cid, stream_id: streamId, delta }) => {
+        if (!cid || !streamId || cid !== activeIdRef.current) return
+        const chunk = String(delta || '')
+        if (!chunk) return
+        const messageId = `stream-${streamId}`
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, content: `${m.content || ''}${chunk}` } : m)),
+        )
+      })
+      socket.on('chat:streamEnd', ({ conversation_id: cid, stream_id: streamId, content, created_at }) => {
+        if (!cid || !streamId || cid !== activeIdRef.current) return
+        const messageId = `stream-${streamId}`
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  sender: 'ai',
+                  content: String(content || m.content || ''),
+                  created_at: created_at || m.created_at || new Date().toISOString(),
+                }
+              : m,
+          ),
+        )
+      })
+      socket.on('disconnect', () => setSocketConnected(false))
+    }
+
+    const connectWithFallback = (index) => {
+      if (disposed || index >= targets.length) return
+      const target = targets[index]
+      const socket = io(target, { transports: ['websocket', 'polling'] })
+      currentSocket = socket
+      socketRef.current = socket
+      setSocketConnected(socket.connected)
+      setSocketConnectError(null)
+
+      attachHandlers(socket)
+      socket.on('connect', () => {
+        if (disposed) return
+        setSocketConnected(true)
+        setSocketConnectError(null)
+        socket.emit('admin:join', { token: getAdminToken() || '' })
+        queueMicrotask(() => {
+          fetchConversationsRef.current?.().catch(() => {})
+          const v = viewRef.current
+          const tab = chatInboxTabRef.current
+          const aid = activeIdRef.current
+          if (v === 'chats' && tab === 'visitor' && aid) {
+            const afterId = Number(latestMessageIdByConversationRef.current.get(aid) || 0)
+            fetchMessagesRef.current?.(aid, {
+              afterId: afterId > 0 ? afterId : 0,
+            })
+          }
+          const bid = activeBorrowerLeadIdRef.current
+          if (v === 'chats' && tab === 'borrower' && bid) {
+            fetchBorrowerMessagesRef.current?.(bid)
+          }
+          if (tab === 'borrower') fetchBorrowerLeadsRef.current?.().catch(() => {})
+        })
+      })
+      socket.on('connect_error', (err) => {
+        if (disposed) return
+        setSocketConnected(false)
+        setSocketConnectError(err?.message || 'Cannot reach chat server.')
+        socket.removeAllListeners()
+        socket.disconnect()
+        connectWithFallback(index + 1)
+      })
+    }
+
+    connectWithFallback(0)
+    return () => {
+      disposed = true
+      currentSocket?.removeAllListeners()
+      currentSocket?.disconnect()
+    }
   }, [])
 
   useEffect(() => {
@@ -527,7 +892,8 @@ export default function AdminChatDashboard({
     }
     socketRef.current?.emit('admin:joinConversation', activeId)
     prevActiveId.current = activeId
-    fetchMessages(activeId)
+    const afterId = Number(latestMessageIdByConversationRef.current.get(activeId) || 0)
+    fetchMessages(activeId, { afterId: afterId > 0 ? afterId : 0 })
     const convo = conversations.find((c) => c.id === activeId)
     setActiveConvo(convo || null)
   }, [activeId, fetchMessages, conversations, chatInboxTab])
@@ -632,6 +998,20 @@ export default function AdminChatDashboard({
     [setSearchParams],
   )
 
+  /** Admin shell Socket listener: jump to visitor thread without remounting the CRM route. */
+  useEffect(() => {
+    const onFocusRequest = (e) => {
+      const cid = String(e?.detail?.conversationId || '').trim()
+      if (!cid) return
+      switchChatInbox('visitor')
+      setActiveId(cid)
+      fetchConversations()
+      fetchMessages(cid, {})
+    }
+    window.addEventListener('admin:focusChatConversation', onFocusRequest)
+    return () => window.removeEventListener('admin:focusChatConversation', onFocusRequest)
+  }, [switchChatInbox, fetchConversations, fetchMessages])
+
   useEffect(() => {
     const v = searchParams.get('view')
     if (v !== 'chats') return
@@ -642,12 +1022,53 @@ export default function AdminChatDashboard({
   const handleSend = () => {
     const text = input.trim()
     if (!text || !activeId) return
-    setInput('')
-    socketRef.current?.emit('admin:message', {
-      conversationId: activeId,
+    const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const optimisticMessage = {
+      id: tempId,
+      sender: 'admin',
       content: text,
-      adminName: 'Support Agent',
+      created_at: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, optimisticMessage])
+    setInput('')
+    adminApi(`/admin/chat/conversations/${encodeURIComponent(activeId)}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ message: text }),
     })
+      .then((res) => {
+        const serverMessage = res?.message || null
+        if (serverMessage) {
+          const serverId = Number(serverMessage?.id || 0)
+          if (serverId > 0) {
+            latestMessageIdByConversationRef.current.set(
+              activeId,
+              Math.max(serverId, Number(latestMessageIdByConversationRef.current.get(activeId) || 0)),
+            )
+          }
+          setMessages((prev) => prev.map((m) => (m.id === tempId ? serverMessage : m)))
+        } else {
+          const afterId = Number(latestMessageIdByConversationRef.current.get(activeId) || 0)
+          fetchMessages(activeId, { afterId: afterId > 0 ? afterId : 0 })
+        }
+        const latest = serverMessage || optimisticMessage
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === activeId
+              ? {
+                  ...c,
+                  last_message: latest,
+                  last_message_at: latest.created_at,
+                  updated_at: latest.created_at,
+                  unread_count: 0,
+                  admin_unread_count: 0,
+                }
+              : c,
+          ),
+        )
+      })
+      .catch(() => {
+        setMessages((prev) => prev.filter((m) => m.id !== tempId))
+      })
     inputRef.current?.focus()
   }
 
@@ -669,16 +1090,11 @@ export default function AdminChatDashboard({
 
   const changeStatus = async (id, status) => {
     try {
-      if (status === 'archived') {
-        await chatFetch(`/api/admin/conversations/${id}/archive`, {
-          method: 'PATCH',
-        })
-      } else {
-        await chatFetch(`/api/admin/conversations/${id}/status`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status }),
-        })
-      }
+      const enc = encodeURIComponent(id)
+      await adminApi(`/admin/chat/conversations/${enc}/warehouse-status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      })
       fetchConversations()
       if (id === activeId) {
         setActiveConvo((c) => (c ? { ...c, status } : c))
@@ -693,7 +1109,8 @@ export default function AdminChatDashboard({
     const convo = conversations.find((c) => c.id === id) || activeConvo
     const nextMode = convo?.mode === 'ai' ? 'human' : 'ai'
     try {
-      await chatFetch(`/api/admin/conversations/${id}/mode`, {
+      const enc = encodeURIComponent(id)
+      await adminApi(`/admin/chat/conversations/${enc}/warehouse-status`, {
         method: 'PATCH',
         body: JSON.stringify({ mode: nextMode }),
       })
@@ -706,10 +1123,73 @@ export default function AdminChatDashboard({
     }
   }
 
+  useEffect(() => {
+    if (!canAssignStaff || view !== 'chats') return undefined
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await adminApi('/admin/users?per_page=150&is_active=true')
+        const rows = Array.isArray(res?.data?.data) ? res.data.data : []
+        const staffOnly = rows.filter((u) => u && String(u.role || '').toLowerCase() !== 'borrower')
+        if (!cancelled) setAssignStaffRows(staffOnly)
+      } catch {
+        if (!cancelled) setAssignStaffRows([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [canAssignStaff, view])
+
+  const assignConversationToStaff = async (userIdRaw) => {
+    if (!activeId) return
+    const uid = Number(userIdRaw)
+    if (!Number.isFinite(uid) || uid < 1) return
+    setWarehouseActionError('')
+    setConversationWarehouseBusy(true)
+    try {
+      await adminApi(`/admin/chat/conversations/${encodeURIComponent(activeId)}/warehouse-assign`, {
+        method: 'POST',
+        body: JSON.stringify({ user_id: uid }),
+      })
+      await fetchConversations()
+      setConversations((prev) =>
+        prev.map((c) => (c.id === activeId ? { ...c, assigned_to: uid } : c)),
+      )
+      setActiveConvo((c) => (c ? { ...c, assigned_to: uid } : c))
+    } catch (e) {
+      setWarehouseActionError(e?.message || 'Assignment failed.')
+    } finally {
+      setConversationWarehouseBusy(false)
+    }
+  }
+
+  const patchConversationNeedsHuman = async (needsHuman) => {
+    if (!activeId) return
+    setWarehouseActionError('')
+    setConversationWarehouseBusy(true)
+    try {
+      await adminApi(`/admin/chat/conversations/${encodeURIComponent(activeId)}/warehouse-status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ needs_human: Boolean(needsHuman) }),
+      })
+      await fetchConversations()
+      const next = Boolean(needsHuman)
+      setActiveConvo((c) => (c ? { ...c, needs_human: next } : c))
+      setConversations((prev) =>
+        prev.map((c) => (c.id === activeId ? { ...c, needs_human: next } : c)),
+      )
+    } catch (e) {
+      setWarehouseActionError(e?.message || 'Escalation update failed.')
+    } finally {
+      setConversationWarehouseBusy(false)
+    }
+  }
+
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return
     try {
-      await chatFetch(`/api/admin/conversations/${deleteTarget}`, {
+      await adminApi(`/admin/chat/conversations/${encodeURIComponent(deleteTarget)}/warehouse`, {
         method: 'DELETE',
       })
       fetchConversations()
@@ -775,12 +1255,26 @@ export default function AdminChatDashboard({
 
   const updateLeadStatusById = async (leadId, status) => {
     try {
-      await adminApi(`/admin/leads/${leadId}`, {
-        method: 'PUT',
+      const lead = (leads || []).find((row) => String(row.id) === String(leadId))
+      const { res } = await chatFetch(`/api/admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       })
+      if (res?.status === 401 || res?.status === 403) return
+
+      if ((status === 'converted' || status === 'qualified') && lead?.conversation_id) {
+        await adminApi(
+          `/admin/chat/conversations/${encodeURIComponent(lead.conversation_id)}/warehouse-status`,
+          {
+            method: 'PATCH',
+            body: JSON.stringify({ status: 'archived' }),
+          },
+        )
+      }
       fetchLeads()
       fetchBorrowerLeads()
+      fetchConversations()
     } catch (error) {
       console.error(error)
     }
@@ -816,13 +1310,16 @@ export default function AdminChatDashboard({
     setLeadEmailSending(true)
     setLeadEmailError('')
     try {
-      await adminApi(`/admin/leads/${leadEmailModal.id}/email`, {
+      const { res } = await chatFetch(`/api/admin/leads/${leadEmailModal.id}/email`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           subject: leadEmailSubject.trim(),
           body: leadEmailBody,
         }),
       })
+      const data = await res?.json?.().catch(() => ({}))
+      if (!res?.ok) throw new Error(data?.message || 'Failed to send email.')
       setLeadEmailModal(null)
     } catch (e) {
       setLeadEmailError(e.message || 'Failed to send email.')
@@ -862,11 +1359,13 @@ export default function AdminChatDashboard({
   }
 
   const filteredBase =
-    filter === 'all'
+    visitorQueueBucket !== 'all'
       ? conversations
-      : conversations.filter((c) => c.status === filter)
+      : filter === 'all'
+        ? conversations
+        : conversations.filter((c) => c.status === filter)
   const filtered = filteredBase.filter((c) => {
-    const unread = (c.admin_unread_count || 0) > 0
+    const unread = (c.admin_unread_count ?? c.unread_count ?? 0) > 0
     if (chatReadFilter === 'unread') return unread
     if (chatReadFilter === 'read') return !unread
     return true
@@ -1138,13 +1637,90 @@ export default function AdminChatDashboard({
             </div>
           )}
 
+          {view === 'chats' && chatInboxTab === 'visitor' && aiSessionMetrics ? (
+            <div className="mt-2 space-y-2 px-0.5">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <div className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-2 py-2 text-center">
+                  <p className="text-lg font-bold tabular-nums text-[var(--admin-text)]">
+                    {aiSessionMetrics.activeVisitorSessions ?? 0}
+                  </p>
+                  <p className="text-[10px] font-medium text-[color:var(--admin-muted-2)]">Active visitor sessions</p>
+                </div>
+                <div className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-2 py-2 text-center">
+                  <p className="text-lg font-bold tabular-nums text-[var(--admin-text)]">
+                    {aiSessionMetrics.averageAiResponseMs != null
+                      ? `${aiSessionMetrics.averageAiResponseMs} ms`
+                      : '—'}
+                  </p>
+                  <p className="text-[10px] font-medium text-[color:var(--admin-muted-2)]">Avg AI response</p>
+                </div>
+              </div>
+              {Array.isArray(aiSessionMetrics.recentAiReplies) && aiSessionMetrics.recentAiReplies.length > 0 ? (
+                <div className="overflow-hidden rounded-lg border border-[var(--admin-border)] bg-white">
+                  <p className="border-b border-[var(--admin-border)] bg-[var(--admin-surface-2)] px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
+                    Last 10 AI replies (delay)
+                  </p>
+                  <ul className="max-h-36 overflow-y-auto text-[11px]">
+                    {aiSessionMetrics.recentAiReplies.map((row, idx) => (
+                      <li
+                        key={`${row.conversationId}-${row.at}-${idx}`}
+                        className="flex items-center justify-between gap-2 border-b border-slate-100 px-2 py-1.5 last:border-0"
+                      >
+                        <span
+                          className="min-w-0 truncate font-mono text-[10px] text-slate-600"
+                          title={row.conversationId}
+                        >
+                          {shortConversationRef(row.conversationId)}
+                        </span>
+                        <span
+                          className={`shrink-0 font-semibold tabular-nums ${responseTimeTextClass(row.delayMs)}`}
+                        >
+                          {row.delayMs} ms
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {/* Filters */}
           {view === 'chats' && chatInboxTab === 'visitor' && (
             <div className="mt-2.5 space-y-2">
-              <div className="flex flex-wrap gap-1">
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
+                  Queue (Laravel)
+                </label>
+                <select
+                  value={visitorQueueBucket}
+                  onChange={(e) => setVisitorQueueBucket(e.target.value)}
+                  className="w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-xs text-[var(--admin-text)] outline-none focus:border-[color:var(--admin-accent)]/60 focus:ring-2 focus:ring-[color:var(--admin-accent)]/15"
+                >
+                  {VISITOR_QUEUE_BUCKETS.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.label}
+                    </option>
+                  ))}
+                </select>
+                {visitorQueueBucket !== 'all' ? (
+                  <p className="text-[10px] text-[color:var(--admin-muted-2)]">
+                    Status chips apply when queue is “All queues” only.
+                  </p>
+                ) : null}
+              </div>
+              <div
+                className={`flex flex-wrap gap-1 ${visitorQueueBucket !== 'all' ? 'pointer-events-none opacity-45' : ''}`}
+                title={
+                  visitorQueueBucket !== 'all'
+                    ? 'Switch queue to “All queues” to filter by lifecycle status.'
+                    : undefined
+                }
+              >
                 {FILTERS.map((f) => (
                   <button
                     key={f}
+                    type="button"
                     onClick={() => setFilter(f)}
                     className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition ${
                       filter === f
@@ -1350,7 +1926,8 @@ export default function AdminChatDashboard({
                 const isActive = activeId === c.id
                 const initials = getInitials(c.visitor_name)
                 const color = getAvatarColor(c.id)
-                const unread = (c.admin_unread_count || 0) > 0
+                const unread = (c.admin_unread_count ?? c.unread_count ?? 0) > 0
+                const connDot = visitorAiConnectionDot(c, visitorPresenceMap)
                 return (
                   <div
                     key={c.id}
@@ -1402,6 +1979,10 @@ export default function AdminChatDashboard({
                           {conversationListSubtitle(c)}
                         </p>
                         <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[color:var(--admin-muted-2)]">
+                          <span
+                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${connDot.className}`}
+                            title={connDot.title}
+                          />
                           <span className="tabular-nums">{fmtDate(c.updated_at)}</span>
                           <span className="text-slate-300">·</span>
                           <span
@@ -1466,7 +2047,7 @@ export default function AdminChatDashboard({
                             STATUS_BADGE[
                               lead.status === 'new'
                                 ? 'open'
-                                : lead.status === 'ongoing'
+                                : lead.status === 'contacted' || lead.status === 'qualified'
                                   ? 'in_progress'
                                   : 'archived'
                             ]
@@ -2055,20 +2636,87 @@ export default function AdminChatDashboard({
           className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_55%)] px-2 py-2 text-[var(--admin-text)] sm:px-3 sm:py-3"
         >
           {view === 'chats' && chatInboxTab === 'visitor' && activeId && activeConvo && (
-            <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-slate-200/90 bg-white/95 px-3 py-1.5 text-[11px] text-slate-600 shadow-sm">
-              <span className="font-medium text-slate-800">SLA</span>
-              <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-800 ring-1 ring-emerald-500/15">
-                5 min first reply
-              </span>
-              <span className="hidden text-slate-400 sm:inline">·</span>
-              <span className="hidden sm:inline">Typing &amp; receipts live</span>
-              <button
-                type="button"
-                className="ml-auto rounded border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-600 hover:bg-slate-50"
-                onClick={() => setMockVisitorTyping((t) => !t)}
+            <div className="mb-3 space-y-2">
+              <div
+                className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-950 shadow-sm"
+                role="note"
               >
-                {mockVisitorTyping ? 'Stop demo typing' : 'Demo typing'}
-              </button>
+                Yellow indicator = AI stream not yet connected. Advise the customer to wait before sending.
+              </div>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-slate-200/90 bg-white/95 px-3 py-1.5 text-[11px] text-slate-600 shadow-sm">
+                <span className="font-medium text-slate-800">SLA</span>
+                <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-800 ring-1 ring-emerald-500/15">
+                  5 min first reply
+                </span>
+                <span className="hidden text-slate-400 sm:inline">·</span>
+                <span className="hidden sm:inline">Typing and receipts live</span>
+              </div>
+              {warehouseActionError ? (
+                <div
+                  className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-950 shadow-sm"
+                  role="alert"
+                >
+                  {warehouseActionError}
+                </div>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200/90 bg-white/95 px-3 py-2 text-[11px] text-slate-700 shadow-sm">
+                <span className="font-medium text-slate-800">Queue</span>
+                {activeConvo?.needs_human ? (
+                  <span className="rounded-md bg-amber-50 px-1.5 py-0.5 font-medium text-amber-900 ring-1 ring-amber-500/20">
+                    Escalated — needs human
+                  </span>
+                ) : (
+                  <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-600 ring-1 ring-slate-200/80">
+                    Standard
+                  </span>
+                )}
+                <button
+                  type="button"
+                  disabled={conversationWarehouseBusy || !!activeConvo?.needs_human}
+                  onClick={() => patchConversationNeedsHuman(true)}
+                  className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-950 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  Escalate
+                </button>
+                <button
+                  type="button"
+                  disabled={conversationWarehouseBusy || !activeConvo?.needs_human}
+                  onClick={() => patchConversationNeedsHuman(false)}
+                  className="rounded-md border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  Clear escalation
+                </button>
+                {canAssignStaff ? (
+                  <>
+                    <span className="hidden text-slate-300 sm:inline">|</span>
+                    <label className="font-medium text-slate-800" htmlFor="crm-assign-staff">
+                      Assign to
+                    </label>
+                    <select
+                      id="crm-assign-staff"
+                      disabled={conversationWarehouseBusy || assignStaffRows.length === 0}
+                      value={
+                        activeConvo?.assigned_to != null && activeConvo.assigned_to !== ''
+                          ? String(activeConvo.assigned_to)
+                          : ''
+                      }
+                      onChange={(ev) => {
+                        const next = ev.target.value
+                        if (!next) return
+                        assignConversationToStaff(next)
+                      }}
+                      className="max-w-[11rem] rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] outline-none focus:border-[color:var(--admin-accent)]/50 disabled:opacity-45 sm:max-w-[14rem]"
+                    >
+                      <option value="">Staff…</option>
+                      {assignStaffRows.map((u) => (
+                        <option key={u.id} value={String(u.id)}>
+                          {u.name || u.email || `User ${u.id}`}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                ) : null}
+              </div>
             </div>
           )}
           {/* Leads table */}
@@ -2210,6 +2858,31 @@ export default function AdminChatDashboard({
                   role="alert"
                 >
                   {analyticsError}
+                </div>
+              )}
+              {warehouseAnalytics?.totals && (
+                <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50/90 p-4 text-slate-800">
+                  <p className="mb-3 text-sm font-semibold text-sky-950">Support warehouse · Laravel · last 30 days</p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div className="rounded-lg bg-white/80 px-3 py-2 text-center">
+                      <p className="text-lg font-bold text-slate-800">{warehouseAnalytics.totals.messages}</p>
+                      <p className="text-[10px] uppercase tracking-wide text-slate-500">Messages</p>
+                    </div>
+                    <div className="rounded-lg bg-white/80 px-3 py-2 text-center">
+                      <p className="text-lg font-bold text-slate-800">{warehouseAnalytics.totals.feedback}</p>
+                      <p className="text-[10px] uppercase tracking-wide text-slate-500">Feedback</p>
+                    </div>
+                    <div className="rounded-lg bg-white/80 px-3 py-2 text-center">
+                      <p className="text-lg font-bold text-emerald-700">{warehouseAnalytics.rates?.ai_reply_share}%</p>
+                      <p className="text-[10px] uppercase tracking-wide text-slate-500">AI replies</p>
+                    </div>
+                    <div className="rounded-lg bg-white/80 px-3 py-2 text-center">
+                      <p className="text-lg font-bold text-rose-700">
+                        {warehouseAnalytics.totals.average_rating ?? '–'}
+                      </p>
+                      <p className="text-[10px] uppercase tracking-wide text-slate-500">Avg rating</p>
+                    </div>
+                  </div>
                 </div>
               )}
               <p className="text-right text-xs text-gray-500">
@@ -2787,18 +3460,6 @@ export default function AdminChatDashboard({
               )
             })}
 
-          {view === 'chats' && chatInboxTab === 'visitor' && activeId && mockVisitorTyping && (
-            <div className="mb-3 flex justify-start">
-              <div className="rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] px-4 py-2 text-xs text-[color:var(--admin-muted-2)]">
-                <span className="inline-flex gap-1">
-                  <span className="animate-bounce">●</span>
-                  <span className="animate-bounce [animation-delay:0.15s]">●</span>
-                  <span className="animate-bounce [animation-delay:0.3s]">●</span>
-                </span>
-                <span className="ml-2">Visitor is typing…</span>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Reply input */}

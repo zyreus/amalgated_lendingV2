@@ -8,6 +8,7 @@ use App\Services\ActivityLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 
 class BorrowerAuthController extends Controller
 {
@@ -46,6 +47,12 @@ class BorrowerAuthController extends Controller
                 'email' => $authUser->email,
                 'role' => $authUser->role,
                 'is_active' => (bool) $authUser->is_active,
+                'id_document_path' => $authUser->id_document_path,
+                'id_document_url' => $authUser->id_document_path ? Storage::disk('public')->url($authUser->id_document_path) : null,
+                'profile_photo_path' => $authUser->profile_photo_path ?: $authUser->id_document_path,
+                'profile_photo_url' => $authUser->profile_photo_path
+                    ? Storage::disk('public')->url($authUser->profile_photo_path)
+                    : ($authUser->id_document_path ? Storage::disk('public')->url($authUser->id_document_path) : null),
             ],
         ]);
     }
@@ -66,6 +73,13 @@ class BorrowerAuthController extends Controller
                 'role' => $user->role,
                 'is_active' => (bool) $user->is_active,
                 'id_document_name' => $user->id_document_name,
+                'id_document_path' => $user->id_document_path,
+                'id_document_url' => $user->id_document_path ? Storage::disk('public')->url($user->id_document_path) : null,
+                'profile_photo_name' => $user->profile_photo_name ?: $user->id_document_name,
+                'profile_photo_path' => $user->profile_photo_path ?: $user->id_document_path,
+                'profile_photo_url' => $user->profile_photo_path
+                    ? Storage::disk('public')->url($user->profile_photo_path)
+                    : ($user->id_document_path ? Storage::disk('public')->url($user->id_document_path) : null),
             ],
         ]);
     }

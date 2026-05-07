@@ -170,7 +170,6 @@ export default function AdminLoanProductsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className={admin.pageTitle}>Loan products</h1>
-          <p className={admin.pageSubtitle}>Public site reads active products from `/api/v1/public/loan-products`.</p>
         </div>
         <button type="button" onClick={openNew} className={admin.btnPrimary}>
           Add product

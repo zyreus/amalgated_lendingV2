@@ -3,6 +3,7 @@ import { FaceLivenessDetector } from '@aws-amplify/ui-react-liveness'
 import { Loader, ThemeProvider } from '@aws-amplify/ui-react'
 import '@aws-amplify/ui-react/styles.css'
 import { borrowerApi } from '../borrower/api/client.js'
+import { ensureAmplifyConfigured } from '../amplifyLivenessConfig.js'
 
 /**
  * AWS quickstart-style flow: load session on mount, then FaceLivenessDetector.
@@ -23,6 +24,7 @@ export function LivenessQuickStartReact({ borrowerId, onVerified, onFailed }) {
     setCreateLivenessApiData(null)
     setLoading(true)
     try {
+      await ensureAmplifyConfigured()
       const data = await borrowerApi('/liveness/amplify-session', {
         method: 'POST',
         body: JSON.stringify({}),

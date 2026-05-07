@@ -56,4 +56,22 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'ap-southeast-1'),
     ],
 
+    /*
+    | Node chat-server → Laravel warehouse sync header `X-Support-Sync-Secret`.
+    | Set sync_secret to match chat-server `LARAVEL_CHAT_SYNC_SECRET`.
+    */
+    'support_chat' => [
+        'sync_secret' => env('SUPPORT_CHAT_SYNC_SECRET'),
+    ],
+
+    /*
+    | Laravel → Node Socket.IO relay (instant visitor widgets). Full URL INCLUDING path.
+    | Example (dev): NODE_CHAT_BROADCAST_URL=http://127.0.0.1:8010/api/internal/chat-broadcast/message
+    | Must match chat-server CHAT_INTERNAL_BROADCAST_SECRET (header X-Chat-Broadcast-Secret).
+    */
+    'node_chat' => [
+        'broadcast_url' => env('NODE_CHAT_BROADCAST_URL'),
+        'broadcast_secret' => env('NODE_CHAT_BROADCAST_SECRET'),
+    ],
+
 ];

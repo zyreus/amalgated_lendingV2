@@ -1,6 +1,6 @@
 {
-  "state": "ready",
-  "at": "2026-04-21T07:05:12.920Z",
-  "port": 8001,
-  "reused": true
+  "state": "failed",
+  "at": "2026-05-06T08:17:29.057Z",
+  "reason": "PHP 8.2+ is required; detected unknown (C:\\xampp\\php-backup\\php.exe).",
+  "code": "UNSUPPORTED_PHP"
 }

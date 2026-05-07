@@ -66,6 +66,7 @@ return array(
     'App\\Http\\Controllers\\Api\\PasswordResetController' => $baseDir . '/app/Http/Controllers/Api/PasswordResetController.php',
     'App\\Http\\Controllers\\Api\\PaymentController' => $baseDir . '/app/Http/Controllers/Api/PaymentController.php',
     'App\\Http\\Controllers\\Api\\PermissionController' => $baseDir . '/app/Http/Controllers/Api/PermissionController.php',
+    'App\\Http\\Controllers\\Api\\PublicFileController' => $baseDir . '/app/Http/Controllers/Api/PublicFileController.php',
     'App\\Http\\Controllers\\Api\\PublicLeadController' => $baseDir . '/app/Http/Controllers/Api/PublicLeadController.php',
     'App\\Http\\Controllers\\Api\\RealEstateMortgageController' => $baseDir . '/app/Http/Controllers/Api/RealEstateMortgageController.php',
     'App\\Http\\Controllers\\Api\\ReportController' => $baseDir . '/app/Http/Controllers/Api/ReportController.php',

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#dc2626" />
+    <link rel="icon" type="image/png" href="/amalgated-lending-logo.png" />
+
+    <!--
+      Speed up the very first paint:
+      * preconnect to Google Fonts on both domains so DNS / TLS finish before we ever ask for a font;
+      * load Inter non-blocking via media="print" + onload swap so the CSS does NOT block rendering;
+      * keep a <noscript> fallback so users without JS still get the webfont.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      media="print"
+      onload="this.media='all'; this.onload=null;"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      />
+    </noscript>
+
+    <title>Amalgated Lending | Trusted Lending Solutions</title>
+    <script>
+      (function () {
+        try {
+          document.documentElement.classList.remove('dark')
+        } catch (e) {}
+      })()
+    </script>
+    <script type="module" crossorigin src="/assets/index-CDnSYrM0.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-DkclzI0k.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-E2pVitVq.css">
+  </head>
+  <body class="antialiased">
+    <div id="root"></div>
+    <!--
+      Alpine is only used by the legacy ApplicationFormModalHost. `defer` keeps it
+      out of the critical path; the modal host already waits for Alpine before
+      calling initTree(), so there is no observable behavior change.
+    -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  </body>
+</html>

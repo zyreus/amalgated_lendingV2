@@ -3,28 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Mail\PaymentReceiptMail;
+use App\Http\Resources\PaymentListResource;
+use App\Jobs\SendPaymentReceiptJob;
 use App\Models\Loan;
 use App\Models\Payment;
 use App\Models\User;
 use App\Services\ActivityLogger;
-use App\Services\BrevoMailService;
 use App\Services\CreditScoreService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 
 class PaymentController extends Controller
 {
-    /** @var BrevoMailService */
-    protected $brevo;
-
-    public function __construct(BrevoMailService $brevo)
-    {
-        $this->brevo = $brevo;
-    }
-
     public function index(Request $request): JsonResponse
     {
         $q = Payment::query()->with('loan.borrower');
@@ -47,6 +38,8 @@ class PaymentController extends Controller
         }
 
         $rows = $q->orderByDesc('due_date')->paginate((int) $request->query('per_page', 20));
+
+        $rows->setCollection(PaymentListResource::collection($rows->getCollection())->collection);
 
         return response()->json(['ok' => true, 'data' => $rows]);
     }
@@ -75,7 +68,7 @@ class PaymentController extends Controller
         $previousStatus = $payment->status;
 
         $payment->amount_paid = $data['amount_paid'];
-        $payment->paid_at = isset($data['paid_at']) ? \Carbon\Carbon::parse($data['paid_at']) : now();
+        $payment->paid_at = isset($data['paid_at']) ? Carbon::parse($data['paid_at']) : now();
         $payment->source = $data['source'] ?? 'manual';
         if (isset($data['external_ref'])) {
             $payment->external_ref = $data['external_ref'];
@@ -107,7 +100,8 @@ class PaymentController extends Controller
 
         $receiptEmail = ['sent' => false, 'note' => null];
         if ($this->paymentJustBecamePaid($previousStatus, $payment->status)) {
-            $receiptEmail = $this->sendPaymentReceiptToBorrower($payment);
+            SendPaymentReceiptJob::dispatch($payment->id);
+            $receiptEmail = ['sent' => true, 'note' => 'queued'];
         }
 
         return response()->json([
@@ -149,7 +143,8 @@ class PaymentController extends Controller
 
         $receiptEmail = ['sent' => false, 'note' => null];
         if ($data['status'] === Payment::STATUS_PAID && $this->paymentJustBecamePaid($previousStatus, $payment->status)) {
-            $receiptEmail = $this->sendPaymentReceiptToBorrower($payment);
+            SendPaymentReceiptJob::dispatch($payment->id);
+            $receiptEmail = ['sent' => true, 'note' => 'queued'];
         }
 
         return response()->json([
@@ -158,116 +153,6 @@ class PaymentController extends Controller
             'receipt_email_sent' => $receiptEmail['sent'],
             'receipt_email_note' => $receiptEmail['note'],
         ]);
-    }
-
-    /**
-     * @return array{sent: bool, note: string|null}
-     */
-    private function sendPaymentReceiptToBorrower(Payment $payment): array
-    {
-        $email = $this->resolveBorrowerReceiptEmail($payment);
-        if (! $email) {
-            Log::warning('Payment receipt skipped: no valid borrower email', ['payment_id' => $payment->id]);
-
-            return ['sent' => false, 'note' => 'no_borrower_email'];
-        }
-
-        try {
-            $payment = $payment->fresh(['loan.borrower']);
-            $mailable = new PaymentReceiptMail($payment);
-            $borrowerName = $payment->loan?->borrower?->name ?: $email;
-            $invoiceNumber = 'INV-'.str_pad((string) $payment->id, 6, '0', STR_PAD_LEFT);
-            $subject = "Payment confirmed — {$invoiceNumber} — Amalgated Lending";
-
-            // 1) Brevo REST API when API key is set.
-            // 2) Brevo SMTP relay (often works when API HTTPS fails on Windows without CA bundle).
-            // 3) Default Laravel mailer (MAIL_MAILER / MAIL_HOST).
-            if ($this->brevo->isConfigured()) {
-                try {
-                    $this->brevo->sendHtml($email, $borrowerName, $subject, $mailable->render());
-
-                    return ['sent' => true, 'note' => null];
-                } catch (\Throwable $brevoError) {
-                    Log::warning('Brevo API receipt send failed.', [
-                        'payment_id' => $payment->id,
-                        'borrower_email' => $email,
-                        'error' => $brevoError->getMessage(),
-                    ]);
-                }
-            }
-
-            if ($this->brevoSmtpMailerConfigured()) {
-                try {
-                    Mail::mailer('brevo')->to($email)->send($mailable);
-
-                    return ['sent' => true, 'note' => null];
-                } catch (\Throwable $smtpError) {
-                    Log::warning('Brevo SMTP mailer receipt send failed.', [
-                        'payment_id' => $payment->id,
-                        'borrower_email' => $email,
-                        'error' => $smtpError->getMessage(),
-                    ]);
-                }
-            }
-
-            Mail::to($email)->send($mailable);
-
-            return ['sent' => true, 'note' => null];
-        } catch (\Throwable $e) {
-            Log::warning('Payment receipt email failed: '.$e->getMessage(), [
-                'payment_id' => $payment->id,
-                'borrower_email' => $email,
-            ]);
-            try {
-                // Last-resort fallback: write the receipt email payload to logs so local/dev flows
-                // can proceed even when neither Brevo nor SMTP transport is available.
-                Mail::mailer('log')->to($email)->send($mailable ?? new PaymentReceiptMail($payment->fresh(['loan.borrower'])));
-                Log::info('Payment receipt written to log mailer fallback.', [
-                    'payment_id' => $payment->id,
-                    'borrower_email' => $email,
-                ]);
-
-                return ['sent' => false, 'note' => 'mail_logged_only'];
-            } catch (\Throwable $logFallbackError) {
-                Log::warning('Payment receipt log-mail fallback failed: '.$logFallbackError->getMessage(), [
-                    'payment_id' => $payment->id,
-                    'borrower_email' => $email,
-                ]);
-
-                return ['sent' => false, 'note' => 'mail_transport_failed'];
-            }
-        }
-    }
-
-    private function brevoSmtpMailerConfigured(): bool
-    {
-        $user = config('mail.mailers.brevo.username');
-        $pass = config('mail.mailers.brevo.password');
-
-        return is_string($user) && $user !== '' && is_string($pass) && $pass !== '';
-    }
-
-    private function resolveBorrowerReceiptEmail(Payment $payment): ?string
-    {
-        $payment->loadMissing('loan.borrower');
-        $borrower = $payment->loan?->borrower;
-        $email = $borrower?->email;
-        if (is_string($email) && filter_var(trim($email), FILTER_VALIDATE_EMAIL)) {
-            return trim($email);
-        }
-
-        $payload = $payment->loan?->application_payload;
-        if (! is_array($payload)) {
-            return null;
-        }
-        foreach (['email', 'contact_email', 'borrower_email'] as $key) {
-            $e = $payload[$key] ?? null;
-            if (is_string($e) && filter_var(trim($e), FILTER_VALIDATE_EMAIL)) {
-                return trim($e);
-            }
-        }
-
-        return null;
     }
 
     private function paymentJustBecamePaid(string $previousStatus, string $currentStatus): bool
@@ -303,12 +188,15 @@ class PaymentController extends Controller
         if (! $loan) {
             return;
         }
-        $remaining = Payment::where('loan_id', $loanId)
-            ->get()
-            ->sum(fn ($p) => max(0, (float) $p->amount_due - (float) $p->amount_paid));
-        $loan->outstanding_balance = round(max(0, $remaining), 2);
 
-        $unpaid = Payment::where('loan_id', $loan->id)->where('status', '!=', Payment::STATUS_PAID)->count();
+        $summary = Payment::query()
+            ->where('loan_id', $loanId)
+            ->selectRaw('COALESCE(SUM(GREATEST(amount_due - amount_paid, 0)), 0) AS remaining_balance')
+            ->selectRaw('SUM(CASE WHEN status != ? THEN 1 ELSE 0 END) AS unpaid_count', [Payment::STATUS_PAID])
+            ->first();
+
+        $loan->outstanding_balance = round((float) ($summary?->remaining_balance ?? 0), 2);
+        $unpaid = (int) ($summary?->unpaid_count ?? 0);
         if ($unpaid === 0 && $loan->status === Loan::STATUS_ONGOING) {
             $loan->status = Loan::STATUS_COMPLETED;
             $loan->completed_at = now();

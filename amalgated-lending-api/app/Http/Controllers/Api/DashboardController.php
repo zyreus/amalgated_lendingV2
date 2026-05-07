@@ -50,34 +50,39 @@ class DashboardController extends Controller
 
     public function charts(): JsonResponse
     {
-        $loanGrowth = [];
-        $repayments = [];
+        $startPeriod = now()->subMonths(5)->startOfMonth();
+        $endPeriod = now()->endOfMonth();
+        $months = collect(range(5, 0))->map(fn (int $i) => now()->subMonths($i)->format('Y-m'))->values();
 
-        foreach (range(5, 0) as $i) {
-            $start = now()->subMonths($i)->startOfMonth();
-            $end = now()->subMonths($i)->endOfMonth();
-            $ym = $start->format('Y-m');
+        $loanCounts = Loan::query()
+            ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as month_key")
+            ->selectRaw('COUNT(*) as aggregate_count')
+            ->whereBetween('created_at', [$startPeriod, $endPeriod])
+            ->groupBy('month_key')
+            ->pluck('aggregate_count', 'month_key');
 
-            $loanGrowth[] = [
-                'month' => $ym,
-                'count' => Loan::whereBetween('created_at', [$start, $end])->count(),
-            ];
+        $repaymentSums = Payment::query()
+            ->selectRaw("DATE_FORMAT(paid_at, '%Y-%m') as month_key")
+            ->selectRaw('COALESCE(SUM(amount_paid), 0) as aggregate_amount')
+            ->whereNotNull('paid_at')
+            ->whereBetween('paid_at', [$startPeriod, $endPeriod])
+            ->groupBy('month_key')
+            ->pluck('aggregate_amount', 'month_key');
 
-            $repayments[] = [
-                'month' => $ym,
-                'amount' => round((float) Payment::whereBetween('paid_at', [$start, $end])->sum('amount_paid'), 2),
-            ];
-        }
+        $loanGrowth = $months->map(fn (string $month) => [
+            'month' => $month,
+            'count' => (int) ($loanCounts[$month] ?? 0),
+        ])->values();
 
-        $revenueByMonth = [];
-        foreach (range(5, 0) as $i) {
-            $start = now()->subMonths($i)->startOfMonth();
-            $end = now()->subMonths($i)->endOfMonth();
-            $revenueByMonth[] = [
-                'month' => $start->format('Y-m'),
-                'revenue' => round((float) Payment::whereBetween('paid_at', [$start, $end])->sum('amount_paid'), 2),
-            ];
-        }
+        $repayments = $months->map(fn (string $month) => [
+            'month' => $month,
+            'amount' => round((float) ($repaymentSums[$month] ?? 0), 2),
+        ])->values();
+
+        $revenueByMonth = $months->map(fn (string $month) => [
+            'month' => $month,
+            'revenue' => round((float) ($repaymentSums[$month] ?? 0), 2),
+        ])->values();
 
         return response()->json([
             'ok' => true,

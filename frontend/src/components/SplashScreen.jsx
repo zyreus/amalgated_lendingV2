@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 
+const SPLASH_TOTAL_MS = 3000
+const SPLASH_FADE_MS = 700
+
 export default function SplashScreen({ onDone }) {
   const [fading, setFading] = useState(false)
 
   useEffect(() => {
-    const startFade = setTimeout(() => setFading(true), 1500)
-    const unmount = setTimeout(() => onDone(), 2000)
+    // Keep the splash visible longer so the logo animation is noticeable.
+    const startFade = setTimeout(() => setFading(true), SPLASH_TOTAL_MS - SPLASH_FADE_MS)
+    const unmount = setTimeout(() => onDone(), SPLASH_TOTAL_MS)
     return () => {
       clearTimeout(startFade)
       clearTimeout(unmount)
@@ -32,9 +36,17 @@ export default function SplashScreen({ onDone }) {
             src="/amalgated-lending-logo.png"
             alt=""
             className="h-full w-full object-contain"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.4, delay: 0.35 }}
+            loading="eager"
+            decoding="async"
+            fetchpriority="high"
+            width={128}
+            height={128}
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: [1, 1.03, 1] }}
+            transition={{
+              opacity: { duration: 1.1, delay: 0.35, ease: 'easeOut' },
+              scale: { duration: 2.6, delay: 0.8, repeat: Infinity, ease: 'easeInOut' },
+            }}
           />
         </motion.div>
 

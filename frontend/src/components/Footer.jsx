@@ -1,24 +1,29 @@
 import { Link } from 'react-router-dom'
+import { COOKIE_PREFERENCES_EVENT } from './privacy/CookiePreferencesModal.jsx'
 
 const AMALGATED_HOLDINGS_URL = import.meta.env.VITE_AMALGATED_HOLDINGS_URL || 'https://amalgatedholdings.com'
 
 export default function Footer() {
+  const openCookieSettings = () => {
+    window.dispatchEvent(new CustomEvent(COOKIE_PREFERENCES_EVENT))
+  }
+
   return (
     <footer className="mt-auto border-t border-white/10 bg-[#0a0a0a]">
       <div className="app-container py-10 sm:py-12">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
-            <img src="/amalgated-lending-logo.png" alt="" className="h-10 w-10 object-contain" aria-hidden />
+            <img src="/amalgated-lending-logo.png" alt="" className="h-10 w-10 object-contain" aria-hidden loading="lazy" decoding="async" />
             <div className="space-y-0.5">
               <p className="text-sm font-semibold leading-none tracking-wide text-white">Amalgated Lending</p>
-              <p className="text-sm text-white/70">Trusted Lending Solutions.</p>
+              <p className="text-sm text-white/70">Trusted Lending Solutions in Davao & Mindanao.</p>
             </div>
           </div>
           <div className="flex flex-col gap-4 lg:items-end">
             <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm text-white/80">
               <Link to="/loan-products" className="transition hover:text-white">Loan Products</Link>
-              <Link to="/features" className="transition hover:text-white">Features</Link>
-              <Link to="/branches" className="transition hover:text-white">Branches</Link>
+              <Link to="/application-flow" className="transition hover:text-white">Application Flow</Link>
+              <Link to="/privacy-policy" className="transition hover:text-white">Privacy Policy</Link>
               <Link to="/apply" className="transition hover:text-white">Apply</Link>
               <Link to="/borrower/login" className="transition hover:text-white">Borrower Log in</Link>
               <Link to="/contact" className="transition hover:text-white">Contact</Link>
@@ -44,12 +49,24 @@ export default function Footer() {
             Amalgated Lending Inc. (ALI) · Part of the Amalgated Group of Companies
           </p>
           <p className="mt-1 text-center text-xs text-white/50">
+            Davao City, Philippines · SEC/DTI details available upon request · SSL secured borrower portal
+          </p>
+          <p className="mt-1 text-center text-xs text-white/50">
             © {new Date().getFullYear()} All rights reserved.
           </p>
           <p className="mt-3 text-center">
             <a href={AMALGATED_HOLDINGS_URL} target="_blank" rel="noreferrer" className="text-xs text-white/50 underline hover:text-white/80">
               Amalgated Holdings
             </a>
+          </p>
+          <p className="mt-2 text-center">
+            <button
+              type="button"
+              onClick={openCookieSettings}
+              className="text-xs text-white/50 underline transition hover:text-white/80"
+            >
+              Cookie Settings
+            </button>
           </p>
         </div>
       </div>

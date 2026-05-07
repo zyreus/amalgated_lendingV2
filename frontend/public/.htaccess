@@ -1,4 +1,4 @@
-# Single-page app (Vite build) on Apache / cPanel.
+# Single-page app (Vite build) on Apache.
 # Copied to dist/ root on `npm run build`. Upload dist/* to amalgatedlending.com document root.
 # If the site lives in a subfolder, set RewriteBase /that-folder/ (otherwise / is fine).
 
@@ -7,6 +7,38 @@
   Header set X-Frame-Options "SAMEORIGIN"
   Header set Referrer-Policy "strict-origin-when-cross-origin"
   Header set Permissions-Policy "accelerometer=(), camera=(self), geolocation=(), microphone=(), payment=()"
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+  Header always set Content-Security-Policy "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' https://cdn.faceio.net https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: ws: wss:;"
+
+  # Versioned build assets are content-hashed and safe to cache aggressively.
+  <FilesMatch "^assets/.*\.(js|css|png|jpg|jpeg|gif|svg|webp|woff2)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+
+  # Always fetch latest application shell and service worker.
+  <FilesMatch "^(index\.html|service-worker\.js)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+  </FilesMatch>
+</IfModule>
+
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType application/x-javascript "access plus 1 year"
+  ExpiresByType image/webp "access plus 1 year"
+  ExpiresByType image/avif "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/gif "access plus 1 year"
+  ExpiresByType font/woff2 "access plus 1 year"
+  ExpiresByType application/font-woff2 "access plus 1 year"
+  ExpiresByType text/html "access plus 5 minutes"
+</IfModule>
+
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/plain text/html text/css text/javascript application/javascript application/json application/xml image/svg+xml
 </IfModule>
 
 <IfModule mod_rewrite.c>

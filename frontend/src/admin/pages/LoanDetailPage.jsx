@@ -7,6 +7,20 @@ import { admin } from '../components/AdminUi.jsx'
 import { AdminPageSkeleton } from '../../components/AppSkeletons.jsx'
 import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
 
+function describeLoanRate(loan) {
+  const annual = Number(loan?.annual_interest_rate)
+  const pl = loan?.application_payload
+  const rt = pl?.selected_rate_type
+  const m = pl?.selected_interest_rate != null ? Number(pl.selected_interest_rate) : NaN
+  if (rt === 'monthly' && Number.isFinite(m) && m > 0 && Number.isFinite(annual)) {
+    return `${m.toFixed(2)}%/mo (nominal annual ${annual.toFixed(2)}%)`
+  }
+  if (Number.isFinite(annual) && annual > 0) {
+    return `${annual.toFixed(2)}%/yr`
+  }
+  return '—'
+}
+
 export default function LoanDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -187,8 +201,8 @@ export default function LoanDetailPage() {
           <p className="mt-2 text-gray-800 dark:text-gray-100">{loan.borrower?.name}</p>
           <p className={admin.textMuted}>{loan.borrower?.email}</p>
           <p className={`mt-4 ${admin.textMuted}`}>
-            Principal ₱{Number(loan.principal).toLocaleString()} · {loan.term_months} months ·{' '}
-            {loan.annual_interest_rate}% APR
+            Principal ₱{Number(loan.principal).toLocaleString()} · {loan.term_months} months · Rate:{' '}
+            {describeLoanRate(loan)}
           </p>
           {loan.monthly_payment != null && Number(loan.monthly_payment) > 0 && (
             <p className={`mt-2 ${admin.textMuted}`}>

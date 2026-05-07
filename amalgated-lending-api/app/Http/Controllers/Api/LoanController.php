@@ -3,8 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Mail\LoanApplicationReceivedMail;
-use App\Mail\LoanDecisionMail;
+use App\Http\Resources\LoanListResource;
+use App\Jobs\SendLoanApplicationReceivedJob;
+use App\Jobs\SendLoanDecisionJob;
 use App\Models\AdminNotification;
 use App\Models\Loan;
 use App\Models\Payment;
@@ -12,26 +13,48 @@ use App\Models\Role;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Services\ActivityLogger;
-use App\Services\BrevoMailService;
 use App\Services\LoanAmortizationService;
+use App\Services\LoanProductRateResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 class LoanController extends Controller
 {
     public function __construct(
         private LoanAmortizationService $amortization,
-        private BrevoMailService $brevo,
-    ) {
-    }
+        private LoanProductRateResolver $loanProductRates,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
-        $q = Loan::query()->with(['borrower', 'approver', 'assignedOfficer']);
+        $q = Loan::query()
+            ->select([
+                'id',
+                'borrower_id',
+                'principal',
+                'term_months',
+                'annual_interest_rate',
+                'application_payload',
+                'monthly_payment',
+                'total_interest',
+                'outstanding_balance',
+                'status',
+                'assigned_officer_id',
+                'approved_by',
+                'approved_at',
+                'disbursed_at',
+                'completed_at',
+                'created_at',
+                'updated_at',
+            ])
+            ->with([
+                'borrower:id,name,email,phone',
+                'approver:id,name,email',
+                'assignedOfficer:id,name,email',
+            ]);
 
         if ($request->filled('status')) {
             $q->where('status', $request->query('status'));
@@ -44,6 +67,8 @@ class LoanController extends Controller
         }
 
         $loans = $q->orderByDesc('id')->paginate((int) $request->query('per_page', 15));
+
+        $loans->setCollection(LoanListResource::collection($loans->getCollection())->collection);
 
         return response()->json(['ok' => true, 'data' => $loans]);
     }
@@ -74,10 +99,7 @@ class LoanController extends Controller
             return response()->json(['ok' => false, 'message' => 'Only pending loans can be approved.'], 422);
         }
 
-        $rate = (float) $loan->annual_interest_rate;
-        if ($rate <= 0) {
-            $rate = (float) $this->defaultAnnualRate();
-        }
+        $rate = $this->resolveApprovalAnnualRate($loan);
 
         $result = DB::transaction(function () use ($request, $loan, $logger, $rate) {
             $schedule = $this->amortization->buildSchedule(
@@ -175,6 +197,7 @@ class LoanController extends Controller
             'principal' => 'required|numeric|min:1000',
             'term_months' => 'required|integer|min:1|max:360',
             'application_payload' => 'nullable|array',
+            'loan_product_slug' => 'nullable|string|max:190',
         ]);
 
         return $this->createPendingLoanFromInput($data, null);
@@ -206,6 +229,7 @@ class LoanController extends Controller
             'principal' => 'required|numeric|min:1000',
             'term_months' => 'required|integer|min:1|max:360',
             'application_payload' => 'nullable|array',
+            'loan_product_slug' => 'nullable|string|max:190',
         ]);
 
         $response = $this->createPendingLoanFromInput($data, null);
@@ -251,11 +275,30 @@ class LoanController extends Controller
             $borrower->roles()->syncWithoutDetaching([$borrowerRole->id]);
         }
 
-        $rate = $this->defaultAnnualRate();
-
         $payload = $data['application_payload'] ?? [];
         if (! is_array($payload)) {
             $payload = [];
+        }
+
+        $topSlug = isset($data['loan_product_slug']) ? trim((string) $data['loan_product_slug']) : '';
+        if ($topSlug !== '') {
+            $payload['loan_product_slug'] = $topSlug;
+        }
+
+        $slug = isset($payload['loan_product_slug']) ? trim((string) $payload['loan_product_slug']) : '';
+        $termMonths = max(1, (int) $data['term_months']);
+
+        if ($slug !== '') {
+            $fbMonthly = LoanProductRateResolver::fallbackMonthlyPercentForSlug($slug)
+                ?? (((float) $this->defaultAnnualRate()) / 12.0);
+            $annual = $this->loanProductRates->resolveAnnualStoredPercent($slug, (float) $fbMonthly, $termMonths);
+            $monthlyPct = $this->loanProductRates->resolveMonthlyRatePercent($slug, (float) $fbMonthly, $termMonths);
+            $payload['loan_product_slug'] = $slug;
+            $payload['selected_interest_rate'] = round($monthlyPct, 4);
+            $payload['selected_rate_type'] = 'monthly';
+            $rate = $annual;
+        } else {
+            $rate = $this->defaultAnnualRate();
         }
 
         $loan = Loan::create([
@@ -307,85 +350,18 @@ class LoanController extends Controller
             'data' => ['loan_id' => $loan->id],
         ]);
 
-        $this->notifyBorrowerApplicationReceived($borrower, $loan);
+        SendLoanApplicationReceivedJob::dispatch($borrower->id, $loan->id);
 
         return response()->json(['ok' => true, 'loan_id' => $loan->id], 201);
     }
 
     /**
-     * Confirmation email to borrower (Brevo API if configured, else Laravel mail).
-     * Failures are logged only — application is already saved.
-     */
-    private function notifyBorrowerApplicationReceived(User $borrower, Loan $loan): void
-    {
-        $email = trim((string) $borrower->email);
-        if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            return;
-        }
-
-        $mailable = new LoanApplicationReceivedMail($loan, (string) $borrower->name);
-        $subject = 'We received your loan application — Amalgated Lending';
-
-        if ($this->brevo->isConfigured()) {
-            try {
-                $html = $mailable->render();
-                $this->brevo->sendHtml($email, $borrower->name, $subject, $html);
-
-                return;
-            } catch (\Throwable $e) {
-                report($e);
-            }
-        }
-
-        try {
-            Mail::to($email)->send($mailable);
-        } catch (\Throwable $e) {
-            report($e);
-        }
-    }
-
-    /**
      * Decision email to borrower for approved/rejected applications.
-     * Failures are logged only — loan decision is already saved.
+     * Failures are delegated to queue retry policies.
      */
     private function notifyBorrowerLoanDecision(Loan $loan): void
     {
-        if (! in_array((string) $loan->status, [Loan::STATUS_ONGOING, Loan::STATUS_REJECTED], true)) {
-            return;
-        }
-
-        $borrower = $loan->borrower;
-        if (! $borrower) {
-            return;
-        }
-
-        $email = trim((string) $borrower->email);
-        if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            return;
-        }
-
-        $decision = $loan->status === Loan::STATUS_REJECTED ? Loan::STATUS_REJECTED : Loan::STATUS_APPROVED;
-        $mailable = new LoanDecisionMail($loan, (string) $borrower->name, $decision);
-        $subject = $decision === Loan::STATUS_REJECTED
-            ? 'Loan application update: rejected — Amalgated Lending'
-            : 'Loan application update: approved — Amalgated Lending';
-
-        if ($this->brevo->isConfigured()) {
-            try {
-                $html = $mailable->render();
-                $this->brevo->sendHtml($email, $borrower->name, $subject, $html);
-
-                return;
-            } catch (\Throwable $e) {
-                report($e);
-            }
-        }
-
-        try {
-            Mail::to($email)->send($mailable);
-        } catch (\Throwable $e) {
-            report($e);
-        }
+        SendLoanDecisionJob::dispatch($loan->id);
     }
 
     public function assignOfficer(Request $request, Loan $loan, ActivityLogger $logger): JsonResponse
@@ -423,6 +399,28 @@ class LoanController extends Controller
         ]);
     }
 
+    private function resolveApprovalAnnualRate(Loan $loan): float
+    {
+        $stored = (float) $loan->annual_interest_rate;
+        if ($stored > 0.0) {
+            return $stored;
+        }
+
+        $payload = is_array($loan->application_payload) ? $loan->application_payload : [];
+        $slugRaw = isset($payload['loan_product_slug']) ? trim((string) $payload['loan_product_slug']) : '';
+        $slug = $slugRaw !== '' ? $slugRaw : null;
+
+        if ($slug !== null) {
+            $termMonths = max(1, (int) $loan->term_months);
+            $fbMonthly = LoanProductRateResolver::fallbackMonthlyPercentForSlug($slug)
+                ?? (((float) $this->defaultAnnualRate()) / 12.0);
+
+            return $this->loanProductRates->resolveAnnualStoredPercent($slug, (float) $fbMonthly, $termMonths);
+        }
+
+        return (float) $this->defaultAnnualRate();
+    }
+
     private function defaultAnnualRate(): float
     {
         $row = SystemSetting::where('key', 'loan_defaults')->first();
@@ -431,4 +429,3 @@ class LoanController extends Controller
         return isset($v['default_annual_rate']) ? (float) $v['default_annual_rate'] : 12.0;
     }
 }
-

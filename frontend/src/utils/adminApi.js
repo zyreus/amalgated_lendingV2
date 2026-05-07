@@ -5,9 +5,11 @@
  * @see Amalgated_Holdings/Amalgated_Holdings/src/utils/adminApi.js
  */
 
+import { viteChatOriginFromEnv } from './chatEnvOrigin.js'
+
 const STORAGE_KEY = 'lending_admin_working_api_origin'
 
-const API_BASE = (import.meta.env.VITE_CHAT_SERVER_URL || '').trim().replace(/\/$/, '')
+const API_BASE = viteChatOriginFromEnv()
 
 function addBase(bases, b) {
   const s = b === '' || b == null ? '' : String(b).replace(/\/$/, '')

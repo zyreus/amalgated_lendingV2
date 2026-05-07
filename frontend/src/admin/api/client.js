@@ -1,4 +1,8 @@
-import { laravelRequest, normalizeLaravelApiBase } from '../../utils/lendingLaravelApi.js'
+import {
+  laravelRequest,
+  normalizeLaravelApiBase,
+  formatLaravelUnreachableError,
+} from '../../utils/lendingLaravelApi.js'
 
 /** Default display / docs; actual requests use {@link laravelRequest} multi-base resolution. */
 const API_BASE = (
@@ -69,9 +73,9 @@ export async function api(path, options = {}) {
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const { res } = await laravelRequest(rel, { ...options, headers })
+  const { res, lastError } = await laravelRequest(rel, { ...options, headers })
   if (!res) {
-    const err = new Error('Could not reach lending API (check Laravel URL and Vite proxy).')
+    const err = new Error(formatLaravelUnreachableError(lastError))
     err.status = 0
     throw err
   }

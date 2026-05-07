@@ -5,9 +5,10 @@ import { useToast } from '../context/ToastContext.jsx'
 import { admin } from '../components/AdminUi.jsx'
 import { getAdminNotificationHref } from '../utils/notificationRoutes.js'
 
-export default function NotificationsPage() {
+export default function NotificationsPage({ embedded = false, onNavigate = null }) {
   const { showToast } = useToast()
   const [data, setData] = useState(null)
+  const [selectedIds, setSelectedIds] = useState([])
 
   const load = async () => {
     try {
@@ -23,6 +24,12 @@ export default function NotificationsPage() {
   }, [showToast])
 
   const rows = data?.data || []
+  const selectedCount = selectedIds.length
+
+  useEffect(() => {
+    const rowIds = new Set(rows.map((r) => Number(r.id)))
+    setSelectedIds((prev) => prev.filter((id) => rowIds.has(Number(id))))
+  }, [rows])
 
   const markAll = async () => {
     try {
@@ -44,20 +51,78 @@ export default function NotificationsPage() {
     }
   }
 
+  const selectAll = () => {
+    setSelectedIds(rows.map((r) => Number(r.id)))
+  }
+
+  const unselectAll = () => {
+    setSelectedIds([])
+  }
+
+  const toggleSelected = (id) => {
+    const nId = Number(id)
+    setSelectedIds((prev) => (prev.includes(nId) ? prev.filter((x) => x !== nId) : [...prev, nId]))
+  }
+
+  const deleteSelected = async () => {
+    if (!selectedIds.length) return
+    const ok = window.confirm(`Delete ${selectedIds.length} selected notification(s)?`)
+    if (!ok) return
+    try {
+      await api('/notifications/bulk-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids: selectedIds }),
+      })
+      setSelectedIds([])
+      await load()
+      window.dispatchEvent(new CustomEvent('admin-notifications-changed'))
+    } catch (e) {
+      showToast(e.message, 'error')
+    }
+  }
+
   return (
-    <div className="w-full min-w-0 space-y-6">
+    <div className={`w-full min-w-0 ${embedded ? 'space-y-4' : 'space-y-6'}`}>
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className={admin.pageTitle}>Notifications</h1>
-          <p className={admin.pageSubtitle}>New loan applications and system events.</p>
+        {!embedded ? (
+          <div>
+            <h1 className={admin.pageTitle}>Notifications</h1>
+            <p className={admin.pageSubtitle}>New loan applications and system events.</p>
+          </div>
+        ) : <span />}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={selectAll}
+            disabled={rows.length === 0}
+            className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-800 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/15 dark:text-gray-100 dark:hover:bg-white/5"
+          >
+            Select all
+          </button>
+          <button
+            type="button"
+            onClick={unselectAll}
+            disabled={selectedCount === 0}
+            className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-800 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/15 dark:text-gray-100 dark:hover:bg-white/5"
+          >
+            Unselect all
+          </button>
+          <button
+            type="button"
+            onClick={deleteSelected}
+            disabled={selectedCount === 0}
+            className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-500/30 dark:bg-red-950/20 dark:text-red-300 dark:hover:bg-red-900/30"
+          >
+            Delete selected{selectedCount ? ` (${selectedCount})` : ''}
+          </button>
+          <button
+            type="button"
+            onClick={markAll}
+            className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-800 transition hover:bg-gray-100 dark:border-white/15 dark:text-gray-100 dark:hover:bg-white/5"
+          >
+            Mark all read
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={markAll}
-          className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-800 transition hover:bg-gray-100 dark:border-white/15 dark:text-gray-100 dark:hover:bg-white/5"
-        >
-          Mark all read
-        </button>
       </div>
 
       <ul className="space-y-3">
@@ -76,10 +141,20 @@ export default function NotificationsPage() {
           return (
             <li key={n.id} className={`rounded-2xl border px-5 py-4 transition-colors duration-300 ${cardTone}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
+                <label className="mt-0.5 inline-flex shrink-0 items-center">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(Number(n.id))}
+                    onChange={() => toggleSelected(n.id)}
+                    className="h-4 w-4 cursor-pointer rounded border-gray-300 text-red-600 focus:ring-red-500"
+                    aria-label={`Select notification ${n.title || n.id}`}
+                  />
+                </label>
                 {href ? (
                   <Link
                     to={href}
                     onClick={() => {
+                      if (typeof onNavigate === 'function') onNavigate()
                       if (!n.read_at) void markOne(n.id)
                     }}
                     className={`min-w-0 flex-1 rounded-lg outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-red-500 ${

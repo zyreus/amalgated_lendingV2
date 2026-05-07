@@ -5,12 +5,46 @@ function env(name, fallback = '') {
   return (process.env[name] || fallback).toString().trim()
 }
 
+/** Allowed MySQL identifiers for database name — avoid SQL injection via env. */
+function safeMysqlIdentifier(name, fallback = 'amalgated_lending_chat') {
+  const raw = String(name || '').trim().replace(/[^a-zA-Z0-9_]/g, '')
+  return raw.length > 0 && raw.length <= 64 ? raw : fallback
+}
+
+const MYSQL_HOST = env('MYSQL_HOST', '127.0.0.1')
+const MYSQL_PORT = Number(env('MYSQL_PORT', '3306')) || 3306
+const MYSQL_USER = env('MYSQL_USER', 'root')
+const MYSQL_PASSWORD = env('MYSQL_PASSWORD', '')
+const MYSQL_DATABASE = safeMysqlIdentifier(env('MYSQL_DATABASE', 'amalgated_lending_chat'))
+
+/**
+ * Ensures MYSQL_DATABASE exists (matches db/mysql-init.sql).
+ * Separate from Laravel amalgated_lending_db — hosts Node CRM/socket tables only.
+ */
+async function ensureMysqlDatabaseExists() {
+  const conn = await mysql.createConnection({
+    host: MYSQL_HOST,
+    port: MYSQL_PORT,
+    user: MYSQL_USER,
+    password: MYSQL_PASSWORD,
+  })
+  try {
+    await conn.query(
+      `CREATE DATABASE IF NOT EXISTS \`${MYSQL_DATABASE}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+    )
+  } finally {
+    await conn.end().catch(() => {})
+  }
+}
+
+await ensureMysqlDatabaseExists()
+
 const pool = mysql.createPool({
-  host: env('MYSQL_HOST', '127.0.0.1'),
-  port: Number(env('MYSQL_PORT', '3306')) || 3306,
-  user: env('MYSQL_USER', 'root'),
-  password: env('MYSQL_PASSWORD', ''),
-  database: env('MYSQL_DATABASE', 'amalgated_lending_chat'),
+  host: MYSQL_HOST,
+  port: MYSQL_PORT,
+  user: MYSQL_USER,
+  password: MYSQL_PASSWORD,
+  database: MYSQL_DATABASE,
   waitForConnections: true,
   connectionLimit: Number(env('MYSQL_POOL_SIZE', '10')) || 10,
   enableKeepAlive: true,
@@ -133,6 +167,7 @@ async function ensureChatCrmTables() {
       content TEXT NOT NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       KEY idx_messages_convo_created (conversation_id, created_at),
+      KEY idx_messages_convo_id (conversation_id, id),
       CONSTRAINT fk_messages_conversation
         FOREIGN KEY (conversation_id) REFERENCES conversations(id)
         ON DELETE CASCADE
@@ -181,6 +216,38 @@ async function ensureChatCrmTables() {
 }
 
 async function ensureSchema() {
+  // Legacy auth/content tables still used by admin stats and older endpoints.
+  await q(
+    `CREATE TABLE IF NOT EXISTS users (
+      id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      email VARCHAR(255) NOT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_users_email (email)
+    ) ENGINE=InnoDB`,
+  )
+  await q(
+    `CREATE TABLE IF NOT EXISTS posts (
+      id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      body TEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      KEY idx_posts_created (created_at),
+      CONSTRAINT fk_posts_user
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE
+    ) ENGINE=InnoDB`,
+  )
+  await q(
+    `CREATE TABLE IF NOT EXISTS site_settings (
+      \`key\` VARCHAR(191) PRIMARY KEY,
+      value JSON NOT NULL,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB`,
+  )
+
   await ensureChatCrmTables()
 
   // Careers
@@ -262,6 +329,7 @@ async function ensureSchema() {
       rating INT NOT NULL,
       name VARCHAR(255) NOT NULL DEFAULT 'Anonymous',
       email VARCHAR(255) NULL,
+      subject VARCHAR(191) NULL,
       comment TEXT NOT NULL,
       is_read TINYINT(1) NOT NULL DEFAULT 0,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -269,6 +337,11 @@ async function ensureSchema() {
       KEY idx_feedback_read_created (is_read, created_at)
     ) ENGINE=InnoDB`,
   )
+  try {
+    await q(`ALTER TABLE feedback ADD COLUMN subject VARCHAR(191) NULL AFTER email`)
+  } catch (e) {
+    if (e?.code !== 'ER_DUP_FIELDNAME') throw e
+  }
 
   // CRM tickets (standalone support system)
   await q(
@@ -658,8 +731,18 @@ export async function getConversation(id) {
   return one(`SELECT * FROM conversations WHERE id = :id`, { id })
 }
 
-export async function getAllConversations() {
-  return q(`SELECT * FROM conversations WHERE status <> 'archived' ORDER BY updated_at DESC`)
+export async function getAllConversations(options = {}) {
+  const limit = Math.min(Math.max(Number(options.limit) || 200, 1), 1000);
+  const includeArchived = Boolean(options.includeArchived);
+  const where = includeArchived ? '' : `WHERE status <> 'archived'`;
+  return q(
+    `SELECT id, visitor_name, visitor_email, status, mode, admin_unread_count, admin_last_read_at, created_at, updated_at
+     FROM conversations
+     ${where}
+     ORDER BY updated_at DESC
+     LIMIT :limit`,
+    { limit },
+  );
 }
 
 export async function updateStatus(id, status) {
@@ -708,10 +791,22 @@ export async function clearConversationUnread(conversationId) {
   )
 }
 
-export async function getMessages(conversationId) {
+export async function getMessages(conversationId, options = {}) {
+  const limit = Math.min(Math.max(Number(options.limit) || 100, 1), 500);
+  const offset = Math.max(Number(options.offset) || 0, 0);
+  const afterId = Math.max(Number(options.afterId) || 0, 0);
+  if (afterId > 0) {
+    return q(
+      `SELECT * FROM messages
+       WHERE conversation_id = :conversationId AND id > :afterId
+       ORDER BY id ASC
+       LIMIT :limit`,
+      { conversationId, afterId, limit },
+    );
+  }
   return q(
-    `SELECT * FROM messages WHERE conversation_id = :conversationId ORDER BY created_at ASC`,
-    { conversationId },
+    `SELECT * FROM messages WHERE conversation_id = :conversationId ORDER BY created_at ASC LIMIT :limit OFFSET :offset`,
+    { conversationId, limit, offset },
   )
 }
 
@@ -1669,22 +1764,24 @@ export async function createFeedback(data = {}) {
     rating,
     name = 'Anonymous',
     email = null,
+    subject = null,
     comment,
   } = data || {}
   await q(
-    `INSERT INTO feedback (id, conversation_id, rating, name, email, comment, is_read)
-     VALUES (:id, :conversation_id, :rating, :name, :email, :comment, 0)`,
+    `INSERT INTO feedback (id, conversation_id, rating, name, email, subject, comment, is_read)
+     VALUES (:id, :conversation_id, :rating, :name, :email, :subject, :comment, 0)`,
     {
       id,
       conversation_id: conversationId,
       rating,
       name,
       email,
+      subject,
       comment,
     },
   )
   return one(
-    `SELECT id, conversation_id, rating, name, email, comment, is_read, created_at
+    `SELECT id, conversation_id, rating, name, email, subject, comment, is_read, created_at
      FROM feedback
      WHERE id = :id`,
     { id },
@@ -1693,7 +1790,7 @@ export async function createFeedback(data = {}) {
 
 export async function getFeedback() {
   return q(
-    `SELECT id, conversation_id, rating, name, email, comment, is_read, created_at
+    `SELECT id, conversation_id, rating, name, email, subject, comment, is_read, created_at
      FROM feedback
      ORDER BY created_at DESC`,
   )

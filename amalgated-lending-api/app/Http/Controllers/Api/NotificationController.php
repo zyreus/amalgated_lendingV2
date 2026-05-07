@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AdminNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class NotificationController extends Controller
 {
@@ -42,5 +43,28 @@ class NotificationController extends Controller
         AdminNotification::whereNull('read_at')->update(['read_at' => now()]);
 
         return response()->json(['ok' => true]);
+    }
+
+    public function destroy(Request $request, AdminNotification $notification): JsonResponse
+    {
+        $notification->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', Rule::exists('admin_notifications', 'id')],
+        ]);
+
+        $ids = collect($data['ids'])->map(fn ($id) => (int) $id)->unique()->values();
+        $deleted = AdminNotification::query()->whereIn('id', $ids)->delete();
+
+        return response()->json([
+            'ok' => true,
+            'deleted' => $deleted,
+        ]);
     }
 }

@@ -8,10 +8,10 @@ use App\Models\AdminNotification;
 use App\Models\Loan;
 use App\Models\LoanApplication;
 use App\Models\LoanDocument;
-use App\Models\LoanProduct;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\BrevoMailService;
+use App\Services\LoanProductRateResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,8 +23,8 @@ class RealEstateMortgageController extends Controller
 {
     public function __construct(
         private BrevoMailService $brevo,
-    ) {
-    }
+        private LoanProductRateResolver $loanProductRates,
+    ) {}
 
     public function apply(Request $request): JsonResponse
     {
@@ -59,7 +59,7 @@ class RealEstateMortgageController extends Controller
         $tinText = trim((string) ($data['tin_number'] ?? ''));
 
         $payload = $this->decodeApplicationPayload($data['application_payload'] ?? null);
-        $monthlyRatePercent = $this->resolveMonthlyRatePercent('real-estate-mortgage', 3.88);
+        $monthlyRatePercent = $this->loanProductRates->resolveMonthlyRatePercent('real-estate-mortgage', 3.88, (int) $data['term_months']);
         $annualRatePercent = $monthlyRatePercent * 12;
         $payload['loan_product_slug'] = 'real-estate-mortgage';
         $payload['loan_product_type'] = LoanApplication::TYPE_REAL_ESTATE;
@@ -235,23 +235,6 @@ class RealEstateMortgageController extends Controller
         $decoded = json_decode($raw, true);
 
         return is_array($decoded) ? $decoded : [];
-    }
-
-    private function resolveMonthlyRatePercent(string $slug, float $fallback): float
-    {
-        $product = LoanProduct::query()->where('slug', $slug)->first();
-        if (! $product) {
-            return $fallback;
-        }
-        $rate = (float) $product->interest_rate;
-        if ($rate <= 0) {
-            return $fallback;
-        }
-        if ((string) $product->rate_type === 'annual') {
-            return $rate / 12;
-        }
-
-        return $rate;
     }
 
     private function notifyBorrower(User $borrower, Loan $loan): void

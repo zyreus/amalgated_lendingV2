@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, getToken, setToken } from '../api/client.js'
 import { clearAdminUser, setAdminUser } from '../../auth/session.js'
 import { AdminApiAuthContext } from './adminApiAuthContext.js'
+import { clearSessionLendingAdminSecret, setSessionLendingAdminSecret } from '../../utils/adminChatApi.js'
 
 export function AdminApiAuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -18,9 +19,11 @@ export function AdminApiAuthProvider({ children }) {
       const res = await api('/admin/me')
       setUser(res.user)
       setAdminUser(res.user)
+      setSessionLendingAdminSecret(res.chat_api_secret)
     } catch {
       setToken(null)
       clearAdminUser()
+      clearSessionLendingAdminSecret()
       setUser(null)
     } finally {
       setBooting(false)
@@ -47,6 +50,7 @@ export function AdminApiAuthProvider({ children }) {
     setToken(res.token || res.access_token)
     setUser(res.user)
     setAdminUser(res.user)
+    setSessionLendingAdminSecret(res.chat_api_secret)
     return res
   }, [])
 
@@ -58,6 +62,7 @@ export function AdminApiAuthProvider({ children }) {
     }
     setToken(null)
     clearAdminUser()
+    clearSessionLendingAdminSecret()
     setUser(null)
   }, [])
 

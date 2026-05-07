@@ -48,8 +48,10 @@ export default function BorrowerChatPage() {
     }
     run()
     const iv = setInterval(() => {
-      if (mounted) loadMessages()
-    }, 3000)
+      if (!mounted) return
+      if (typeof document !== 'undefined' && document.hidden) return
+      loadMessages()
+    }, 6000)
     return () => {
       mounted = false
       clearInterval(iv)

@@ -12,7 +12,7 @@
         .toolbar { margin: 0 0 12px; font-size: 12px; }
         .toolbar a { color: #b91c1c; text-decoration: none; font-weight: 700; }
         .header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-        .header img { width: 54px; height: 54px; object-fit: contain; }
+        .header .brand-logo { width: 54px; height: 54px; display: block; }
         .brand-name { font-size: 19px; font-weight: 800; letter-spacing: 0.02em; }
         .brand-sub { font-size: 11px; color: #b91c1c; font-weight: 700; margin-top: 2px; }
         .doc-title { margin: 10px 0 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
@@ -114,8 +114,6 @@
     $na = fn ($v) => ($v === null || $v === '') ? $blank : $v;
     $docUrl = fn ($path) => $path ? url('storage/'.ltrim($path, '/')) : null;
     $sigUrl = fn ($path) => $path ? url('storage/'.ltrim($path, '/')) : null;
-    // Served from Laravel public/ (we keep a copy/symlink there).
-    $brandLogo = url('/amalgated-lending-logo.png');
     $docStatus = $docStatus ?? [];
     $extForm = $form['extended_application_form'] ?? null;
     $hasExtForm = is_array($extForm) && count($extForm) > 0;
@@ -182,7 +180,7 @@
     <p class="toolbar"><a href="javascript:window.print()">Print</a> · General loan application</p>
 
     <div class="header">
-        <img src="{{ $brandLogo }}" alt="Amalgated Lending logo">
+        @include('partials.print-logo')
         <div>
             <div class="brand-name">AMALGATED</div>
             <div class="brand-sub">Lending</div>
@@ -428,7 +426,7 @@
         @endphp
         <div style="page-break-before: always;"></div>
         <div class="header" style="margin-top:4px;">
-            <img src="{{ $brandLogo }}" alt="Amalgated Lending logo">
+            @include('partials.print-logo')
             <div>
                 <div class="brand-name">AMALGATED</div>
                 <div class="brand-sub">Lending</div>

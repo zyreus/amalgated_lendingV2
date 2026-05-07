@@ -7,7 +7,7 @@
 </head>
 <body style="font-family: system-ui, -apple-system, Segoe UI, sans-serif; line-height: 1.6; color: #111827; max-width: 640px; margin: 0; padding: 24px;">
     <div style="margin: 0 0 20px; display: flex; align-items: center; gap: 12px;">
-        <img src="{{ url('/amalgated-lending-logo.png') }}" alt="Amalgated Lending" style="height: 52px; width: auto;">
+        <img src="{{ $logoCid ?: $logoUrl }}" alt="Amalgated Lending" style="height: 52px; width: auto;">
         <div>
             <div style="font-size: 18px; font-weight: 800; letter-spacing: 0.04em;">Amalgated Lending</div>
             <div style="font-size: 14px; font-weight: 600; color: #4b5563;">Payment Invoice</div>

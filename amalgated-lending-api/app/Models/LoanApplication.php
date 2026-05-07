@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class LoanApplication extends Model
 {
@@ -29,7 +30,10 @@ class LoanApplication extends Model
     protected $fillable = [
         'user_id',
         'loan_id',
+        'loan_product_id',
         'loan_type',
+        'loan_amount',
+        'term_months',
         'co_maker_id',
         'co_maker_name',
         'co_maker_email',
@@ -49,6 +53,8 @@ class LoanApplication extends Model
         'status',
         'form_data',
         'documents',
+        'computed_values',
+        'computation_breakdown',
         'applicant_signature',
         'spouse_signature',
         'comaker_signature',
@@ -60,11 +66,15 @@ class LoanApplication extends Model
 
     protected $casts = [
         'property_value' => 'decimal:2',
+        'loan_amount' => 'decimal:2',
+        'term_months' => 'integer',
         'monthly_salary' => 'decimal:2',
         'monthly_pension' => 'decimal:2',
         'travel_date' => 'date',
         'form_data' => 'array',
         'documents' => 'array',
+        'computed_values' => 'array',
+        'computation_breakdown' => 'array',
         'submitted_at' => 'datetime',
         'verified_at' => 'datetime',
     ];
@@ -94,6 +104,11 @@ class LoanApplication extends Model
         return $this->belongsTo(Loan::class);
     }
 
+    public function loanProduct(): BelongsTo
+    {
+        return $this->belongsTo(LoanProduct::class, 'loan_product_id');
+    }
+
     public function coMaker(): BelongsTo
     {
         return $this->belongsTo(User::class, 'co_maker_id');
@@ -104,7 +119,7 @@ class LoanApplication extends Model
         return $this->hasMany(LoanDocument::class);
     }
 
-    public function travelLoanWizardForm(): \Illuminate\Database\Eloquent\Relations\HasOne
+    public function travelLoanWizardForm(): HasOne
     {
         return $this->hasOne(TravelLoanWizardForm::class);
     }
@@ -119,7 +134,7 @@ class LoanApplication extends Model
         return $this->hasMany(LoanApplicationContactPerson::class);
     }
 
-    public function creditMemorandum(): \Illuminate\Database\Eloquent\Relations\HasOne
+    public function creditMemorandum(): HasOne
     {
         return $this->hasOne(LoanCreditMemorandum::class);
     }

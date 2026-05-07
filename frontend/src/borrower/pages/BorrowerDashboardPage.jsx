@@ -13,6 +13,37 @@ const paymentMethods = [
   { id: 'cash', label: 'Cash' },
 ]
 
+function sameOriginPrintUrl(url) {
+  const raw = String(url || '').trim()
+  if (!raw) return ''
+  if (raw.startsWith('/print/')) return raw
+  try {
+    const parsed = new URL(raw, typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
+    if (parsed.pathname.startsWith('/print/')) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`
+    }
+  } catch {
+    return raw
+  }
+  return raw
+}
+
+function describeBorrowerLoanInterest(loan) {
+  const annual = Number(loan?.annual_interest_rate ?? 0)
+  const pl = loan?.application_payload
+  if (pl?.selected_rate_type === 'monthly' && pl?.selected_interest_rate != null) {
+    const m = Number(pl.selected_interest_rate)
+    if (Number.isFinite(m) && m > 0) {
+      return `${m.toFixed(2)}% per month`
+    }
+  }
+  if (Number.isFinite(annual) && annual > 0) {
+    const monthly = annual / 12
+    return `${monthly.toFixed(2)}% per month`
+  }
+  return '—'
+}
+
 export default function BorrowerDashboardPage() {
   const { user } = useBorrowerAuth()
   const [data, setData] = useState(null)
@@ -177,12 +208,12 @@ th{background:#f9fafb}
                   </p>
                   {l.print_statement_url ? (
                     <a
-                      href={l.print_statement_url}
+                      href={sameOriginPrintUrl(l.print_statement_url)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="mt-1 inline-block text-xs font-semibold text-red-600 hover:underline dark:text-red-400"
                     >
-                      Statement of account (SOA)
+                      Statement of Account (SOA)
                     </a>
                   ) : null}
                 </div>
@@ -287,7 +318,7 @@ th{background:#f9fafb}
 
       {lendingApps.general.length > 0 || lendingApps.travel.length > 0 ? (
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Loan applications (Filament)</h3>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Loan applications</h3>
           <p className={`mt-1 text-sm ${ui.textMuted}`}>
             General and travel assistance records: document checklist, signatures, and print (opens in a new tab; link expires
             after 45 minutes).
@@ -311,7 +342,7 @@ th{background:#f9fafb}
                         </div>
                         {row.print_url ? (
                           <a
-                            href={row.print_url}
+                            href={sameOriginPrintUrl(row.print_url)}
                             target="_blank"
                             rel="noreferrer"
                             className="shrink-0 rounded-lg bg-gray-900 px-2.5 py-1 text-xs font-semibold text-white dark:bg-gray-100 dark:text-gray-900"
@@ -408,7 +439,7 @@ th{background:#f9fafb}
                           ) : null}
                           {row.print_url ? (
                             <a
-                              href={row.print_url}
+                              href={sameOriginPrintUrl(row.print_url)}
                               target="_blank"
                               rel="noreferrer"
                               className="shrink-0 rounded-lg bg-gray-900 px-2.5 py-1 text-xs font-semibold text-white dark:bg-gray-100 dark:text-gray-900"
@@ -515,7 +546,49 @@ th{background:#f9fafb}
       <div className="grid gap-5 xl:grid-cols-[2fr_1fr]">
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg">
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Pending payments</h3>
-          <div className={ui.tableScroll}>
+          <div className="mt-4 space-y-3 md:hidden">
+            {pendingRows.length ? (
+              pendingRows.map((p) => (
+                <div key={p.id} className="rounded-xl border border-gray-200 bg-gray-50/80 p-3 dark:border-[#1F2937] dark:bg-[#0F172A]/50">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{formatDate(p.due_date)}</p>
+                      <p className={`text-xs ${ui.textMuted}`}>{dueCountdownLabel(p.due_date)}</p>
+                    </div>
+                    <span className={`inline-flex rounded-full px-2 py-1 text-xs ring-1 ${paymentStatusBadge(p.status)}`}>
+                      {String(p.status || '').toUpperCase()}
+                    </span>
+                  </div>
+                  <dl className="mt-3 space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <dt className={ui.textMuted}>Amount due</dt>
+                      <dd className="font-medium text-gray-900 dark:text-gray-100">{formatPeso(p.amount_due)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <dt className={ui.textMuted}>Amount paid</dt>
+                      <dd className="font-medium text-gray-900 dark:text-gray-100">{formatPeso(p.amount_paid)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <dt className={ui.textMuted}>Penalty</dt>
+                      <dd className="font-medium text-gray-900 dark:text-gray-100">{formatPeso(p.penalty_amount)}</dd>
+                    </div>
+                  </dl>
+                  <button
+                    type="button"
+                    className="mt-3 w-full rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700"
+                    onClick={() => setModalRow(p)}
+                  >
+                    Upload Payment
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p className={`rounded-xl border border-dashed border-gray-300 px-3 py-6 text-center text-sm ${ui.textMuted} dark:border-gray-600`}>
+                No pending installments.
+              </p>
+            )}
+          </div>
+          <div className={`hidden md:block ${ui.tableScroll}`}>
             <table className={`${ui.tableBase} ${ui.tableText} ${ui.tableMin800}`}>
               <thead>
                 <tr className={ui.thead}>
@@ -569,7 +642,7 @@ th{background:#f9fafb}
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Loan details</h3>
           <dl className="mt-3 space-y-2 text-sm">
             <Row label="Principal" value={formatPeso(loan?.principal)} />
-            <Row label="Interest rate" value={`${Number(loan?.annual_interest_rate || 0).toFixed(2)}%`} />
+            <Row label="Interest rate" value={describeBorrowerLoanInterest(loan)} />
             <Row label="Term" value={`${loan?.term_months || 0} months`} />
             <Row label="Remaining balance" value={formatPeso(loan?.outstanding_balance)} />
             <Row label="Total payable" value={formatPeso(summary.total_payable)} />

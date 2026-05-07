@@ -1,18 +1,20 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 
 export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
+  const reduceMotion = useReducedMotion()
 
-  const scrollToSection = (id) => {
+  const scrollToSection = useCallback((id) => {
     const el = document.getElementById(id)
     if (!el) return
     el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
+  }, [])
 
-  const goToSection = (id) => {
+  const goToSection = useCallback((id) => {
     if (location.pathname === '/') {
       scrollToSection(id)
       return
@@ -21,9 +23,9 @@ export default function Header() {
     window.setTimeout(() => {
       document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 120)
-  }
+  }, [location.pathname, navigate, scrollToSection])
 
-  const goHome = () => {
+  const goHome = useCallback(() => {
     if (location.pathname === '/') {
       scrollToSection('hero')
       return
@@ -32,7 +34,7 @@ export default function Header() {
     window.setTimeout(() => {
       document.getElementById('hero')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 120)
-  }
+  }, [location.pathname, navigate, scrollToSection])
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-brand-secondary/60 bg-brand-background-alt/95 backdrop-blur-md">
@@ -51,16 +53,18 @@ export default function Header() {
 
         <nav className="hidden items-center gap-5 xl:gap-6 text-sm font-medium text-brand-text lg:flex">
           <button type="button" onClick={goHome} className="nav-link">Home</button>
+          <button type="button" onClick={() => goToSection('trust')} className="nav-link">Trust</button>
+          <button type="button" onClick={() => goToSection('calculator')} className="nav-link">Calculator</button>
           <button type="button" onClick={() => goToSection('newsletter')} className="nav-link">News</button>
           <Link to="/loan-products" className="nav-link">Loan Products</Link>
-          <Link to="/features" className="nav-link">Features</Link>
-          <Link to="/branches" className="nav-link">Branches</Link>
+          <Link to="/application-flow" className="nav-link">Application Flow</Link>
+          <Link to="/privacy-policy" className="nav-link">Privacy Policy</Link>
           <Link to="/borrower/login" className="nav-link">Borrower Log in</Link>
           <Link
-            to="/contact"
+            to="/apply"
             className="inline-flex items-center justify-center rounded-full bg-brand-primary px-5 py-2.5 text-sm font-semibold text-white shadow-brand-primary transition hover:bg-brand-primary-hover hover:shadow-[0_4px_12px_rgba(220,38,38,0.4)]"
           >
-            Contact
+            Apply Now
           </Link>
         </nav>
 
@@ -83,17 +87,27 @@ export default function Header() {
         </button>
       </div>
 
+      <AnimatePresence>
       {mobileOpen && (
-        <div className="border-t border-brand-secondary/40 px-4 py-4 lg:hidden">
+        <motion.div
+          className="border-t border-brand-secondary/40 px-4 py-4 lg:hidden"
+          initial={reduceMotion ? false : { opacity: 0, y: -8 }}
+          animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
+          exit={reduceMotion ? {} : { opacity: 0, y: -8 }}
+          transition={{ duration: 0.2 }}
+        >
           <button type="button" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => { goHome(); setMobileOpen(false) }}>Home</button>
+          <button type="button" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => { goToSection('trust'); setMobileOpen(false) }}>Trust &amp; Security</button>
+          <button type="button" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => { goToSection('calculator'); setMobileOpen(false) }}>Loan Calculator</button>
           <button type="button" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => { goToSection('newsletter'); setMobileOpen(false) }}>News &amp; Announcements</button>
           <Link to="/loan-products" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => setMobileOpen(false)}>Loan Products</Link>
-          <Link to="/features" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => setMobileOpen(false)}>Features</Link>
-          <Link to="/branches" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => setMobileOpen(false)}>Branches</Link>
+          <Link to="/application-flow" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => setMobileOpen(false)}>Application Flow</Link>
+          <Link to="/privacy-policy" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => setMobileOpen(false)}>Privacy Policy</Link>
           <Link to="/borrower/login" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => setMobileOpen(false)}>Borrower Log in</Link>
-          <Link to="/contact" className="mt-3 block w-full rounded-xl bg-brand-primary px-4 py-3 text-center text-sm font-semibold text-white" onClick={() => setMobileOpen(false)}>Contact</Link>
-        </div>
+          <Link to="/apply" className="mt-3 block w-full rounded-xl bg-brand-primary px-4 py-3 text-center text-sm font-semibold text-white" onClick={() => setMobileOpen(false)}>Apply Now</Link>
+        </motion.div>
       )}
+      </AnimatePresence>
     </header>
   )
 }

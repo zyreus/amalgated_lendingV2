@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Controllers\Api\BorrowerNotificationController;
 use App\Models\AdminNotification;
 use App\Models\BorrowerNotification;
 use App\Models\Lead;
@@ -14,12 +13,12 @@ use App\Models\Payment;
 use App\Models\TravelApplication;
 use App\Support\LoanApplicationDocumentStatus;
 use App\Support\SignedPrintUrls;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Str;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class BorrowerPortalController extends Controller
 {
@@ -111,7 +110,7 @@ class BorrowerPortalController extends Controller
      * Prefer in-progress lending over newer pending applications (otherwise `orderByDesc(id)->first`
      * hid older ongoing loans when the borrower applied again).
      */
-    private function selectPrimaryLoan(\Illuminate\Support\Collection $loans): ?Loan
+    private function selectPrimaryLoan(Collection $loans): ?Loan
     {
         if ($loans->isEmpty()) {
             return null;
@@ -180,6 +179,7 @@ class BorrowerPortalController extends Controller
 
         $loansSummary = $allLoans->map(function (Loan $l) {
             $hasSchedule = is_array($l->schedule_json) && count($l->schedule_json) > 0;
+            $pl = is_array($l->application_payload) ? $l->application_payload : [];
 
             return [
                 'id' => $l->id,
@@ -187,6 +187,11 @@ class BorrowerPortalController extends Controller
                 'principal' => $l->principal,
                 'term_months' => $l->term_months,
                 'annual_interest_rate' => $l->annual_interest_rate,
+                'loan_product_slug' => $pl['loan_product_slug'] ?? null,
+                'selected_interest_rate' => isset($pl['selected_interest_rate'])
+                    ? (float) $pl['selected_interest_rate']
+                    : null,
+                'selected_rate_type' => $pl['selected_rate_type'] ?? null,
                 'monthly_payment' => $l->monthly_payment,
                 'outstanding_balance' => $l->outstanding_balance,
                 'created_at' => optional($l->created_at)?->toIso8601String(),
@@ -378,6 +383,7 @@ class BorrowerPortalController extends Controller
             'name' => 'required|string|max:255',
             'phone' => 'nullable|string|max:32',
             'id_document' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'profile_photo' => 'nullable|file|mimes:jpg,jpeg,png,webp|max:5120',
         ]);
 
         $user->name = $data['name'];
@@ -389,6 +395,21 @@ class BorrowerPortalController extends Controller
             $path = $idDoc->store('borrower-id-docs', 'public');
             $user->id_document_path = $path;
             $user->id_document_name = $idDoc->getClientOriginalName();
+        }
+
+        if ($request->hasFile('profile_photo')) {
+            /** @var UploadedFile $photo */
+            $photo = $request->file('profile_photo');
+            $path = $photo->store('borrower-profile-photos', 'public');
+            // Backward-compatible fallback: if dedicated profile photo columns are not yet migrated,
+            // use existing ID document fields so photo updates still work.
+            if (array_key_exists('profile_photo_path', $user->getAttributes())) {
+                $user->profile_photo_path = $path;
+                $user->profile_photo_name = $photo->getClientOriginalName();
+            } else {
+                $user->id_document_path = $path;
+                $user->id_document_name = $photo->getClientOriginalName();
+            }
         }
 
         $user->save();
@@ -403,6 +424,10 @@ class BorrowerPortalController extends Controller
                 'phone' => $user->phone,
                 'id_document_name' => $user->id_document_name,
                 'id_document_url' => $user->id_document_path ? Storage::disk('public')->url($user->id_document_path) : null,
+                'profile_photo_name' => $user->profile_photo_name ?: $user->id_document_name,
+                'profile_photo_url' => $user->profile_photo_path
+                    ? Storage::disk('public')->url($user->profile_photo_path)
+                    : ($user->id_document_path ? Storage::disk('public')->url($user->id_document_path) : null),
             ],
         ]);
     }

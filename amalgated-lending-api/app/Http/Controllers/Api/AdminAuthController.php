@@ -11,6 +11,13 @@ use Illuminate\Support\Facades\Hash;
 
 class AdminAuthController extends Controller
 {
+    private function chatApiSecret(): ?string
+    {
+        $secret = trim((string) config('app.lending_admin_api_secret', ''));
+
+        return $secret !== '' ? $secret : null;
+    }
+
     public function login(Request $request, ActivityLogger $logger): JsonResponse
     {
         $data = $request->validate([
@@ -42,6 +49,7 @@ class AdminAuthController extends Controller
             'token_type' => 'bearer',
             'expires_in' => auth('api')->factory()->getTTL() * 60,
             'user' => $authUser->toAuthPayload(),
+            'chat_api_secret' => $this->chatApiSecret(),
         ]);
     }
 
@@ -54,6 +62,7 @@ class AdminAuthController extends Controller
         return response()->json([
             'ok' => true,
             'user' => $user->toAuthPayload(),
+            'chat_api_secret' => $this->chatApiSecret(),
         ]);
     }
 

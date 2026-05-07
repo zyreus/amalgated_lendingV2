@@ -3,7 +3,21 @@
  * Used by admin/api/client.js for /api/v1 routes.
  */
 
+import axios from 'axios'
+
 const STORAGE_KEY = 'lending_laravel_working_api_base'
+
+/** Axios timeout for Laravel (large uploads). Override with VITE_LENDING_REQUEST_TIMEOUT_MS. */
+const LARAVEL_REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_LENDING_REQUEST_TIMEOUT_MS || 120000)
+
+/** Message when all Laravel bases failed (network/DNS/timeout). */
+export function formatLaravelUnreachableError(lastError) {
+  const detail =
+    lastError && typeof lastError.message === 'string' ? lastError.message : ''
+  return detail
+    ? `Could not reach lending API (${detail}).`
+    : 'Could not reach lending API (check Laravel URL and Vite proxy).'
+}
 
 function isLoopbackHostname(host) {
   if (!host) return true
@@ -14,6 +28,23 @@ function isLoopbackHostname(host) {
 function addBase(bases, b) {
   const s = b === '' || b == null ? '' : String(b).replace(/\/$/, '')
   if (!bases.includes(s)) bases.push(s)
+}
+
+function isLocalHostname(hostname) {
+  const h = String(hostname || '').toLowerCase()
+  return h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h === '[::1]'
+}
+
+function parseOriginLike(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return null
+  try {
+    const withProto = raw.startsWith('http') ? raw : `https://${raw}`
+    const u = new URL(withProto)
+    return `${u.protocol}//${u.host}`
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -82,25 +113,33 @@ export function laravelApiBases() {
  * Do not use `window.location.origin` from the Vite dev server — it is not Laravel.
  */
 export function getLaravelPublicOrigin() {
-  const override = (import.meta.env.VITE_LENDING_PUBLIC_URL || '').trim().replace(/\/$/, '')
-  if (override) {
-    try {
-      const u = new URL(override.startsWith('http') ? override : `https://${override}`)
-      return u.origin
-    } catch {
-      /* fall through */
+  const override = (import.meta.env.VITE_LENDING_PUBLIC_URL || '').trim()
+  const overrideOrigin = parseOriginLike(override)
+  const apiUrlOrigin = parseOriginLike(import.meta.env.VITE_LENDING_API_URL || '')
+
+  // In local dev, prefer same-origin so file URLs go through Vite proxy (/api -> Laravel).
+  if (typeof window !== 'undefined' && import.meta.env.DEV) {
+    if (overrideOrigin) {
+      try {
+        const ou = new URL(overrideOrigin)
+        if (isLocalHostname(ou.hostname)) return overrideOrigin
+      } catch {
+        /* ignore */
+      }
     }
-  }
-  const apiUrl = (import.meta.env.VITE_LENDING_API_URL || '').trim()
-  if (apiUrl) {
-    try {
-      const withProto = apiUrl.startsWith('http') ? apiUrl : `https://${apiUrl}`
-      const u = new URL(withProto)
-      return `${u.protocol}//${u.host}`
-    } catch {
-      /* fall through */
+    if (apiUrlOrigin) {
+      try {
+        const au = new URL(apiUrlOrigin)
+        if (isLocalHostname(au.hostname)) return apiUrlOrigin
+      } catch {
+        /* ignore */
+      }
     }
+    if (window.location?.origin) return window.location.origin
   }
+
+  if (overrideOrigin) return overrideOrigin
+  if (apiUrlOrigin) return apiUrlOrigin
   if (typeof window !== 'undefined' && window.location?.origin) {
     return window.location.origin
   }
@@ -114,9 +153,36 @@ export function getLaravelStorageFileUrl(relativePath) {
   if (relativePath == null || relativePath === '') return ''
   const s = String(relativePath).trim()
   if (!s) return ''
-  if (/^https?:\/\//i.test(s)) return s
+  const publicOrigin = getLaravelPublicOrigin()
+
+  const toPublicFilesUrl = (pathOnly) => {
+    const clean = String(pathOnly || '')
+      .replace(/^\/+/, '')
+      .replace(/\\/g, '/')
+    if (!clean) return ''
+    const encoded = clean
+      .split('/')
+      .filter(Boolean)
+      .map((part) => encodeURIComponent(part))
+      .join('/')
+    return `${publicOrigin}/api/v1/public-files/${encoded}`
+  }
+
+  if (/^https?:\/\//i.test(s)) {
+    try {
+      const u = new URL(s)
+      const m = u.pathname.match(/^\/storage\/(.+)$/i)
+      if (m && m[1]) {
+        return toPublicFilesUrl(m[1])
+      }
+      return s
+    } catch {
+      return s
+    }
+  }
+
   const clean = s.replace(/^\/+/, '')
-  return `${getLaravelPublicOrigin()}/storage/${clean}`
+  return toPublicFilesUrl(clean)
 }
 
 export function rememberWorkingLaravelBase(base) {
@@ -136,23 +202,67 @@ function shouldRetryStatus(status) {
 
 /**
  * Try each Laravel base. Does not hop on 401 (same credentials on all).
+ * Uses axios (project HTTP standard); returns a fetch-shaped `res` for callers.
  */
 export async function laravelRequest(path, init = {}) {
   const bases = laravelApiBases()
   let lastRes = null
+  let lastNetworkError = null
+  const method = String(init.method || 'GET').toUpperCase()
+  const headers = { ...(init.headers || {}) }
+  let data
+  if (init.body != null && init.body !== '') {
+    if (typeof init.body === 'string') {
+      const ct = String(headers['Content-Type'] || headers['content-type'] || '').toLowerCase()
+      if (ct.includes('application/json')) {
+        try {
+          data = JSON.parse(init.body)
+        } catch {
+          data = init.body
+        }
+      } else {
+        data = init.body
+      }
+    } else {
+      data = init.body
+    }
+  }
   for (const base of bases) {
     const url = buildUrl(base, path)
     try {
-      const res = await fetch(url, { cache: 'no-store', ...init })
+      const response = await axios({
+        url,
+        method,
+        headers,
+        data: method === 'GET' || method === 'HEAD' ? undefined : data,
+        validateStatus: () => true,
+        signal: init.signal,
+        timeout: LARAVEL_REQUEST_TIMEOUT_MS,
+      })
+      const res = {
+        ok: response.status >= 200 && response.status < 300,
+        status: response.status,
+        headers: {
+          get: (name) => response.headers[String(name || '').toLowerCase()],
+        },
+        json: async () => response.data,
+        text: async () =>
+          typeof response.data === 'string'
+            ? response.data
+            : response.data == null
+              ? ''
+              : JSON.stringify(response.data),
+      }
       lastRes = res
-      if (shouldRetryStatus(res.status)) continue
+      if (shouldRetryStatus(response.status)) continue
       if (res.ok) rememberWorkingLaravelBase(base)
-      return { res, base }
-    } catch {
+      return { res, base, lastError: null }
+    } catch (e) {
+      lastNetworkError = e
       continue
     }
   }
-  return { res: lastRes, base: null }
+  return { res: lastRes, base: null, lastError: lastNetworkError }
 }
 
 /**
@@ -160,13 +270,13 @@ export async function laravelRequest(path, init = {}) {
  */
 export async function publicLaravelPost(path, body) {
   const rel = path.startsWith('/') ? path : `/${path}`
-  const { res } = await laravelRequest(rel, {
+  const { res, lastError } = await laravelRequest(rel, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(body ?? {}),
   })
   if (!res) {
-    const err = new Error('Could not reach lending API (check Laravel URL and Vite proxy).')
+    const err = new Error(formatLaravelUnreachableError(lastError))
     err.status = 0
     throw err
   }

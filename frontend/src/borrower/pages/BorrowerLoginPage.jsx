@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import PasswordInput from '../../components/PasswordInput.jsx'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
+import PrivacyPolicyModal from '../../components/privacy/PrivacyPolicyModal.jsx'
 
 export default function BorrowerLoginPage() {
   const navigate = useNavigate()
@@ -11,9 +12,16 @@ export default function BorrowerLoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const [privacyAccepted, setPrivacyAccepted] = useState(false)
+  const [privacyModalOpen, setPrivacyModalOpen] = useState(false)
 
   const onSubmit = async (e) => {
     e.preventDefault()
+    if (!privacyAccepted) {
+      setErrorMsg('Please review and accept the Privacy Policy before signing in.')
+      setPrivacyModalOpen(true)
+      return
+    }
     setLoading(true)
     setErrorMsg('')
     try {
@@ -62,6 +70,45 @@ export default function BorrowerLoginPage() {
                 Forgot password?
               </Link>
             </div>
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-[#1F2937] dark:bg-[#0F172A]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Privacy Policy</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Review and acknowledge our data privacy policy before accessing your account.
+                  </p>
+                  <div className="mt-2 flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPrivacyModalOpen(true)}
+                      className="text-xs font-semibold text-red-600 underline underline-offset-2 hover:text-red-700 dark:text-red-400"
+                    >
+                      View policy
+                    </button>
+                    <Link
+                      to="/privacy-policy"
+                      target="_blank"
+                      className="text-xs font-semibold text-red-600 underline underline-offset-2 hover:text-red-700 dark:text-red-400"
+                    >
+                      Open full page
+                    </Link>
+                  </div>
+                </div>
+                <label className="relative inline-flex cursor-pointer items-center">
+                  <input
+                    type="checkbox"
+                    className="peer sr-only"
+                    checked={privacyAccepted}
+                    onChange={(e) => {
+                      setPrivacyAccepted(e.target.checked)
+                      setErrorMsg('')
+                    }}
+                    aria-label="Acknowledge Privacy Policy"
+                  />
+                  <div className="peer h-6 w-11 rounded-full bg-gray-300 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-emerald-500 peer-checked:after:translate-x-full dark:bg-gray-600" />
+                </label>
+              </div>
+            </div>
             {errorMsg ? (
               <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">
                 {errorMsg}
@@ -82,6 +129,7 @@ export default function BorrowerLoginPage() {
           </p>
         </div>
       </div>
+      <PrivacyPolicyModal open={privacyModalOpen} onClose={() => setPrivacyModalOpen(false)} />
     </div>
   )
 }

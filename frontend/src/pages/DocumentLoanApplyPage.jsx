@@ -209,6 +209,20 @@ export default function DocumentLoanApplyPage() {
 
   const handleSubmit = async () => {
     if (!application?.id) return
+    const uploaded = Number(application?.progress?.uploaded || 0)
+    const total = Number(application?.progress?.total || 0)
+    const signed = Boolean(application?.progress?.signed_form)
+    const missingUploads = Math.max(0, total - uploaded)
+    if (!application?.can_submit) {
+      const blocker = [
+        missingUploads > 0 ? `Upload ${missingUploads} more required document${missingUploads === 1 ? '' : 's'}.` : null,
+        !signed ? 'Upload the signed application form.' : null,
+      ]
+        .filter(Boolean)
+        .join(' ')
+      setFormError(blocker || 'Please complete all required uploads before submitting.')
+      return
+    }
     setFormError('')
     setBusy(true)
     try {
@@ -225,6 +239,21 @@ export default function DocumentLoanApplyPage() {
   const submitted = Boolean(application?.submitted_at)
   const hasToken = Boolean(getBorrowerToken())
   const signedOk = Boolean(progress?.signed_form)
+  const uploadedCount = Number(progress?.uploaded || 0)
+  const totalRequired = Number(progress?.total || 0)
+  const missingUploads = Math.max(0, totalRequired - uploadedCount)
+  const canSubmitNow = Boolean(application?.can_submit)
+  const submitBlockerMessage =
+    !canSubmitNow && !submitted
+      ? [
+          missingUploads > 0
+            ? `Upload ${missingUploads} more required document${missingUploads === 1 ? '' : 's'}.`
+            : null,
+          !signedOk ? 'Upload the signed application form.' : null,
+        ]
+          .filter(Boolean)
+          .join(' ')
+      : ''
 
   return (
     <div className="flex min-h-screen flex-col bg-brand-background-alt text-brand-text">
@@ -579,12 +608,14 @@ export default function DocumentLoanApplyPage() {
                         </div>
                       ) : (
                         <p className="text-sm text-brand-text/70 dark:text-white/60">
-                          Submit only when every requirement has a file and your signed application form is uploaded.
+                          {canSubmitNow
+                            ? 'Ready to submit.'
+                            : submitBlockerMessage || 'Submit only when every requirement has a file and your signed application form is uploaded.'}
                         </p>
                       )}
                       <button
                         type="button"
-                        disabled={busy || !application.can_submit}
+                        disabled={busy}
                         onClick={handleSubmit}
                         className="rounded-xl bg-brand-dark px-8 py-3 text-sm font-semibold text-white shadow transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-40"
                       >

@@ -25,7 +25,7 @@ function getLaravelPort() {
   }
   const fromFile = readFromDotEnv('LARAVEL_PORT')
   if (fromFile && /^\d+$/.test(fromFile)) return fromFile
-  return '8000'
+  return '8001'
 }
 
 module.exports = { getLaravelPort }

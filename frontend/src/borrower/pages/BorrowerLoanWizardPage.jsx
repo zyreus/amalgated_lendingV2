@@ -3,6 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { borrowerApi } from '../api/client.js'
 import SignaturePad from '../components/SignaturePad.jsx'
 import { admin as ui } from '../../admin/components/AdminUi.jsx'
+import PrivacyPolicyModal from '../../components/privacy/PrivacyPolicyModal.jsx'
+import PrivacyConsentCheckbox from '../../components/privacy/PrivacyConsentCheckbox.jsx'
+import { PRIVACY_POLICY_VERSION } from '../../components/privacy/PrivacyPolicyContent.jsx'
 
 const STEPS = [
   { id: 1, title: 'Application form' },
@@ -34,6 +37,7 @@ export default function BorrowerLoanWizardPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
+  const [privacyModalOpen, setPrivacyModalOpen] = useState(false)
 
   const sigApplicant = useRef(null)
   const sigSpouse = useRef(null)
@@ -214,6 +218,11 @@ export default function BorrowerLoanWizardPage() {
 
   const submitFinal = async () => {
     setError('')
+    const consent = formData?.privacy_consent
+    if (!consent?.agreed) {
+      setError('You must agree to the Privacy Policy to proceed with your loan application.')
+      return
+    }
     try {
       const res = await borrowerApi(`/borrower/loan-applications/${applicationId}/submit`, {
         method: 'POST',
@@ -227,6 +236,16 @@ export default function BorrowerLoanWizardPage() {
       const msg = Array.isArray(body.errors) ? body.errors.join(' ') : body.message || e.message || 'Submit failed.'
       setError(msg)
     }
+  }
+
+  const onPrivacyConsentChange = (agreed) => {
+    const nextConsent = {
+      agreed,
+      agreed_at: agreed ? new Date().toISOString() : null,
+      policy_version: PRIVACY_POLICY_VERSION,
+    }
+    onField('privacy_consent', nextConsent)
+    setError('')
   }
 
   if (loading) {
@@ -514,13 +533,22 @@ export default function BorrowerLoanWizardPage() {
             </a>
           ) : null}
           {app.is_draft ? (
-            <button
-              type="button"
-              onClick={submitFinal}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
-            >
-              Submit application
-            </button>
+            <div className="space-y-3">
+              <PrivacyConsentCheckbox
+                checked={Boolean(formData?.privacy_consent?.agreed)}
+                onChange={onPrivacyConsentChange}
+                onOpenPolicy={() => setPrivacyModalOpen(true)}
+                error={error.includes('Privacy Policy') ? error : ''}
+              />
+              <button
+                type="button"
+                onClick={submitFinal}
+                disabled={!formData?.privacy_consent?.agreed}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Submit application
+              </button>
+            </div>
           ) : (
             <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">Application submitted.</p>
           )}
@@ -547,6 +575,7 @@ export default function BorrowerLoanWizardPage() {
           </button>
         </div>
       ) : null}
+      <PrivacyPolicyModal open={privacyModalOpen} onClose={() => setPrivacyModalOpen(false)} />
     </div>
   )
 }

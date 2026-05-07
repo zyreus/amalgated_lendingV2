@@ -4,6 +4,9 @@
 // MySQL requires async calls; this facade always exports async functions.
 
 const providerName = (process.env.DB_PROVIDER || 'sqlite').toLowerCase().trim()
+if (process.env.NODE_ENV === 'production' && providerName !== 'mysql') {
+  throw new Error('DB_PROVIDER=mysql is required in production for chat-server durability.');
+}
 
 const impl = providerName === 'mysql'
   ? await import('./providers/mysql.js')

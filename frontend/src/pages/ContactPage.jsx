@@ -170,9 +170,16 @@ export default function ContactPage() {
               <button
                 type="submit"
                 disabled={status === 'loading'}
-                className="inline-flex w-full items-center justify-center rounded-lg bg-red-600 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:scale-[1.01] hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
               >
-                {status === 'loading' ? 'Sending…' : 'Submit enquiry'}
+                {status === 'loading' ? (
+                  <>
+                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                    Sending...
+                  </>
+                ) : (
+                  'Submit enquiry'
+                )}
               </button>
             </div>
 

@@ -1,7 +1,11 @@
-import { Navigate, useLocation } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useBorrowerAuth } from './context/useBorrowerAuth.js'
 
-export default function BorrowerProtectedRoute({ children }) {
+/**
+ * Must render under BorrowerAuthProvider (see Root.jsx). Uses `<Outlet />` only — no `children` prop —
+ * nested routes render into BorrowerLayout’s outlet.
+ */
+export default function BorrowerProtectedRoute() {
   const { authed, booting, user } = useBorrowerAuth()
   const location = useLocation()
 
@@ -20,5 +24,5 @@ export default function BorrowerProtectedRoute({ children }) {
     return <Navigate to="/unauthorized" replace />
   }
 
-  return children
+  return <Outlet />
 }

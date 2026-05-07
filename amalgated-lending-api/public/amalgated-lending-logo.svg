@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Amalgated Lending logo">
+  <defs>
+    <linearGradient id="alGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#dc2626"/>
+      <stop offset="100%" stop-color="#991b1b"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="44" fill="#ffffff"/>
+  <rect x="12" y="12" width="232" height="232" rx="36" fill="url(#alGrad)"/>
+  <path d="M74 184 118 72h20l44 112h-22l-9.5-25h-45L96 184H74zm39-44h31l-15.5-42L113 140z" fill="#ffffff"/>
+</svg>

@@ -823,6 +823,7 @@ class ComposerStaticInitccbd816a07b206f971042295b899d1ba
         'App\\Http\\Controllers\\Api\\PasswordResetController' => __DIR__ . '/../..' . '/app/Http/Controllers/Api/PasswordResetController.php',
         'App\\Http\\Controllers\\Api\\PaymentController' => __DIR__ . '/../..' . '/app/Http/Controllers/Api/PaymentController.php',
         'App\\Http\\Controllers\\Api\\PermissionController' => __DIR__ . '/../..' . '/app/Http/Controllers/Api/PermissionController.php',
+        'App\\Http\\Controllers\\Api\\PublicFileController' => __DIR__ . '/../..' . '/app/Http/Controllers/Api/PublicFileController.php',
         'App\\Http\\Controllers\\Api\\PublicLeadController' => __DIR__ . '/../..' . '/app/Http/Controllers/Api/PublicLeadController.php',
         'App\\Http\\Controllers\\Api\\RealEstateMortgageController' => __DIR__ . '/../..' . '/app/Http/Controllers/Api/RealEstateMortgageController.php',
         'App\\Http\\Controllers\\Api\\ReportController' => __DIR__ . '/../..' . '/app/Http/Controllers/Api/ReportController.php',

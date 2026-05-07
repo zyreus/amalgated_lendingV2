@@ -1,5 +1,6 @@
-import { laravelRequest } from './lendingLaravelApi.js'
+import { laravelRequest, formatLaravelUnreachableError } from './lendingLaravelApi.js'
 import { deriveApplicantFromExtended, deriveProductApiFields } from '../components/loan/amalgatedPayloadMerge.js'
+import { publicChatJson } from './adminChatApi.js'
 
 /** Merge `extendedApplication` into flat fields used by public multipart endpoints. */
 function withExtendedApplicationDerived(source) {
@@ -60,50 +61,38 @@ function buildApplicationPayload(source) {
   if (source.coMakerStatement && typeof source.coMakerStatement === 'object') {
     base.co_maker_statement = source.coMakerStatement
   }
+  if (source.privacyConsent && typeof source.privacyConsent === 'object') {
+    base.privacy_consent = {
+      agreed: Boolean(source.privacyConsent.agreed),
+      agreed_at: source.privacyConsent.agreedAt || null,
+      policy_version: source.privacyConsent.version || null,
+    }
+  }
+  const slug = String(source.loanProductSlug ?? source.loan_product_slug ?? '').trim()
+  if (slug) base.loan_product_slug = slug
   return base
 }
 
-function trimBase(v) {
-  return String(v || '').trim().replace(/\/$/, '')
-}
-
-export function getLendingApiBase() {
-  const explicit = trimBase(import.meta.env.VITE_LENDING_API_URL || import.meta.env.VITE_API_URL)
-  if (explicit) return explicit
-  if (typeof window !== 'undefined' && import.meta.env.DEV) return ''
-  return ''
-}
-
-function lendingApiUrl(path) {
-  const p = path.startsWith('/') ? path : `/${path}`
-  const base = getLendingApiBase()
-  if (!base) return `/api${p}`
-  return `${base}${p}`
-}
-
-export function shouldPostToLendingApi() {
-  if (String(import.meta.env.VITE_USE_LOCAL_DEMO || '').toLowerCase() === 'true') return false
-  return Boolean(getLendingApiBase())
-}
-
-export async function postLendingApplication(payload) {
-  const res = await fetch(lendingApiUrl('/lending/applications'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify(payload || {}),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data?.message || `Application submit failed (HTTP ${res.status})`)
-  return data
-}
-
 export async function postPublicInquiry(payload) {
-  const res = await fetch(lendingApiUrl('/lending/inquiries'), {
+  const source = payload || {}
+  const messageParts = [String(source.message || '').trim()]
+  if (String(source.loanType || '').trim()) {
+    messageParts.push(`Loan type: ${String(source.loanType).trim()}`)
+  }
+
+  const { res, data } = await publicChatJson('/api/inquiry', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify(payload || {}),
+    body: JSON.stringify({
+      name: String(source.name || '').trim(),
+      email: String(source.email || '').trim(),
+      phone: String(source.phone || '').trim(),
+      company: String(source.organization || source.company || '').trim(),
+      message: messageParts.filter(Boolean).join('\n\n'),
+      source_page: '/contact',
+    }),
   })
-  const data = await res.json().catch(() => ({}))
+  if (!res) throw new Error('Unable to reach inquiry service. Please try again in a moment.')
   if (!res.ok) throw new Error(data?.message || `Inquiry submit failed (HTTP ${res.status})`)
   return data
 }
@@ -134,12 +123,12 @@ export async function postAliLaravelApplication(payload) {
       fd.append('doc_government_id', source.docGovernmentId, source.docGovernmentId.name || 'government-id.pdf')
     }
 
-    const { res } = await laravelRequest('/public/loan-applications', {
+    const { res, lastError } = await laravelRequest('/public/loan-applications', {
       method: 'POST',
       headers: { Accept: 'application/json' },
       body: fd,
     })
-    if (!res) throw new Error('Could not reach Laravel API.')
+    if (!res) throw new Error(formatLaravelUnreachableError(lastError))
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       let msg = data?.message || data?.error
@@ -162,12 +151,12 @@ export async function postAliLaravelApplication(payload) {
     application_payload: applicationPayload,
   }
 
-  const { res } = await laravelRequest('/public/loan-applications', {
+  const { res, lastError } = await laravelRequest('/public/loan-applications', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(requestBody),
   })
-  if (!res) throw new Error('Could not reach Laravel API.')
+  if (!res) throw new Error(formatLaravelUnreachableError(lastError))
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data?.message || `Application submit failed (HTTP ${res.status})`)
   return data
@@ -228,12 +217,12 @@ export async function postChattelMortgageApplication(payload) {
     })
   }
 
-  const { res } = await laravelRequest('/public/chattel-mortgage/apply', {
+  const { res, lastError } = await laravelRequest('/public/chattel-mortgage/apply', {
     method: 'POST',
     headers: { Accept: 'application/json' },
     body: fd,
   })
-  if (!res) throw new Error('Could not reach Laravel API.')
+  if (!res) throw new Error(formatLaravelUnreachableError(lastError))
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     let msg = data?.message || data?.error
@@ -295,12 +284,12 @@ export async function postRealEstateMortgageApplication(payload) {
     })
   }
 
-  const { res } = await laravelRequest('/public/real-estate-mortgage/apply', {
+  const { res, lastError } = await laravelRequest('/public/real-estate-mortgage/apply', {
     method: 'POST',
     headers: { Accept: 'application/json' },
     body: fd,
   })
-  if (!res) throw new Error('Could not reach Laravel API.')
+  if (!res) throw new Error(formatLaravelUnreachableError(lastError))
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     let msg = data?.message || data?.error
@@ -370,12 +359,12 @@ export async function postSalaryLoanApplication(payload) {
     })
   }
 
-  const { res } = await laravelRequest('/public/salary-loan/apply', {
+  const { res, lastError } = await laravelRequest('/public/salary-loan/apply', {
     method: 'POST',
     headers: { Accept: 'application/json' },
     body: fd,
   })
-  if (!res) throw new Error('Could not reach Laravel API.')
+  if (!res) throw new Error(formatLaravelUnreachableError(lastError))
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     let msg = data?.message || data?.error
@@ -440,12 +429,12 @@ export async function postTravelAssistanceLoanApplication(payload) {
     })
   }
 
-  const { res } = await laravelRequest('/public/travel-assistance-loan/apply', {
+  const { res, lastError } = await laravelRequest('/public/travel-assistance-loan/apply', {
     method: 'POST',
     headers: { Accept: 'application/json' },
     body: fd,
   })
-  if (!res) throw new Error('Could not reach Laravel API.')
+  if (!res) throw new Error(formatLaravelUnreachableError(lastError))
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     let msg = data?.message || data?.error
@@ -486,12 +475,12 @@ export async function postTravelLoanWizardApplication(payload) {
     if (file instanceof File) fd.append(key, file, file.name || key)
   }
 
-  const { res } = await laravelRequest('/loan/apply', {
+  const { res, lastError } = await laravelRequest('/loan/apply', {
     method: 'POST',
     headers: { Accept: 'application/json' },
     body: fd,
   })
-  if (!res) throw new Error('Could not reach Laravel API.')
+  if (!res) throw new Error(formatLaravelUnreachableError(lastError))
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     let msg = data?.message || data?.error
@@ -562,12 +551,12 @@ export async function postSssPensionLoanApplication(payload) {
     })
   }
 
-  const { res } = await laravelRequest('/public/sss-pension-loan/apply', {
+  const { res, lastError } = await laravelRequest('/public/sss-pension-loan/apply', {
     method: 'POST',
     headers: { Accept: 'application/json' },
     body: fd,
   })
-  if (!res) throw new Error('Could not reach Laravel API.')
+  if (!res) throw new Error(formatLaravelUnreachableError(lastError))
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     let msg = data?.message || data?.error

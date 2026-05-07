@@ -7,13 +7,14 @@ import { downloadCsv, openPrintPdf } from '../utils/export.js'
 import { admin, TableSkeletonRows, EmptyTableRow } from '../components/AdminUi.jsx'
 
 function formatLoanRateMonthly(loan) {
-  const payloadRate = Number(loan?.application_payload?.selected_interest_rate)
+  const payloadRate = Number(loan?.selected_interest_rate ?? loan?.application_payload?.selected_interest_rate)
   if (Number.isFinite(payloadRate) && payloadRate > 0) {
-    return `${payloadRate.toFixed(4)}%`
+    const suffix = loan?.selected_rate_type === 'monthly' || loan?.application_payload?.selected_rate_type === 'monthly' ? '%/mo' : '%'
+    return `${payloadRate.toFixed(4)}${suffix}`
   }
   const annual = Number(loan?.annual_interest_rate)
   if (!Number.isFinite(annual) || annual <= 0) return '—'
-  return `${(annual / 12).toFixed(4)}%`
+  return `${(annual / 12).toFixed(4)}%/mo (~${annual.toFixed(2)}%/yr)`
 }
 
 export default function LoansPage() {
@@ -90,7 +91,6 @@ export default function LoansPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className={admin.pageTitle}>Loans</h1>
-          <p className={admin.pageSubtitle}>Pending applications and active loans — Laravel API.</p>
         </div>
         {can('loans.approve') && (
           <Link to="/admin/loans/new" className={`${admin.btnPrimary} inline-flex items-center justify-center`}>

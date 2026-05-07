@@ -8,7 +8,6 @@ import AmalgatedLoanApplicationForm from '../components/loan/AmalgatedLoanApplic
 import LoanProductDocumentsChecklist from '../components/loan/LoanProductDocumentsChecklist.jsx'
 import LoanProductExtraSection from '../components/loan/LoanProductExtraSection.jsx'
 import CoMakerStatementForm from '../components/loan/CoMakerStatementForm.jsx'
-import TravelSignaturePad from '../components/travel/TravelSignaturePad.jsx'
 import { LOAN_PRODUCT_KEYS } from '../components/loan/loanProductDocuments.js'
 import { createEmptyCoMakerStatement, createEmptyExtendedApplication } from '../components/loan/amalgatedApplicationFormState.js'
 import AmalgatedApplicationPrintBundle from '../components/loan/AmalgatedApplicationPrintBundle.jsx'
@@ -48,8 +47,6 @@ export default function ChattelMortgagePage() {
     docStencil: null,
     docGovernmentIds: [],
   })
-  const [signatureData, setSignatureData] = useState('')
-  const [coMakerSignatureData, setCoMakerSignatureData] = useState('')
   const canPrintApplication = isFullApplicationPrintable(extendedApplication, coMakerStatement, true)
   const [rateLabel, setRateLabel] = useState('3.88% per month (standard)')
 
@@ -143,12 +140,6 @@ export default function ChattelMortgagePage() {
       setStatus('error')
       return
     }
-    if (!signatureData || !coMakerSignatureData) {
-      setErrorMsg('Applicant and co-maker signatures are required before submission.')
-      setStatus('error')
-      return
-    }
-
     const cmPhone = coMakerByUserId
       ? ''
       : String(coMakerStatement.residence_tel || coMakerStatement.business_tel || '').trim()
@@ -168,10 +159,6 @@ export default function ChattelMortgagePage() {
         stencilText: stencilNotes,
         extendedApplication: {
           ...normalizeExtendedApplicationPayload(extendedApplication, form),
-          signatures: {
-            applicant_signature_data: signatureData,
-            comaker_signature_data: coMakerSignatureData,
-          },
         },
         coMakerStatement: normalizeCoMakerStatementPayload(coMakerStatement, form, extendedApplication),
         coMakerId: coMakerByUserId ? form.coMakerId : '',
@@ -194,8 +181,6 @@ export default function ChattelMortgagePage() {
         docStencil: null,
         docGovernmentIds: [],
       })
-      setSignatureData('')
-      setCoMakerSignatureData('')
       openModal({ message: 'Application submitted successfully.', tone: 'success' })
     } catch (err) {
       setStatus('error')
@@ -354,7 +339,6 @@ export default function ChattelMortgagePage() {
                     coMakerStatement={coMakerStatement}
                     includeCoMaker
                     canPrint={canPrintApplication}
-                    applicantSignatureData={signatureData}
                   />
                 </fieldset>
               </div>
@@ -386,20 +370,6 @@ export default function ChattelMortgagePage() {
                     2x2 picture
                     <input type="file" accept=".jpg,.jpeg,.png,.pdf" onChange={(e) => setDocuments((s) => ({ ...s, docPicture2x2: e.target.files?.[0] || null }))} className="mt-1 w-full rounded-xl border border-brand-secondary/40 px-3 py-2 text-sm dark:border-[#374151]" />
                   </label>
-                </div>
-              </fieldset>
-
-              <fieldset className="space-y-4 rounded-xl border border-slate-200 p-4">
-                <legend className="text-sm font-semibold text-brand-text dark:text-white">Signatures</legend>
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <div>
-                    <p className="mb-2 text-sm font-medium text-brand-text dark:text-white">Applicant signature *</p>
-                    <TravelSignaturePad value={signatureData} onChange={setSignatureData} />
-                  </div>
-                  <div>
-                    <p className="mb-2 text-sm font-medium text-brand-text dark:text-white">Co-maker signature *</p>
-                    <TravelSignaturePad value={coMakerSignatureData} onChange={setCoMakerSignatureData} />
-                  </div>
                 </div>
               </fieldset>
 

@@ -1,4 +1,3 @@
-import TravelSignaturePad from './TravelSignaturePad.jsx'
 import { TRAVEL_TERMS_TEXT, createEmptyDependent } from './travelWizardState.js'
 
 const L = 'block text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500 mb-1.5'
@@ -18,8 +17,6 @@ export default function TravelWizardForm({
   errors = {},
   termsAccepted,
   setTermsAccepted,
-  signatureData,
-  setSignatureData,
   signatureDate,
   setSignatureDate,
   files,
@@ -392,12 +389,8 @@ export default function TravelWizardForm({
       </section>
 
       <section className={CARD}>
-        <h2 className={H2}>H. Signature</h2>
+        <h2 className={H2}>H. Signature date</h2>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <TravelSignaturePad value={signatureData} onChange={setSignatureData} />
-            {err(errors, 'signature')}
-          </div>
           <div>
             <label className={L}>Date *</label>
             <input type="date" className={I} value={signatureDate} onChange={(e) => setSignatureDate(e.target.value)} />

@@ -1,6 +1,6 @@
 const MAX_LOAN = 2_000_000
 
-export function validateTravelWizardClient(wizard, { termsAccepted, signatureData, files }) {
+export function validateTravelWizardClient(wizard, { termsAccepted, files }) {
   const errors = {}
 
   const req = (prefix, key, label, v) => {
@@ -57,8 +57,6 @@ export function validateTravelWizardClient(wizard, { termsAccepted, signatureDat
   req('employment', 'position', 'Position', E.position)
 
   if (!termsAccepted) errors.terms = 'You must agree to the Terms and Conditions.'
-  if (!signatureData || String(signatureData).length < 80) errors.signature = 'Please sign in the signature box.'
-
   if (!files?.residence_sketch || !(files.residence_sketch instanceof File)) {
     errors['files.residence_sketch'] = 'Please upload a sketch of residence.'
   }
