@@ -1,6 +1,4 @@
 {
-  "state": "failed",
-  "at": "2026-05-06T08:17:29.057Z",
-  "reason": "PHP 8.2+ is required; detected unknown (C:\\xampp\\php-backup\\php.exe).",
-  "code": "UNSUPPORTED_PHP"
+  "state": "starting",
+  "at": "2026-05-07T02:56:37.317Z"
 }

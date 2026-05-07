@@ -40,6 +40,12 @@
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"
         ],
+        "install:windows-local": [
+            "@composer install --ignore-platform-req=php --ignore-platform-req=ext-posix --ignore-platform-req=ext-pcntl"
+        ],
+        "update:windows-local": [
+            "@composer update --ignore-platform-req=php --ignore-platform-req=ext-posix --ignore-platform-req=ext-pcntl"
+        ],
         "post-update-cmd": [
             "@php artisan vendor:publish --tag=laravel-assets --ansi --force"
         ],
