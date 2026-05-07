@@ -305,7 +305,7 @@ function emitConversationsRefresh() {
     } catch (err) {
       console.warn('[chat] conversations:refresh emit failed', err?.message || err);
     }
-  }, 150);
+  }, 25);
 }
 
 function emitAnalyticsRefresh() {
@@ -2861,7 +2861,7 @@ io.on('connection', (socket) => {
   socket.on('admin:join', (payload) => {
     const token = String(payload?.token || '').trim();
     const secret = String(payload?.secret || '').trim();
-    if (secret && lendingAdminSecret && secret === lendingAdminSecret) {
+    if (secret && process.env.LENDING_ADMIN_API_SECRET && secret === process.env.LENDING_ADMIN_API_SECRET) {
       socket.join('admin');
       socket.data.role = 'admin';
       return;

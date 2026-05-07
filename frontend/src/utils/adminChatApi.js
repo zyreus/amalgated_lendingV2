@@ -377,6 +377,11 @@ export function hasChatServerAuth() {
   return Boolean(getLendingSecretForChat())
 }
 
+/** Node LENDING_ADMIN_API_SECRET — used for Socket.IO admin:join authentication. */
+export function getLendingChatSecret() {
+  return getLendingSecretForChat()
+}
+
 /**
  * Authenticated chat admin request — tries Node chat origin before same-origin in dev.
  */

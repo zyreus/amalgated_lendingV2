@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { io } from 'socket.io-client'
-import { adminSocketUrls, chatFetch, chatJson, hasChatServerAuth } from '../utils/adminChatApi.js'
+import { adminSocketUrls, chatFetch, chatJson, hasChatServerAuth, getLendingChatSecret } from '../utils/adminChatApi.js'
 import { api as adminApi, getToken as getAdminToken } from '../admin/api/client.js'
 import { downloadCsv } from '../admin/utils/export.js'
 
@@ -55,7 +55,8 @@ const TICKET_STATUS = {
   closed: 'Closed',
 }
 const CHAT_TIME_ZONE = 'Asia/Manila'
-const CHAT_POLL_MS = 8000
+const CHAT_POLL_MS = 2000
+const CHAT_CONNECTED_POLL_MS = 10000
 
 function responseTimeTextClass(ms) {
   if (ms == null || Number.isNaN(Number(ms))) return 'text-slate-500'
@@ -152,6 +153,73 @@ function mergeMessageRows(prev, incoming) {
     if (ta !== tb) return ta - tb
     return String(a?.id || '').localeCompare(String(b?.id || ''))
   })
+}
+
+function conversationTimeValue(c) {
+  const t = new Date(c?.last_message_at || c?.updated_at || c?.created_at || 0).getTime()
+  return Number.isFinite(t) ? t : 0
+}
+
+function sortConversationRows(rows) {
+  return [...(rows || [])].sort((a, b) => conversationTimeValue(b) - conversationTimeValue(a))
+}
+
+function upsertConversationForRealtimeMessage(prev, cid, message, activeId) {
+  if (!cid) return prev
+  const createdAt = message?.created_at || new Date().toISOString()
+  const normalizedMessage = message
+    ? {
+        id: message.id,
+        content: message.content ?? '',
+        sender: message.sender ?? 'user',
+        created_at: createdAt,
+        admin_name: message.admin_name ?? null,
+      }
+    : null
+  const idx = prev.findIndex((c) => c.id === cid)
+  const unreadIncrement = cid !== activeId && normalizedMessage?.sender !== 'admin' ? 1 : 0
+
+  if (idx < 0) {
+    return sortConversationRows([
+      {
+        id: cid,
+        visitor_name: 'Visitor',
+        visitor_email: '',
+        status: 'open',
+        mode: 'ai',
+        created_at: createdAt,
+        updated_at: createdAt,
+        last_message_at: createdAt,
+        last_message: normalizedMessage,
+        unread_count: unreadIncrement,
+        admin_unread_count: unreadIncrement,
+      },
+      ...prev,
+    ])
+  }
+
+  const current = prev[idx]
+  const nextRow = {
+    ...current,
+    last_message: normalizedMessage || current.last_message,
+    last_message_at: createdAt,
+    updated_at: createdAt,
+    unread_count:
+      unreadIncrement > 0
+        ? Math.max(0, Number(current?.unread_count || 0) + unreadIncrement)
+        : cid === activeId
+          ? 0
+          : current?.unread_count,
+    admin_unread_count:
+      unreadIncrement > 0
+        ? Math.max(0, Number(current?.admin_unread_count ?? current?.unread_count ?? 0) + unreadIncrement)
+        : cid === activeId
+          ? 0
+          : current?.admin_unread_count,
+  }
+  const next = prev.slice()
+  next[idx] = nextRow
+  return sortConversationRows(next)
 }
 
 /** Short human-friendly ref for long conversation IDs (avoid full UUID in lists). */
@@ -305,7 +373,7 @@ export default function AdminChatDashboard({
       }
       const data = await adminApi(`/admin/chat/conversations?${params}`)
       if (requestSeq !== conversationsRequestSeqRef.current) return
-      setConversations(Array.isArray(data) ? data : [])
+      setConversations(sortConversationRows(Array.isArray(data) ? data : []))
     } catch {
       if (requestSeq === conversationsRequestSeqRef.current) setConversations([])
     }
@@ -536,7 +604,6 @@ export default function AdminChatDashboard({
 
   useEffect(() => {
     if (view !== 'chats' || chatInboxTab !== 'visitor') return
-    if (socketConnected) return
     const tick = () => {
       if (typeof document !== 'undefined' && document.hidden) return
       fetchConversations()
@@ -545,8 +612,11 @@ export default function AdminChatDashboard({
         fetchMessages(activeIdRef.current, { afterId: afterId > 0 ? afterId : 0 })
       }
     }
-    tick()
-    const iv = setInterval(tick, CHAT_POLL_MS)
+    if (!socketConnected) tick()
+    // When socket is connected, push events update the inbox immediately. This poll is
+    // only a small safety net for missed events or HTTP-only visitors.
+    const pollMs = socketConnected ? CHAT_CONNECTED_POLL_MS : CHAT_POLL_MS
+    const iv = setInterval(tick, pollMs)
     const onVis = () => {
       if (typeof document !== 'undefined' && !document.hidden) tick()
     }
@@ -759,39 +829,7 @@ export default function AdminChatDashboard({
           setMessages((prev) => mergeMessageRows(prev, [normalized]))
         }
         if (!cid) return
-        setConversations((prev) => {
-          const idx = prev.findIndex((c) => c.id === cid)
-          if (idx < 0) return prev
-          const current = prev[idx]
-          const nextRow = {
-            ...current,
-            last_message: message
-              ? {
-                  id: message.id || current?.last_message?.id,
-                  content: message.content ?? current?.last_message?.content ?? '',
-                  sender: message.sender ?? current?.last_message?.sender ?? 'user',
-                  created_at: message.created_at || new Date().toISOString(),
-                  admin_name: message.admin_name ?? current?.last_message?.admin_name ?? null,
-                }
-              : current.last_message,
-            last_message_at: message?.created_at || current.last_message_at,
-            updated_at: message?.created_at || current.updated_at,
-            unread_count:
-              cid !== active
-                ? Math.max(0, Number(current?.unread_count || 0) + 1)
-                : 0,
-            admin_unread_count:
-              cid !== active
-                ? Math.max(
-                    0,
-                    Number(current?.admin_unread_count ?? current?.unread_count ?? 0) + 1,
-                  )
-                : 0,
-          }
-          const next = prev.slice()
-          next[idx] = nextRow
-          return next
-        })
+        setConversations((prev) => upsertConversationForRealtimeMessage(prev, cid, message, active))
       })
       socket.on('chat:streamStart', ({ conversation_id: cid, stream_id: streamId, created_at }) => {
         if (!cid || !streamId || cid !== activeIdRef.current) return
@@ -847,7 +885,7 @@ export default function AdminChatDashboard({
         if (disposed) return
         setSocketConnected(true)
         setSocketConnectError(null)
-        socket.emit('admin:join', { token: getAdminToken() || '' })
+        socket.emit('admin:join', { token: getAdminToken() || '', secret: getLendingChatSecret() || '' })
         queueMicrotask(() => {
           fetchConversationsRef.current?.().catch(() => {})
           const v = viewRef.current

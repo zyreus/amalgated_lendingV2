@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ChatMessage;
 use App\Models\SupportChatFeedback;
 use App\Models\SupportConversation;
+use App\Services\NodeChatBroadcastService;
 use App\Support\SupportChatPresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -112,6 +113,7 @@ class PublicChatController extends Controller
         $conv->save();
 
         $message->loadMissing('adminUser:id,name');
+        NodeChatBroadcastService::relayMessage($message);
 
         return response()->json([
             'ok' => true,

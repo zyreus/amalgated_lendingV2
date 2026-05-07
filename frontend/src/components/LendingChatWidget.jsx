@@ -14,7 +14,7 @@ const QUICK_OPTIONS = [
 ]
 const CHAT_TIME_ZONE = 'Asia/Manila'
 /** HTTP fallback when Socket.IO is down; keep conservative to avoid hammering Laravel. */
-const CHAT_SYNC_POLL_MS = 8000
+const CHAT_SYNC_POLL_MS = 2000
 
 function detectLang() {
   const nav = typeof navigator !== 'undefined' ? navigator.language : ''
@@ -38,10 +38,10 @@ function newConvoId() {
 function getConvoId() {
   try {
     const key = 'al_lending_convo_id'
-    const current = sessionStorage.getItem(key)
+    const current = localStorage.getItem(key)
     if (current) return current
     const next = newConvoId()
-    sessionStorage.setItem(key, next)
+    localStorage.setItem(key, next)
     return next
   } catch {
     return newConvoId()
@@ -200,7 +200,7 @@ export default function LendingChatWidget() {
   const resetChat = useCallback(() => {
     const next = newConvoId()
     try {
-      sessionStorage.setItem('al_lending_convo_id', next)
+      localStorage.setItem('al_lending_convo_id', next)
     } catch {
       /* ignore */
     }

@@ -1,8 +1,8 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
-import { adminSocketUrls, chatFetch } from '../utils/adminChatApi.js'
-import { api } from './api/client.js'
+import { adminSocketUrls, chatFetch, getLendingChatSecret } from '../utils/adminChatApi.js'
+import { api, getToken as getAdminToken } from './api/client.js'
 import { useAdminApiAuth } from './context/useAdminApiAuth.js'
 import { admin } from './components/AdminUi.jsx'
 import { ADMIN_NAV_GROUPS } from './adminNavConfig.js'
@@ -240,7 +240,7 @@ export default function AdminLayout() {
       currentSocket = socket
       socket.on('connect', () => {
         if (disposed) return
-        socket.emit('admin:join')
+        socket.emit('admin:join', { token: getAdminToken() || '', secret: getLendingChatSecret() || '' })
       })
       socket.on('chat:newMessage', onVisitorMessage)
       socket.on('connect_error', () => {
