@@ -13,10 +13,38 @@ function formatDateTime(iso) {
   try {
     const d = new Date(iso)
     if (Number.isNaN(d.getTime())) return String(iso)
-    return d.toLocaleString()
+    return new Intl.DateTimeFormat('en-PH', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    }).format(d)
   } catch {
     return String(iso)
   }
+}
+
+function initials(name) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (!parts.length) return 'B'
+  const first = parts[0]?.[0] || ''
+  const second = parts.length > 1 ? parts[parts.length - 1]?.[0] || '' : ''
+  return `${first}${second}`.toUpperCase()
+}
+
+function isImagePath(path) {
+  return /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(String(path || ''))
+}
+
+function fallbackAvatar(name) {
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'Borrower')}&background=fee2e2&color=b91c1c&size=96&bold=true`
 }
 
 export default function BorrowerDetailPage() {
@@ -126,6 +154,11 @@ export default function BorrowerDetailPage() {
   }
 
   const statCard = `${admin.cardNoHover} p-4`
+  const borrowerAvatarUrl = isImagePath(borrower.profile_photo_path)
+    ? getLaravelStorageFileUrl(borrower.profile_photo_path)
+    : isImagePath(borrower.id_document_path)
+      ? getLaravelStorageFileUrl(borrower.id_document_path)
+      : null
 
   return (
     <div className="w-full min-w-0 space-y-8">
@@ -133,9 +166,26 @@ export default function BorrowerDetailPage() {
         ← Borrowers
       </Link>
 
-      <div>
-        <h1 className={admin.pageTitle}>{borrower.name}</h1>
-        <p className={`mt-1 text-sm ${admin.textMuted}`}>{borrower.email}</p>
+      <div className="flex items-center gap-3">
+        {borrowerAvatarUrl ? (
+          <img
+            src={borrowerAvatarUrl}
+            alt={borrower.name || 'Borrower'}
+            className="h-12 w-12 rounded-full border border-gray-200 object-cover dark:border-[#374151]"
+            onError={(e) => {
+              e.currentTarget.onerror = null
+              e.currentTarget.src = fallbackAvatar(borrower.name || 'Borrower')
+            }}
+          />
+        ) : (
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-sm font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-200">
+            {initials(borrower.name || 'Borrower')}
+          </span>
+        )}
+        <div>
+          <h1 className={admin.pageTitle}>{borrower.name}</h1>
+          <p className={`mt-1 text-sm ${admin.textMuted}`}>{borrower.email}</p>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -409,7 +459,7 @@ export default function BorrowerDetailPage() {
                         rel="noopener noreferrer"
                         className="text-xs font-semibold text-red-600 hover:underline dark:text-red-400"
                       >
-                        Print SOA
+                        Statement of Account (SOA)
                       </a>
                     ) : null}
                     <Link
@@ -584,7 +634,7 @@ export default function BorrowerDetailPage() {
                             rel="noopener noreferrer"
                             className="text-xs font-semibold text-red-600 hover:underline dark:text-red-400"
                           >
-                            SOA
+                            Statement of Account (SOA)
                           </a>
                         ) : null}
                         <Link
