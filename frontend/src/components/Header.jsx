@@ -61,7 +61,7 @@ export default function Header() {
           <Link to="/privacy-policy" className="nav-link">Privacy Policy</Link>
           <Link to="/borrower/login" className="nav-link">Borrower Log in</Link>
           <Link
-            to="/apply"
+            to="/borrower/login"
             className="inline-flex items-center justify-center rounded-full bg-brand-primary px-5 py-2.5 text-sm font-semibold text-white shadow-brand-primary transition hover:bg-brand-primary-hover hover:shadow-[0_4px_12px_rgba(220,38,38,0.4)]"
           >
             Apply Now
@@ -104,7 +104,7 @@ export default function Header() {
           <Link to="/application-flow" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => setMobileOpen(false)}>Application Flow</Link>
           <Link to="/privacy-policy" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => setMobileOpen(false)}>Privacy Policy</Link>
           <Link to="/borrower/login" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => setMobileOpen(false)}>Borrower Log in</Link>
-          <Link to="/apply" className="mt-3 block w-full rounded-xl bg-brand-primary px-4 py-3 text-center text-sm font-semibold text-white" onClick={() => setMobileOpen(false)}>Apply Now</Link>
+          <Link to="/borrower/login" className="mt-3 block w-full rounded-xl bg-brand-primary px-4 py-3 text-center text-sm font-semibold text-white" onClick={() => setMobileOpen(false)}>Apply Now</Link>
         </motion.div>
       )}
       </AnimatePresence>

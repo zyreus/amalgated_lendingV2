@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -33,6 +34,7 @@ class LoanApplication extends Model
         'loan_product_id',
         'loan_type',
         'loan_amount',
+        'approved_amount',
         'term_months',
         'co_maker_id',
         'co_maker_name',
@@ -59,6 +61,8 @@ class LoanApplication extends Model
         'spouse_signature',
         'comaker_signature',
         'submitted_at',
+        'is_submitted',
+        'draft_updated_at',
         'draft_step',
         'verified_at',
         'rejection_reason',
@@ -67,6 +71,7 @@ class LoanApplication extends Model
     protected $casts = [
         'property_value' => 'decimal:2',
         'loan_amount' => 'decimal:2',
+        'approved_amount' => 'decimal:2',
         'term_months' => 'integer',
         'monthly_salary' => 'decimal:2',
         'monthly_pension' => 'decimal:2',
@@ -76,22 +81,76 @@ class LoanApplication extends Model
         'computed_values' => 'array',
         'computation_breakdown' => 'array',
         'submitted_at' => 'datetime',
+        'draft_updated_at' => 'datetime',
+        'is_submitted' => 'boolean',
         'verified_at' => 'datetime',
     ];
 
+    /**
+     * Final borrower submission (wizard or legacy). Draft autosaves are excluded.
+     */
+    public function isOfficiallySubmitted(): bool
+    {
+        if ($this->submitted_at !== null) {
+            return true;
+        }
+        if ($this->is_submitted) {
+            return true;
+        }
+        if ($this->status === 'submitted') {
+            return true;
+        }
+        if ($this->loan_id !== null) {
+            return true;
+        }
+        // Calculator / non-wizard rows (wizard drafts use status "draft" until final submit).
+        if (in_array($this->status, [
+            self::STATUS_PENDING,
+            self::STATUS_APPROVED,
+            self::STATUS_REJECTED,
+        ], true)) {
+            return true;
+        }
+
+        return false;
+    }
+
     public function isDraft(): bool
     {
-        return $this->submitted_at === null;
+        return ! $this->isOfficiallySubmitted();
     }
 
     public function scopeDraft($query)
     {
-        return $query->whereNull('submitted_at');
+        return $query->where(function (Builder $w) {
+            $w->whereNull('submitted_at')
+                ->where(function (Builder $w2) {
+                    $w2->where('is_submitted', false)->orWhereNull('is_submitted');
+                })
+                ->where('status', '!=', 'submitted')
+                ->whereNull('loan_id');
+        });
     }
 
     public function scopeSubmitted($query)
     {
-        return $query->whereNotNull('submitted_at');
+        return $query->officiallySubmitted();
+    }
+
+    /** @param  Builder<LoanApplication>  $query */
+    public function scopeOfficiallySubmitted(Builder $query): Builder
+    {
+        return $query->where(function (Builder $w) {
+            $w->whereNotNull('submitted_at')
+                ->orWhere('is_submitted', true)
+                ->orWhere('status', 'submitted')
+                ->orWhereNotNull('loan_id')
+                ->orWhereIn('status', [
+                    self::STATUS_PENDING,
+                    self::STATUS_APPROVED,
+                    self::STATUS_REJECTED,
+                ]);
+        });
     }
 
     public function borrower(): BelongsTo

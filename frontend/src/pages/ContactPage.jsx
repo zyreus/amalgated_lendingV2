@@ -14,7 +14,13 @@ const directionsUrl = 'https://www.google.com/maps/search/?api=1&query=' + encod
 export default function ContactPage() {
   const cardRef = useRef(null)
   const mapRef = useRef(null)
-  const [formData, setFormData] = useState({ name: '', organization: '', email: '', loanType: '', message: '' })
+  const [formData, setFormData] = useState({
+    name: '',
+    contactNumber: '',
+    email: '',
+    preferredLoanType: '',
+    estimatedLoanAmount: '',
+  })
   const [status, setStatus] = useState('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -24,9 +30,9 @@ export default function ContactPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!formData.name || !formData.email || !formData.message) {
+    if (!formData.name || !formData.contactNumber || !formData.email || !formData.preferredLoanType || !formData.estimatedLoanAmount) {
       setStatus('error')
-      setErrorMsg('Please fill in Name, Email, and Message.')
+      setErrorMsg('Please complete all required fields.')
       return
     }
     setStatus('loading')
@@ -34,7 +40,13 @@ export default function ContactPage() {
     try {
       await postPublicInquiry(formData)
       setStatus('success')
-      setFormData({ name: '', organization: '', email: '', loanType: '', message: '' })
+      setFormData({
+        name: '',
+        contactNumber: '',
+        email: '',
+        preferredLoanType: '',
+        estimatedLoanAmount: '',
+      })
     } catch (err) {
       setStatus('error')
       setErrorMsg(err?.message || 'Unable to send your inquiry. Please try again.')
@@ -83,7 +95,7 @@ export default function ContactPage() {
               Send us your inquiry
             </h1>
             <p className="mt-4 max-w-lg text-[15px] leading-relaxed text-black/70">
-              Interested in a loan? Share your needs and our team will respond within one business day.
+              Interested in a loan? Submit a quick inquiry and continue your full application in the Borrower Portal.
             </p>
 
             <div className="mt-8 space-y-6">
@@ -120,13 +132,14 @@ export default function ContactPage() {
                 />
               </label>
               <label className="block sm:col-span-1">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-black/60">Organization</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-black/60">Contact number</span>
                 <input
-                  type="text"
-                  name="organization"
-                  value={formData.organization}
+                  type="tel"
+                  name="contactNumber"
+                  value={formData.contactNumber}
                   onChange={handleChange}
-                  placeholder="Company (optional)"
+                  placeholder="+63 9XX XXX XXXX"
+                  required
                   className="mt-2 w-full rounded-lg border border-black/15 bg-white px-4 py-3 text-sm text-black outline-none transition placeholder:text-black/40 focus:border-red-600 focus:ring-2 focus:ring-red-600/20"
                 />
               </label>
@@ -143,27 +156,36 @@ export default function ContactPage() {
                 />
               </label>
               <label className="block sm:col-span-1">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-black/60">Loan type</span>
-                <input
-                  type="text"
-                  name="loanType"
-                  value={formData.loanType}
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-black/60">Preferred loan type</span>
+                <select
+                  name="preferredLoanType"
+                  value={formData.preferredLoanType}
                   onChange={handleChange}
-                  placeholder="Personal, Business, etc."
+                  required
                   className="mt-2 w-full rounded-lg border border-black/15 bg-white px-4 py-3 text-sm text-black outline-none transition placeholder:text-black/40 focus:border-red-600 focus:ring-2 focus:ring-red-600/20"
-                />
+                >
+                  <option value="">Select loan type</option>
+                  <option value="Personal Loan">Personal Loan</option>
+                  <option value="Business Loan">Business Loan</option>
+                  <option value="Salary Loan">Salary Loan</option>
+                  <option value="Travel Assistance Loan">Travel Assistance Loan</option>
+                  <option value="SSS Pension Loan">SSS Pension Loan</option>
+                  <option value="Real Estate Mortgage">Real Estate Mortgage</option>
+                  <option value="Chattel Mortgage">Chattel Mortgage</option>
+                </select>
               </label>
             </div>
             <label className="mt-5 block">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-black/60">Message</span>
-              <textarea
-                name="message"
-                value={formData.message}
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-black/60">Estimated loan amount (PHP)</span>
+              <input
+                type="number"
+                min="1000"
+                name="estimatedLoanAmount"
+                value={formData.estimatedLoanAmount}
                 onChange={handleChange}
-                rows={5}
-                placeholder="Tell us about your lending needs."
+                placeholder="100000"
                 required
-                className="mt-2 w-full resize-y rounded-lg border border-black/15 bg-white px-4 py-3 text-sm text-black outline-none transition placeholder:text-black/40 focus:border-red-600 focus:ring-2 focus:ring-red-600/20"
+                className="mt-2 w-full rounded-lg border border-black/15 bg-white px-4 py-3 text-sm text-black outline-none transition placeholder:text-black/40 focus:border-red-600 focus:ring-2 focus:ring-red-600/20"
               />
             </label>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -181,11 +203,17 @@ export default function ContactPage() {
                   'Submit enquiry'
                 )}
               </button>
+              <Link
+                to="/borrower/login"
+                className="inline-flex w-full items-center justify-center rounded-lg border border-black/15 px-6 py-3 text-sm font-semibold text-black transition hover:bg-black/5 sm:w-auto"
+              >
+                Login to Borrower Portal
+              </Link>
             </div>
 
             {status === 'success' && (
               <p className="mt-4 rounded-lg bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
-                Your inquiry has been sent. We will get back to you within one business day.
+                Inquiry submitted. Continue your complete loan application in the Borrower Portal.
               </p>
             )}
             {status === 'error' && (

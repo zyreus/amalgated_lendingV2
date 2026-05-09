@@ -1,0 +1,17 @@
+# Secrets & local env (keep *.env.example tracked)
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Dependencies & build
+node_modules/
+chat-server/node_modules/
+dist/
+
+# Database dumps & caches
+*.sql
+.phpunit.result.cache
+
+# Ephemeral dev scripts
+scripts/.laravel-bind-port

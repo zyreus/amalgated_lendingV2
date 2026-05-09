@@ -74,4 +74,14 @@ return [
         'broadcast_secret' => env('NODE_CHAT_BROADCAST_SECRET'),
     ],
 
+    /*
+    | Borrower portal email verification (signed URL → api.borrower.email.verify).
+    | Cooldown avoids rapid resend bursts; queue job skips while cache key is set.
+    */
+    'borrower_verify' => [
+        'expires_hours' => max(1, min(720, (int) env('BORROWER_VERIFY_EXPIRES_HOURS', 168))),
+        'resend_cooldown_seconds' => max(30, min(3600, (int) env('BORROWER_VERIFY_RESEND_COOLDOWN', 120))),
+        'send_on_register' => filter_var(env('BORROWER_VERIFY_SEND_ON_REGISTER', true), FILTER_VALIDATE_BOOL),
+    ],
+
 ];

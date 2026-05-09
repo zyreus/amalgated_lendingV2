@@ -64,6 +64,17 @@ function readLaravelActivePort() {
   return null
 }
 
+function readChatActivePort() {
+  try {
+    const p = path.join(projectRoot, 'scripts', '.chat-active-port')
+    const v = fs.readFileSync(p, 'utf8').trim()
+    if (/^\d+$/.test(v)) return v
+  } catch {
+    /* wait-chat writes this after health check */
+  }
+  return null
+}
+
 // https://vite.dev/config/ — aligned with Amalgated Holdings (proxy + VITE_BACKEND_PORT for adminApi fallbacks)
 export default defineConfig(({ mode }) => {
   /** Env files live at repo root (same folder as `package.json`), not `frontend/`. */
@@ -78,8 +89,9 @@ export default defineConfig(({ mode }) => {
   const portMatch = proxyTarget.match(/:(\d+)/)
   const apiPort = portMatch ? portMatch[1] : '8001'
 
-  /** Node chat server (REST fallbacks only — Socket.IO uses VITE_CHAT_DEV_ORIGIN / 127.0.0.1:8010 directly in dev). */
-  const chatTarget = (env.VITE_CHAT_PROXY_TARGET || 'http://127.0.0.1:8010').replace(/\/$/, '')
+  /** Node chat server (REST fallbacks + same-origin Socket.IO tooling). */
+  const chatPort = readChatActivePort() || env.CHAT_PORT || env.PORT || '8010'
+  const chatTarget = (env.VITE_CHAT_PROXY_TARGET || `http://127.0.0.1:${chatPort}`).replace(/\/$/, '')
 
   const proxy = {
     '/api': {
@@ -177,6 +189,8 @@ export default defineConfig(({ mode }) => {
     },
     define: {
       'import.meta.env.VITE_BACKEND_PORT': JSON.stringify(String(apiPort)),
+      'import.meta.env.VITE_CHAT_DEV_ORIGIN': JSON.stringify(chatTarget),
+      'import.meta.env.VITE_CHAT_PROXY_TARGET': JSON.stringify(chatTarget),
     },
     plugins: [react({ jsxRuntime: 'automatic' }), tailwindcss(), devNoCacheOptimizedDeps()],
     server: {

@@ -199,3 +199,4 @@ export function getLendingFallbackReply(userMessage, lang) {
   }
   return `Thanks for your message. For loan details, rates, or applications, reach us at ${LENDING_PHONE} or use the Apply page on the Amalgated Lending website. Our menu above has shortcuts for common questions.`;
 }
+s

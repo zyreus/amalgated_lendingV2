@@ -32,6 +32,7 @@ class LoanListResource extends JsonResource
             'id' => $this->id,
             'loan_number' => $this->loan_number,
             'principal' => (float) $this->principal,
+            'requested_principal' => $this->requested_principal !== null ? (float) $this->requested_principal : null,
             'term_months' => (int) $this->term_months,
             'annual_interest_rate' => (float) $this->annual_interest_rate,
             'loan_product_slug' => $snippet['loan_product_slug'] ?? null,

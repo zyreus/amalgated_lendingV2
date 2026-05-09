@@ -7,6 +7,7 @@ use App\Models\BorrowerNotification;
 use App\Models\Loan;
 use App\Models\Payment;
 use App\Models\User;
+use App\Services\NotificationCenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -15,41 +16,51 @@ class BorrowerNotificationController extends Controller
 {
     /**
      * Sync payment-related reminders from current loan state (idempotent; preserves read_at).
+     *
+     * @param  Loan|null  $primaryLoan  When the caller already resolved the borrower's primary loan
+     *                                   (same rules as the dashboard), pass it to skip a duplicate
+     *                                   `loans` query for that request.
      */
-    public static function syncPaymentRemindersForUser(User $user): void
+    public static function syncPaymentRemindersForUser(User $user, ?Loan $primaryLoan = null): void
     {
-        $allLoans = Loan::query()
-            ->where('borrower_id', $user->id)
-            ->orderByDesc('id')
-            ->get();
+        $loan = $primaryLoan;
 
-        if ($allLoans->isEmpty()) {
-            return;
-        }
+        if ($loan === null) {
+            $allLoans = Loan::query()
+                ->where('borrower_id', $user->id)
+                ->orderByDesc('id')
+                ->get();
 
-        $priority = [
-            Loan::STATUS_ONGOING => 1,
-            Loan::STATUS_APPROVED => 2,
-            Loan::STATUS_PENDING => 3,
-            Loan::STATUS_REJECTED => 4,
-            Loan::STATUS_COMPLETED => 5,
-        ];
-
-        $loan = $allLoans->sort(function ($a, $b) use ($priority) {
-            $pa = $priority[$a->status] ?? 99;
-            $pb = $priority[$b->status] ?? 99;
-            if ($pa !== $pb) {
-                return $pa <=> $pb;
+            if ($allLoans->isEmpty()) {
+                return;
             }
 
-            return $b->id <=> $a->id;
-        })->first();
+            $priority = [
+                Loan::STATUS_ONGOING => 1,
+                Loan::STATUS_APPROVED => 2,
+                Loan::STATUS_PENDING => 3,
+                Loan::STATUS_REJECTED => 4,
+                Loan::STATUS_COMPLETED => 5,
+            ];
+
+            $loan = $allLoans->sort(function ($a, $b) use ($priority) {
+                $pa = $priority[$a->status] ?? 99;
+                $pb = $priority[$b->status] ?? 99;
+                if ($pa !== $pb) {
+                    return $pa <=> $pb;
+                }
+
+                return $b->id <=> $a->id;
+            })->first();
+        }
 
         if (! $loan) {
             return;
         }
 
-        $loan->load(['payments' => fn ($q) => $q->orderBy('due_date')]);
+        if (! $loan->relationLoaded('payments')) {
+            $loan->load(['payments' => fn ($q) => $q->orderBy('due_date')]);
+        }
         $pendingRows = collect($loan->payments ?? [])
             ->filter(fn (Payment $p) => $p->status !== Payment::STATUS_PAID)
             ->values();
@@ -76,7 +87,6 @@ class BorrowerNotificationController extends Controller
             }
         }
 
-        // Remove stale installment reminders that no longer apply
         BorrowerNotification::query()
             ->where('user_id', $user->id)
             ->whereIn('type', ['upcoming_due', 'overdue'])
@@ -106,11 +116,56 @@ class BorrowerNotificationController extends Controller
         BorrowerNotification::create([
             'user_id' => $userId,
             'type' => $type,
+            'category' => $type === 'overdue' ? NotificationCenter::CATEGORY_PAYMENT_OVERDUE : NotificationCenter::CATEGORY_PAYMENT_DUE,
+            'priority' => $type === 'overdue' ? 4 : 3,
+            'module' => NotificationCenter::MODULE_PAYMENTS,
             'title' => $title,
             'body' => $body,
             'dedupe_key' => $dedupeKey,
             'data' => $data,
             'read_at' => null,
+            'archived_at' => null,
+        ]);
+    }
+
+    public function poll(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        self::syncPaymentRemindersForUser($user);
+
+        $sinceRaw = $request->query('since');
+        $changed = true;
+        if (is_string($sinceRaw) && $sinceRaw !== '') {
+            try {
+                $since = Carbon::parse($sinceRaw);
+                $changed = BorrowerNotification::query()
+                    ->where('user_id', $user->id)
+                    ->where(function ($w) use ($since) {
+                        $w->where('created_at', '>', $since)
+                            ->orWhere('updated_at', '>', $since);
+                    })
+                    ->exists();
+            } catch (\Throwable) {
+                $changed = true;
+            }
+        }
+
+        $unread = BorrowerNotification::query()
+            ->where('user_id', $user->id)
+            ->whereNull('read_at')
+            ->whereNull('archived_at')
+            ->count();
+
+        $latest = BorrowerNotification::query()
+            ->where('user_id', $user->id)
+            ->orderByDesc('id')
+            ->value('created_at');
+
+        return response()->json([
+            'ok' => true,
+            'changed' => $changed,
+            'unread_count' => $unread,
+            'latest_created_at' => optional($latest)?->toIso8601String(),
         ]);
     }
 
@@ -119,15 +174,26 @@ class BorrowerNotificationController extends Controller
         $user = $request->user();
         self::syncPaymentRemindersForUser($user);
 
+        $perPage = max(5, min(60, (int) $request->query('per_page', 30)));
         $q = BorrowerNotification::query()
             ->where('user_id', $user->id)
+            ->orderByDesc('priority')
             ->orderByDesc('created_at');
+
+        $category = trim((string) $request->query('category', ''));
+        if ($category !== '') {
+            $q->where('category', $category);
+        }
+
+        if (! $request->boolean('include_archived')) {
+            $q->whereNull('archived_at');
+        }
 
         if ($request->boolean('unread_only')) {
             $q->whereNull('read_at');
         }
 
-        $items = $q->paginate((int) $request->query('per_page', 30));
+        $items = $q->paginate($perPage);
 
         return response()->json(['ok' => true, 'data' => $items]);
     }
@@ -140,6 +206,7 @@ class BorrowerNotificationController extends Controller
         $n = BorrowerNotification::query()
             ->where('user_id', $user->id)
             ->whereNull('read_at')
+            ->whereNull('archived_at')
             ->count();
 
         return response()->json(['ok' => true, 'count' => $n]);
@@ -156,14 +223,48 @@ class BorrowerNotificationController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    public function markUnread(Request $request, BorrowerNotification $borrowerNotification): JsonResponse
+    {
+        if ($borrowerNotification->user_id !== $request->user()->id) {
+            abort(403);
+        }
+        $borrowerNotification->read_at = null;
+        $borrowerNotification->save();
+
+        return response()->json(['ok' => true]);
+    }
+
     public function markAllRead(Request $request): JsonResponse
     {
         $user = $request->user();
         BorrowerNotification::query()
             ->where('user_id', $user->id)
             ->whereNull('read_at')
+            ->whereNull('archived_at')
             ->update(['read_at' => now()]);
 
         return response()->json(['ok' => true]);
+    }
+
+    public function archive(Request $request, BorrowerNotification $borrowerNotification): JsonResponse
+    {
+        if ($borrowerNotification->user_id !== $request->user()->id) {
+            abort(403);
+        }
+        $borrowerNotification->archived_at = now();
+        $borrowerNotification->save();
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function clearAll(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $archived = BorrowerNotification::query()
+            ->where('user_id', $user->id)
+            ->whereNull('archived_at')
+            ->update(['archived_at' => now()]);
+
+        return response()->json(['ok' => true, 'archived' => $archived]);
     }
 }

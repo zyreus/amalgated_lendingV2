@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Mail\LoanApplicationReceivedMail;
-use App\Models\AdminNotification;
 use App\Models\Loan;
 use App\Models\LoanApplication;
 use App\Models\LoanDocument;
@@ -12,6 +11,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\BrevoMailService;
 use App\Services\LoanProductRateResolver;
+use App\Services\NotificationCenter;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -268,13 +268,15 @@ class TravelAssistanceController extends Controller
 
         [$borrower, $loan, $loanApp] = $result;
 
-        AdminNotification::create([
-            'user_id' => null,
-            'type' => 'loan_submitted',
-            'title' => 'Travel Assistance loan application',
-            'body' => 'New travel assistance application from '.$borrower->name.' — ₱'.number_format((float) $loan->principal, 2),
-            'data' => ['loan_id' => $loan->id, 'loan_application_id' => $loanApp->id],
-        ]);
+        app(NotificationCenter::class)->notifyStaff(
+            NotificationCenter::CATEGORY_LOAN_SUBMITTED,
+            'loan_submitted',
+            'Travel Assistance loan application',
+            'New travel assistance application from '.$borrower->name.' — ₱'.number_format((float) $loan->principal, 2),
+            ['loan_id' => $loan->id, 'loan_application_id' => $loanApp->id],
+            null,
+            ['module' => NotificationCenter::MODULE_LOANS],
+        );
 
         $this->notifyBorrower($borrower, $loan);
 

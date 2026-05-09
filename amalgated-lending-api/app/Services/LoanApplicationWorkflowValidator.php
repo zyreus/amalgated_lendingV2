@@ -3,10 +3,16 @@
 namespace App\Services;
 
 use App\Models\LoanApplication;
+use App\Models\LoanProduct;
 use App\Support\LoanApplicationDocumentStatus;
+use Illuminate\Validation\ValidationException;
 
 class LoanApplicationWorkflowValidator
 {
+    public function __construct(
+        private LoanCalculator $loanCalculator,
+    ) {}
+
     /**
      * @return array<int, string> Error messages (empty if valid)
      */
@@ -40,6 +46,26 @@ class LoanApplicationWorkflowValidator
             if ($val === null || $val === '') {
                 $errors[] = ($row['label'] ?? $key).' is required.';
             }
+        }
+
+        $selectedProductId = isset($data['loan_product_id']) ? (int) $data['loan_product_id'] : 0;
+        if ($selectedProductId <= 0) {
+            $errors[] = 'Loan product is required.';
+        } else {
+            $product = LoanProduct::query()->active()->find($selectedProductId);
+            if (! $product) {
+                $errors[] = 'Selected loan product is invalid or inactive.';
+            }
+        }
+
+        $loanAmount = isset($data['loan_amount']) ? (float) $data['loan_amount'] : 0.0;
+        if ($loanAmount <= 0) {
+            $errors[] = 'Loan amount must be greater than zero.';
+        }
+
+        $termMonths = isset($data['term_months']) ? (int) $data['term_months'] : 0;
+        if ($termMonths <= 0) {
+            $errors[] = 'Term in months is required.';
         }
 
         return $errors;
@@ -107,9 +133,49 @@ class LoanApplicationWorkflowValidator
     {
         return array_merge(
             $this->validateForm($app),
+            $this->validateProductLoanRules($app),
             $this->validateDocumentsComplete($app),
             $this->validateSignatures($app)
         );
+    }
+
+    /**
+     * Enforce product max term / max amount / pension caps using the official calculator.
+     *
+     * @return array<int, string>
+     */
+    private function validateProductLoanRules(LoanApplication $app): array
+    {
+        if (! $app->loan_product_id || ! $app->loan_amount || (float) $app->loan_amount <= 0) {
+            return [];
+        }
+
+        $form = is_array($app->form_data) ? $app->form_data : [];
+        $nature = (string) ($form['application_nature'] ?? 'new');
+
+        try {
+            $this->loanCalculator->compute([
+                'product_id' => (int) $app->loan_product_id,
+                'loan_amount' => (float) $app->loan_amount,
+                'term_months' => max(1, (int) ($app->term_months ?? 1)),
+                'application_nature' => $nature,
+                'age' => isset($form['age']) && $form['age'] !== '' ? (int) $form['age'] : null,
+                'monthly_pension' => isset($form['monthly_pension']) && $form['monthly_pension'] !== ''
+                    ? (float) $form['monthly_pension']
+                    : null,
+            ]);
+        } catch (ValidationException $e) {
+            $flat = [];
+            foreach ($e->errors() as $msgs) {
+                foreach ($msgs as $m) {
+                    $flat[] = (string) $m;
+                }
+            }
+
+            return $flat;
+        }
+
+        return [];
     }
 
     /**
@@ -121,6 +187,7 @@ class LoanApplicationWorkflowValidator
     {
         return array_merge(
             $this->validateForm($app),
+            $this->validateProductLoanRules($app),
             $this->validateDocumentsComplete($app)
         );
     }

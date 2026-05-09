@@ -1,51 +1,28 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Loan application status</title>
-</head>
-<body style="font-family: system-ui, -apple-system, Segoe UI, sans-serif; line-height: 1.6; color: #111827; max-width: 640px; margin: 0; padding: 24px;">
-    @php
-        $isApproved = $status === 'approved';
-        $isRejected = $status === 'rejected';
-    @endphp
-    <p style="margin: 0 0 16px;">Hello {{ $borrowerName }},</p>
+<h1 style="margin:0 0 14px;font-size:21px;line-height:1.3;">
+  {{ $headline ?? 'Loan application portal update' }}
+</h1>
+<p style="margin:0 0 16px;">Hi {{ $borrowerName }},</p>
+@if($status === \App\Models\LoanApplication::STATUS_PENDING)
+<p style="margin:0 0 16px;">Thank you — <strong>application #{{ $applicationId }}</strong> ({{ str_replace('_',' ', $loanType) }}) has been lodged for review{{ $submittedAt ? ', submitted '.$submittedAt : '' }}.</p>
+@elseif($status === \App\Models\LoanApplication::STATUS_REJECTED)
+<p style="margin:0 0 16px;color:#b45309;">Your application #{{ $applicationId }} requires attention — it could not proceed at this time.</p>
+@if(!empty($rejectionReason))
+<p style="margin:0 0 16px;line-height:1.55;background:#fef3c7;padding:14px;border-radius:8px;border:1px solid #fcd34d;font-size:14px;">{{ $rejectionReason }}</p>
+@endif
+<p style="margin:0 0 16px;color:#475569;font-size:14px;">You may revise documents and initiate a fresh submission from the borrower portal wizard.</p>
+@else
+<p style="margin:0 0 16px;color:#15803d;">Great news — application #{{ $applicationId }} is <strong>{{ $status }}</strong>. Please log in for next steps regarding release / agreement signing.</p>
+@endif
 
-    @if ($isApproved)
-        <p style="margin: 0 0 16px;">Your application has been <strong>approved</strong> by Amalgated Lending Inc.</p>
-    @elseif ($isRejected)
-        <p style="margin: 0 0 16px;">Your application has been <strong>rejected</strong> by Amalgated Lending Inc.</p>
-    @else
-        <p style="margin: 0 0 16px;">Your application has been <strong>submitted</strong>. Please wait for <strong>Amalgated Lending Inc.</strong> confirmation.</p>
-    @endif
+<table role="presentation" cellpadding="12" cellspacing="0" border="1" bordercolor="#e2e8f0" style="width:100%;border-collapse:collapse;font-size:14px;">
+  <tbody>
+    <tr><td style="background:#f8fafc;width:42%;font-weight:700;">Reference</td><td>APP-{{ str_pad((string) $applicationId, 8, '0', STR_PAD_LEFT) }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Product type</td><td>{{ str_replace('_',' ', ucwords(str_replace('_', ' ', $loanType))) }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Status flag</td><td>{{ strtoupper($status) }}</td></tr>
+  </tbody>
+</table>
 
-    <table style="width: 100%; border-collapse: collapse; margin: 0 0 24px; font-size: 14px;">
-        <tr>
-            <td style="padding: 8px 0; color: #6b7280;">Application reference</td>
-            <td style="padding: 8px 0; font-weight: 600;">#{{ $applicationId }}</td>
-        </tr>
-        <tr>
-            <td style="padding: 8px 0; color: #6b7280;">Loan type</td>
-            <td style="padding: 8px 0;">{{ $loanType }}</td>
-        </tr>
-        @if (!empty($submittedAt))
-            <tr>
-                <td style="padding: 8px 0; color: #6b7280;">Submitted at</td>
-                <td style="padding: 8px 0;">{{ $submittedAt }}</td>
-            </tr>
-        @endif
-    </table>
-
-    @if ($isRejected && !empty($rejectionReason))
-        <p style="margin: 0 0 12px;"><strong>Reason:</strong> {{ $rejectionReason }}</p>
-    @endif
-
-    <p style="margin: 0 0 16px;">You can log in to your borrower portal for updates.</p>
-    <p style="margin: 0; color: #374151; font-size: 13px;">
-        — Amalgated Lending Inc.<br>
-        <span style="color: #6b7280;">This is an automated message; please do not reply directly to this email.</span>
-    </p>
-</body>
-</html>
-
+<p style="margin:22px 0 0;color:#94a3b8;font-size:12px;">
+  Confidential · {{ config('app.name', 'Amalgated Lending Inc.') }}
+</p>
+@endsection

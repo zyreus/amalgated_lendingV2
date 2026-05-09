@@ -21,7 +21,7 @@ export default function LoansPage() {
   const { can } = useAdminApiAuth()
   const { showToast } = useToast()
   const [data, setData] = useState(null)
-  const [status, setStatus] = useState('')
+  const [status, setStatus] = useState('pending')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
 

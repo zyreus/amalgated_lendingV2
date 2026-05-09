@@ -10,6 +10,7 @@ use App\Models\LoanRequirement;
 use App\Models\Role;
 use App\Models\UploadedDocument;
 use App\Models\User;
+use App\Support\PublicStorageUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -268,7 +269,7 @@ class DocumentLoanApplicationController extends Controller
         $data = $request->validate([
             'document_loan_application_id' => 'required|integer|exists:document_loan_applications,id',
             'requirement_id' => 'required|integer|exists:loan_requirements,id',
-            'file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:15360',
+            'file' => 'required|file|mimes:pdf,jpg,jpeg,png,webp|max:15360',
         ]);
 
         /** @var DocumentLoanApplication $app */
@@ -348,7 +349,7 @@ class DocumentLoanApplicationController extends Controller
     {
         $data = $request->validate([
             'document_loan_application_id' => 'required|integer|exists:document_loan_applications,id',
-            'file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:15360',
+            'file' => 'required|file|mimes:pdf,jpg,jpeg,png,webp|max:15360',
         ]);
 
         /** @var DocumentLoanApplication $app */
@@ -414,6 +415,31 @@ class DocumentLoanApplicationController extends Controller
 
         $documentLoanApplication->submitted_at = now();
         $documentLoanApplication->save();
+
+        $documentLoanApplication->loadMissing('loanProduct');
+        $productName = $documentLoanApplication->loanProduct?->name ?? 'Loan product';
+        $nc = app(NotificationCenter::class);
+        $nc->notifyStaff(
+            NotificationCenter::CATEGORY_LOAN_SUBMITTED,
+            'document_loan_submitted',
+            'Document loan application submitted',
+            $user->name.' submitted application #'.$documentLoanApplication->id.' ('.$productName.').',
+            [
+                'document_loan_application_id' => $documentLoanApplication->id,
+                'borrower_id' => $user->id,
+            ],
+            null,
+            ['module' => NotificationCenter::MODULE_LOANS],
+        );
+        $nc->notifyBorrower(
+            $user,
+            NotificationCenter::CATEGORY_LOAN_SUBMITTED,
+            'document_application_submitted',
+            'Application submitted',
+            'Your document-based application #'.$documentLoanApplication->id.' was received. Our team will review it shortly.',
+            ['document_loan_application_id' => $documentLoanApplication->id],
+            ['dedupe_key' => 'docloan_submit:'.$documentLoanApplication->id, 'module' => NotificationCenter::MODULE_LOANS],
+        );
 
         return response()->json([
             'ok' => true,
@@ -511,7 +537,8 @@ class DocumentLoanApplicationController extends Controller
 
         $data = $request->validate([
             'slot' => 'required|string|in:valid_id,proof_income,additional',
-            'file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            // Keep embedded uploads generous; phone screenshots can exceed 10MB.
+            'file' => 'required|file|mimes:pdf,jpg,jpeg,png,webp|max:15360',
             'replace_index' => 'nullable|integer|min:0',
         ]);
 
@@ -614,7 +641,7 @@ class DocumentLoanApplicationController extends Controller
         $signedOk = (bool) ($app->signed_form_path && $app->is_signed);
 
         $additional = $app->additional_document_paths ?? [];
-        $additionalUrls = array_map(fn ($p) => $p ? url('storage/'.$p) : null, is_array($additional) ? $additional : []);
+        $additionalUrls = array_map(fn ($p) => $p ? PublicStorageUrl::apiUrl($p) : null, is_array($additional) ? $additional : []);
 
         return [
             'id' => $app->id,
@@ -623,7 +650,7 @@ class DocumentLoanApplicationController extends Controller
             'submitted_at' => $app->submitted_at?->toIso8601String(),
             'created_at' => $app->created_at?->toIso8601String(),
             'signed_form_path' => $app->signed_form_path,
-            'signed_form_url' => $app->signed_form_path ? url('storage/'.$app->signed_form_path) : null,
+            'signed_form_url' => $app->signed_form_path ? PublicStorageUrl::apiUrl($app->signed_form_path) : null,
             'is_signed' => (bool) $app->is_signed,
             'application_form' => $app->application_form,
             'wizard' => [
@@ -631,9 +658,9 @@ class DocumentLoanApplicationController extends Controller
             ],
             'embedded_documents' => [
                 'valid_id_path' => $app->valid_id_path,
-                'valid_id_url' => $app->valid_id_path ? url('storage/'.$app->valid_id_path) : null,
+                'valid_id_url' => $app->valid_id_path ? PublicStorageUrl::apiUrl($app->valid_id_path) : null,
                 'proof_income_path' => $app->proof_income_path,
-                'proof_income_url' => $app->proof_income_path ? url('storage/'.$app->proof_income_path) : null,
+                'proof_income_url' => $app->proof_income_path ? PublicStorageUrl::apiUrl($app->proof_income_path) : null,
                 'additional_paths' => is_array($additional) ? $additional : [],
                 'additional_urls' => $additionalUrls,
             ],
@@ -663,7 +690,7 @@ class DocumentLoanApplicationController extends Controller
             'remarks' => $u->remarks,
             'version' => (int) $u->version,
             'can_replace' => $this->borrowerMayReplaceRequirementUpload($app, $u),
-            'url' => $u->file_path ? url('storage/'.$u->file_path) : null,
+            'url' => $u->file_path ? PublicStorageUrl::apiUrl($u->file_path) : null,
         ];
     }
 }

@@ -1,11 +1,13 @@
-import { useEffect, useState, lazy, Suspense } from 'react'
+import { useEffect, useMemo, useState, useRef, lazy, Suspense } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
-import { adminSocketUrls, chatFetch, getLendingChatSecret } from '../utils/adminChatApi.js'
+import { adminSocketUrls, getLendingChatSecret } from '../utils/adminChatApi.js'
 import { api, getToken as getAdminToken } from './api/client.js'
 import { useAdminApiAuth } from './context/useAdminApiAuth.js'
 import { admin } from './components/AdminUi.jsx'
 import { ADMIN_NAV_GROUPS } from './adminNavConfig.js'
+import { ADMIN_ROLE_BADGE, ADMIN_ROLE_BADGE_FALLBACK, sortRolesForDisplay } from './utils/roleBadges.js'
+import amalgatedLogo from '../assets/amalgated-lending-logo.png'
 
 /**
  * NotificationsPage is mounted only inside the bell-icon modal. Lazy loading
@@ -27,6 +29,7 @@ function NavIcon({ name, className }) {
   if (name === 'borrowers') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
   if (name === 'report') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
   if (name === 'products') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+  if (name === 'forms') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
   return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7" /></svg>
 }
 
@@ -58,6 +61,9 @@ function mergeApiNav(rows, can) {
 
   if (!filtered.some((x) => x.path === '/admin/chat-crm')) {
     filtered.push(normalizeNavItem({ path: '/admin/chat-crm', label: 'CRM & Chat', icon_key: 'chat', match_end: false }, filtered.length))
+  }
+  if (!filtered.some((x) => x.path === '/admin/feedback')) {
+    filtered.push(normalizeNavItem({ path: '/admin/feedback', label: 'Feedback', icon_key: 'bell', match_end: false }, filtered.length))
   }
   if (can('cms.manage') && !filtered.some((x) => x.path === '/admin/newsletter')) {
     filtered.push(normalizeNavItem({ path: '/admin/newsletter', label: 'News & announcements', icon_key: 'bell', match_end: false }, filtered.length))
@@ -121,7 +127,8 @@ export default function AdminLayout() {
   const [navGroups, setNavGroups] = useState(() => buildGroupedNavFromConfig(can))
   const [navLoading, setNavLoading] = useState(true)
   const [crmVisitorPing, setCrmVisitorPing] = useState(0)
-  const [crmFeedbackUnread, setCrmFeedbackUnread] = useState(0)
+
+  const displayRoles = useMemo(() => sortRolesForDisplay(user?.roles), [user?.roles])
 
   useEffect(() => {
     let cancelled = false
@@ -151,47 +158,6 @@ export default function AdminLayout() {
     if (!location.pathname.startsWith('/admin/chat-crm')) return
     setCrmVisitorPing(0)
   }, [location.pathname])
-
-  useEffect(() => {
-    let cancelled = false
-    let currentSocket = null
-    const targets = adminSocketUrls()
-
-    const loadFeedbackBadge = async () => {
-      try {
-        const { res } = await chatFetch('/api/admin/stats')
-        const payload = await res?.json?.().catch(() => ({}))
-        const count = Number(payload?.stats?.feedbackUnread || 0)
-        if (!cancelled) setCrmFeedbackUnread(Math.max(0, count))
-      } catch {
-        if (!cancelled) setCrmFeedbackUnread(0)
-      }
-    }
-
-    const connectFeedbackSocket = (index) => {
-      if (cancelled || index >= targets.length) return
-      const socket = io(targets[index], { transports: ['websocket', 'polling'] })
-      currentSocket = socket
-      socket.on('connect', () => socket.emit('admin:join'))
-      socket.on('feedback:refresh', () => loadFeedbackBadge())
-      socket.on('connect_error', () => {
-        socket.removeAllListeners()
-        socket.disconnect()
-        connectFeedbackSocket(index + 1)
-      })
-    }
-
-    loadFeedbackBadge()
-    const id = setInterval(loadFeedbackBadge, 60_000)
-    connectFeedbackSocket(0)
-
-    return () => {
-      cancelled = true
-      clearInterval(id)
-      currentSocket?.removeAllListeners()
-      currentSocket?.disconnect()
-    }
-  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -243,6 +209,9 @@ export default function AdminLayout() {
         socket.emit('admin:join', { token: getAdminToken() || '', secret: getLendingChatSecret() || '' })
       })
       socket.on('chat:newMessage', onVisitorMessage)
+      socket.on('feedback:refresh', () => {
+        window.dispatchEvent(new CustomEvent('admin-notifications-changed'))
+      })
       socket.on('connect_error', () => {
         if (disposed) return
         socket.removeAllListeners()
@@ -255,6 +224,7 @@ export default function AdminLayout() {
     return () => {
       disposed = true
       currentSocket?.off('chat:newMessage', onVisitorMessage)
+      currentSocket?.off('feedback:refresh')
       currentSocket?.removeAllListeners()
       if (currentSocket?.connected) currentSocket.disconnect()
     }
@@ -262,6 +232,7 @@ export default function AdminLayout() {
 
   const [notifUnread, setNotifUnread] = useState(null)
   const [notifModalOpen, setNotifModalOpen] = useState(false)
+  const notifWrapRef = useRef(null)
 
   useEffect(() => {
     if (!user || !can('notifications.view')) return undefined
@@ -287,6 +258,23 @@ export default function AdminLayout() {
       window.removeEventListener('admin:statsRefresh', onStatsSync)
     }
   }, [user, can])
+
+  useEffect(() => {
+    if (!notifModalOpen) return undefined
+    const onDocClick = (e) => {
+      if (!notifWrapRef.current) return
+      if (!notifWrapRef.current.contains(e.target)) setNotifModalOpen(false)
+    }
+    const onEsc = (e) => {
+      if (e.key === 'Escape') setNotifModalOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    document.addEventListener('keydown', onEsc)
+    return () => {
+      document.removeEventListener('mousedown', onDocClick)
+      document.removeEventListener('keydown', onEsc)
+    }
+  }, [notifModalOpen])
 
   const handleLogout = () => {
     logout()
@@ -331,8 +319,14 @@ export default function AdminLayout() {
               <div
                 className={`flex min-w-0 items-center gap-3 ${sidebarCollapsed ? 'lg:flex-col lg:items-center' : ''}`}
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#DC2626] text-sm font-bold text-white shadow-md shadow-red-500/25">
-                  AL
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-md shadow-red-500/10 ring-1 ring-black/5">
+                  <img
+                    src={amalgatedLogo}
+                    alt="Amalgated Lending"
+                    className="h-full w-full object-contain p-0.5"
+                    loading="eager"
+                    decoding="async"
+                  />
                 </div>
                 <div className={`min-w-0 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#DC2626]">Amalgated Lending</p>
@@ -359,11 +353,27 @@ export default function AdminLayout() {
               </button>
             </div>
             {user && (
-              <p
-                className={`mt-3 truncate rounded-lg bg-gray-50 px-2.5 py-1.5 text-xs text-gray-600 ${sidebarCollapsed ? 'lg:hidden' : ''}`}
+              <div
+                className={`mt-3 rounded-lg bg-gray-50 px-2.5 py-1.5 text-xs text-gray-600 dark:bg-[#0F172A]/50 dark:text-gray-400 ${sidebarCollapsed ? 'lg:hidden' : ''}`}
               >
-                Signed in as <span className="font-medium text-gray-900">{user.username || user.email}</span>
-              </p>
+                <p className="truncate">
+                  Signed in as{' '}
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{user.username || user.email}</span>
+                </p>
+                {displayRoles.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1" aria-label="Your roles">
+                    {displayRoles.map((r) => (
+                      <span
+                        key={r.id ?? r.slug}
+                        className={`inline-flex max-w-full truncate rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${ADMIN_ROLE_BADGE[r.slug] || ADMIN_ROLE_BADGE_FALLBACK}`}
+                        title={r.slug}
+                      >
+                        {r.name}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             )}
           </div>
 
@@ -408,11 +418,6 @@ export default function AdminLayout() {
                               aria-label="CRM has live visitor activity"
                             />
                           ) : null}
-                          {item.path === '/admin/feedback' && crmFeedbackUnread > 0 && sidebarCollapsed ? (
-                            <span className="absolute -right-2 -top-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
-                              {crmFeedbackUnread > 99 ? '99+' : crmFeedbackUnread}
-                            </span>
-                          ) : null}
                         </span>
                         <span className={`min-w-0 flex-1 leading-snug ${sidebarCollapsed ? 'lg:sr-only' : ''}`}>{item.label}</span>
                         {item.path === '/admin/notifications' && notifUnread != null && notifUnread > 0 && !sidebarCollapsed ? (
@@ -426,11 +431,6 @@ export default function AdminLayout() {
                             title="Unread visitor chats"
                             aria-label="CRM live"
                           />
-                        ) : null}
-                        {item.path === '/admin/feedback' && crmFeedbackUnread > 0 && !sidebarCollapsed ? (
-                          <span className="ml-auto inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
-                            {crmFeedbackUnread > 99 ? '99+' : crmFeedbackUnread}
-                          </span>
                         ) : null}
                       </NavLink>
                     ))}
@@ -508,19 +508,49 @@ export default function AdminLayout() {
             </div>
           </div>
           {user && can('notifications.view') ? (
-            <button
-              type="button"
-              onClick={() => setNotifModalOpen(true)}
-              className="relative rounded-lg border border-gray-200/90 p-2 text-gray-700 transition hover:bg-gray-100 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
-              aria-label="Notifications"
-            >
-              <NavIcon name="bell" className="h-5 w-5" />
-              {notifUnread != null && notifUnread > 0 ? (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
-                  {notifUnread > 99 ? '99+' : notifUnread}
-                </span>
-              ) : null}
-            </button>
+            <div className="relative" ref={notifWrapRef}>
+              <button
+                type="button"
+                onClick={() => setNotifModalOpen((v) => !v)}
+                className="relative rounded-lg border border-gray-200/90 p-2 text-gray-700 transition hover:bg-gray-100 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
+                aria-label="Notifications"
+                aria-expanded={notifModalOpen}
+              >
+                <NavIcon name="bell" className="h-5 w-5" />
+                {notifUnread != null && notifUnread > 0 ? (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
+                    {notifUnread > 99 ? '99+' : notifUnread}
+                  </span>
+                ) : null}
+              </button>
+              <div
+                className={`absolute right-0 top-[calc(100%+10px)] z-[80] w-[min(92vw,30rem)] origin-top-right rounded-2xl border border-gray-200 bg-white shadow-2xl transition-all duration-200 dark:border-[#1F2937] dark:bg-[#111827] ${
+                  notifModalOpen ? 'pointer-events-auto translate-y-0 scale-100 opacity-100' : 'pointer-events-none -translate-y-1 scale-95 opacity-0'
+                }`}
+              >
+                <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-[#1F2937]">
+                  <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Notifications</h2>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/10"
+                    onClick={() => setNotifModalOpen(false)}
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="max-h-[68vh] overflow-y-auto p-3">
+                  <Suspense
+                    fallback={
+                      <div className="flex items-center justify-center py-10 text-sm text-gray-500 dark:text-gray-400">
+                        Loading notifications…
+                      </div>
+                    }
+                  >
+                    <NotificationsPage embedded onNavigate={() => setNotifModalOpen(false)} />
+                  </Suspense>
+                </div>
+              </div>
+            </div>
           ) : null}
         </header>
 
@@ -540,39 +570,6 @@ export default function AdminLayout() {
           </div>
         </main>
       </div>
-      {notifModalOpen ? (
-        <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/40 p-4 pt-20 backdrop-blur-[1px] sm:items-center sm:pt-4">
-          <button
-            type="button"
-            className="absolute inset-0"
-            aria-label="Close notifications"
-            onClick={() => setNotifModalOpen(false)}
-          />
-          <div className="relative z-10 w-full max-w-3xl rounded-2xl border border-gray-200 bg-white p-4 shadow-2xl dark:border-[#1F2937] dark:bg-[#111827] sm:p-5">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Notifications</h2>
-              <button
-                type="button"
-                className="rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/10"
-                onClick={() => setNotifModalOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-            <div className="max-h-[70vh] overflow-y-auto pr-1">
-              <Suspense
-                fallback={
-                  <div className="flex items-center justify-center py-10 text-sm text-gray-500 dark:text-gray-400">
-                    Loading notifications…
-                  </div>
-                }
-              >
-                <NotificationsPage embedded onNavigate={() => setNotifModalOpen(false)} />
-              </Suspense>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   )
 }

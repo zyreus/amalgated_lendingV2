@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Support\PublicStorageUrl;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -46,7 +46,7 @@ class DocumentLoanApplication extends Model
             return null;
         }
 
-        return url('storage/'.$this->signed_form_path);
+        return PublicStorageUrl::absoluteUrl($this->signed_form_path);
     }
 
     public function user(): BelongsTo

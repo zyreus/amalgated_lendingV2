@@ -2,9 +2,12 @@
 
 namespace App\Models;
 
+use App\Jobs\SendBorrowerEmailVerificationJob;
 use App\Services\BrevoMailService;
+use Illuminate\Auth\MustVerifyEmail as MustVerifyEmailTrait;
 use Illuminate\Auth\Notifications\ResetPassword as ResetPasswordNotification;
 use Illuminate\Auth\Passwords\CanResetPassword;
+use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Contracts\Auth\CanResetPassword as CanResetPasswordContract;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -14,8 +17,9 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
 
-class User extends Authenticatable implements CanResetPasswordContract, JWTSubject
+class User extends Authenticatable implements CanResetPasswordContract, JWTSubject, MustVerifyEmailContract
 {
+    use MustVerifyEmailTrait;
     use CanResetPassword;
     use HasFactory;
     use Notifiable;
@@ -241,5 +245,11 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
         }
 
         return 'borrower';
+    }
+
+    /** Queue transactional verification email (JWT API — Laravel's default Mail notification is bypassed). */
+    public function sendEmailVerificationNotification(): void
+    {
+        SendBorrowerEmailVerificationJob::dispatch((int) $this->getKey());
     }
 }

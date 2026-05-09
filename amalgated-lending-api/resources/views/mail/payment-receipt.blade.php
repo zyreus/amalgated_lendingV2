@@ -1,53 +1,36 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Amalgated Lending Payment Invoice</title>
-</head>
-<body style="font-family: system-ui, -apple-system, Segoe UI, sans-serif; line-height: 1.6; color: #111827; max-width: 640px; margin: 0; padding: 24px;">
-    <div style="margin: 0 0 20px; display: flex; align-items: center; gap: 12px;">
-        <img src="{{ $logoCid ?: $logoUrl }}" alt="Amalgated Lending" style="height: 52px; width: auto;">
-        <div>
-            <div style="font-size: 18px; font-weight: 800; letter-spacing: 0.04em;">Amalgated Lending</div>
-            <div style="font-size: 14px; font-weight: 600; color: #4b5563;">Payment Invoice</div>
-        </div>
-    </div>
-    <p style="margin: 0 0 16px;">Hello {{ $borrowerName }},</p>
-    <p style="margin: 0 0 16px;">Your payment has been <strong>confirmed</strong> by Amalgated Lending. Below is your official receipt summary.</p>
-    <table style="width: 100%; border-collapse: collapse; margin: 0 0 24px; font-size: 14px;">
-        <tr>
-            <td style="padding: 8px 0; color: #6b7280;">Receipt #</td>
-            <td style="padding: 8px 0; font-weight: 600;">{{ $invoiceNumber }}</td>
-        </tr>
-        <tr>
-            <td style="padding: 8px 0; color: #6b7280;">Loan</td>
-            <td style="padding: 8px 0;">#{{ $loanId }}</td>
-        </tr>
-        <tr>
-            <td style="padding: 8px 0; color: #6b7280;">Installment</td>
-            <td style="padding: 8px 0;">{{ $installmentNo }}</td>
-        </tr>
-        <tr>
-            <td style="padding: 8px 0; color: #6b7280;">Amount paid</td>
-            <td style="padding: 8px 0; font-weight: 600;">₱{{ $amountPaid }}</td>
-        </tr>
-        <tr>
-            <td style="padding: 8px 0; color: #6b7280;">Payment date</td>
-            <td style="padding: 8px 0;">{{ $paidAt }}</td>
-        </tr>
-        <tr>
-            <td style="padding: 8px 0; color: #6b7280;">Reference</td>
-            <td style="padding: 8px 0;">{{ $referenceNumber }}</td>
-        </tr>
-    </table>
-    @if($payment->receipt_path)
-        <p style="margin: 0 0 16px; font-size: 13px; color: #374151;">If you uploaded proof of payment, it is also attached to this email.</p>
+<h1 style="margin:0 0 14px;font-size:21px;line-height:1.3;color:#15803d;">Payment confirmed — thank you</h1>
+<p style="margin:0 0 16px;">Hi {{ $borrowerName }},</p>
+<p style="margin:0 0 18px;font-size:15px;color:#475569;">
+  We have credited your instalment toward loan <strong>{{ $loanNumber }}</strong>. Please retain this receipt for your records.
+</p>
+<table role="presentation" cellpadding="12" cellspacing="0" border="1" bordercolor="#e2e8f0" style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:14px;">
+  <tbody>
+    <tr><td style="background:#f8fafc;font-weight:700;width:42%;">Official receipt No.</td><td style="font-weight:700;color:#991b1b;">{{ $invoiceNumber }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">OR / ledger ref.</td><td>{{ $officialOr }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Installment no.</td><td>{{ $installmentNo }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Amount paid</td><td>₱ {{ $amountPaid }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Date posted</td><td>{{ $paidAt }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Remaining balance*</td><td>₱ {{ $remainingBalance }}</td></tr>
+  </tbody>
+</table>
+@if(!empty($breakdownInterest) || !empty($breakdownPrincipal))
+<table role="presentation" cellpadding="10" cellspacing="0" border="1" bordercolor="#e5e7eb" style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+  <tbody>
+    @if(!empty($breakdownPrincipal))
+    <tr><td style="background:#fafafa;width:52%;font-weight:600;">Principal allocation</td><td align="right">₱ {{ $breakdownPrincipal }}</td></tr>
     @endif
-    <p style="margin: 0 0 16px;">Thank you for your payment.</p>
-    <p style="margin: 0; color: #374151; font-size: 13px;">
-        — Amalgated Lending<br>
-        <span style="color: #6b7280;">This is an automated message; please do not reply directly to this email.</span>
-    </p>
-</body>
-</html>
+    @if(!empty($breakdownInterest))
+    <tr><td style="background:#fafafa;font-weight:600;">Interest / service fee</td><td align="right">₱ {{ $breakdownInterest }}</td></tr>
+    @endif
+  </tbody>
+</table>
+@endif
+<p style="margin:12px 0 0;color:#94a3b8;font-size:11px;line-height:1.5;">
+  *Outstanding balance aggregates scheduled instalments remaining on the ledger and may fluctuate daily with penalties/adjustments.
+</p>
+<p style="margin:20px 0 0;font-size:12px;color:#64748b;">
+  @if(isset($attachmentNote))
+    {{ $attachmentNote }}
+  @endif
+</p>
+@endsection

@@ -6,12 +6,17 @@ use App\Http\Controllers\Controller;
 use App\Models\Loan;
 use App\Models\LoanApplication;
 use App\Models\TravelApplication;
+use App\Services\LoanStatementOfAccountService;
 use App\Support\LoanApplicationDocumentStatus;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class LoanPrintController extends Controller
 {
+    public function __construct(
+        private LoanStatementOfAccountService $soa,
+    ) {}
+
     public function generalLoan(Request $request, LoanApplication $loanApplication): View
     {
         $this->authorizePrint($request, $loanApplication->user_id);
@@ -154,15 +159,10 @@ class LoanPrintController extends Controller
     {
         $this->authorizePrint($request, (int) $loan->borrower_id);
 
-        $loan->loadMissing(['borrower', 'payments']);
-        $schedule = is_array($loan->schedule_json) ? $loan->schedule_json : [];
-        $paymentsByInstallment = $loan->payments->keyBy(fn ($p) => (int) $p->installment_no);
+        $statement = $this->soa->build($loan);
 
-        return view('print.loan_statement_of_account', [
-            'loan' => $loan,
-            'borrower' => $loan->borrower,
-            'schedule' => $schedule,
-            'paymentsByInstallment' => $paymentsByInstallment,
+        return view('print.loan_statement_of_account_v2', [
+            'statement' => $statement,
         ]);
     }
 

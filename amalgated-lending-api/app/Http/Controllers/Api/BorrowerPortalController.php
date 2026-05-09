@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\AdminNotification;
 use App\Models\BorrowerNotification;
 use App\Models\Lead;
 use App\Models\LeadMessage;
@@ -11,13 +10,14 @@ use App\Models\Loan;
 use App\Models\LoanApplication;
 use App\Models\Payment;
 use App\Models\TravelApplication;
+use App\Services\NotificationCenter;
 use App\Support\LoanApplicationDocumentStatus;
+use App\Support\PublicStorageUrl;
 use App\Support\SignedPrintUrls;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class BorrowerPortalController extends Controller
@@ -39,7 +39,7 @@ class BorrowerPortalController extends Controller
                 $links[] = [
                     'key' => (string) $key,
                     'label' => $label,
-                    'url' => Storage::disk('public')->url($path),
+                    'url' => PublicStorageUrl::apiUrl($path),
                     'name' => basename($path),
                 ];
             }
@@ -170,11 +170,29 @@ class BorrowerPortalController extends Controller
         $allLoans = Loan::query()
             ->where('borrower_id', $user->id)
             ->orderByDesc('id')
-            ->get();
+            ->get([
+                'id',
+                'borrower_id',
+                'principal',
+                'requested_principal',
+                'term_months',
+                'annual_interest_rate',
+                'status',
+                'rejection_reason',
+                'application_payload',
+                'schedule_json',
+                'monthly_payment',
+                'outstanding_balance',
+                'created_at',
+            ]);
 
         $loan = $this->selectPrimaryLoan($allLoans);
+        BorrowerNotificationController::syncPaymentRemindersForUser($user, $loan);
         if ($loan) {
-            $loan->load(['payments' => fn ($q) => $q->orderBy('due_date')]);
+            $loan->load([
+                'payments' => fn ($q) => $q->orderBy('due_date'),
+                'loanApplication:id,loan_id,loan_amount,approved_amount',
+            ]);
         }
 
         $loansSummary = $allLoans->map(function (Loan $l) {
@@ -185,6 +203,8 @@ class BorrowerPortalController extends Controller
                 'id' => $l->id,
                 'status' => $l->status,
                 'principal' => $l->principal,
+                'requested_principal' => $l->requested_principal !== null ? (float) $l->requested_principal : null,
+                'applied_principal' => (float) ($l->requested_principal ?? $l->principal),
                 'term_months' => $l->term_months,
                 'annual_interest_rate' => $l->annual_interest_rate,
                 'loan_product_slug' => $pl['loan_product_slug'] ?? null,
@@ -218,14 +238,17 @@ class BorrowerPortalController extends Controller
             'progress_percent' => 0,
         ];
 
-        BorrowerNotificationController::syncPaymentRemindersForUser($user);
         $notifications = BorrowerNotification::query()
             ->where('user_id', $user->id)
+            ->whereNull('archived_at')
             ->orderByDesc('created_at')
             ->limit(8)
             ->get()
             ->map(fn (BorrowerNotification $n) => [
+                'id' => $n->id,
                 'type' => $n->type,
+                'read' => $n->read_at !== null,
+                'priority' => (int) ($n->priority ?? 2),
                 'message' => $n->body ? $n->title.' — '.$n->body : $n->title,
             ])
             ->values()
@@ -325,7 +348,8 @@ class BorrowerPortalController extends Controller
             'payment_id' => 'required|integer|exists:payments,id',
             'reference_number' => 'required|string|max:128',
             'payment_method' => 'required|string|in:gcash,bank,cash',
-            'receipt' => 'required|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            // Phone photos can exceed 5MB; allow up to 15MB and common web image format.
+            'receipt' => 'required|file|mimes:jpg,jpeg,png,webp,pdf|max:15360',
         ]);
 
         $payment = Payment::query()
@@ -337,6 +361,26 @@ class BorrowerPortalController extends Controller
 
         if (! $payment) {
             return response()->json(['ok' => false, 'message' => 'Payment record not found for borrower.'], 404);
+        }
+
+        if ($payment->status === Payment::STATUS_PAID) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'This installment is already marked paid.',
+            ], 422);
+        }
+
+        $refTrim = trim((string) $data['reference_number']);
+        $dupRef = Payment::query()
+            ->where('loan_id', $payment->loan_id)
+            ->whereKeyNot($payment->id)
+            ->where('reference_number', $refTrim)
+            ->exists();
+        if ($dupRef) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'This reference number was already used for another installment on this loan.',
+            ], 422);
         }
 
         /** @var UploadedFile $file */
@@ -352,27 +396,44 @@ class BorrowerPortalController extends Controller
         $payment->notes = trim((string) ($payment->notes ?? '').' | Receipt uploaded by borrower');
         $payment->save();
 
+        app(NotificationCenter::class)->notifyBorrower(
+            $user,
+            NotificationCenter::CATEGORY_PAYMENT_SUBMITTED,
+            'borrower_payment_submitted_ack',
+            'Receipt received',
+            'Installment #'.($payment->installment_no ?? '—').': we received your proof. An officer will verify it shortly.',
+            ['payment_id' => $payment->id, 'loan_id' => $payment->loan_id],
+            ['dedupe_key' => 'payment_proof_upload:'.$payment->id, 'module' => NotificationCenter::MODULE_PAYMENTS],
+        );
+
         // Admin notifications page: reflect borrower-submitted payment proof.
         $payment->loadMissing('loan');
-        AdminNotification::create([
-            'user_id' => $user->id,
-            'type' => 'borrower_payment_submitted',
-            'title' => 'Payment submitted from '.$user->name,
-            'body' => 'Installment #'.($payment->installment_no ?? '—').' · Amount '.number_format((float) ($payment->amount_due ?? 0), 2).' · Ref '.$payment->reference_number,
-            'data' => [
+        app(NotificationCenter::class)->notifyStaff(
+            NotificationCenter::CATEGORY_PAYMENT_SUBMITTED,
+            'borrower_payment_submitted',
+            'Payment submitted from '.$user->name,
+            'Installment #'.($payment->installment_no ?? '—').' · Amount '.number_format((float) ($payment->amount_due ?? 0), 2).' · Ref '.$payment->reference_number,
+            [
                 'payment_id' => $payment->id,
                 'loan_id' => $payment->loan_id,
                 'borrower_id' => $user->id,
                 'receipt_path' => $payment->receipt_path,
             ],
-            'read_at' => null,
-        ]);
+            null,
+            [
+                'module' => NotificationCenter::MODULE_PAYMENTS,
+                'priority' => 3,
+                'throttle_key' => 'borrower_payment_proof:'.$payment->id,
+                'throttle_max' => 1,
+                'throttle_decay_seconds' => 7200,
+            ],
+        );
 
         return response()->json([
             'ok' => true,
             'message' => 'Payment receipt uploaded. Waiting for admin confirmation.',
             'payment' => $payment->fresh('loan'),
-            'receipt_url' => Storage::disk('public')->url($path),
+            'receipt_url' => PublicStorageUrl::apiUrl($path),
         ]);
     }
 
@@ -423,11 +484,11 @@ class BorrowerPortalController extends Controller
                 'email' => $user->email,
                 'phone' => $user->phone,
                 'id_document_name' => $user->id_document_name,
-                'id_document_url' => $user->id_document_path ? Storage::disk('public')->url($user->id_document_path) : null,
+                'id_document_url' => $user->id_document_path ? PublicStorageUrl::apiUrl($user->id_document_path) : null,
                 'profile_photo_name' => $user->profile_photo_name ?: $user->id_document_name,
                 'profile_photo_url' => $user->profile_photo_path
-                    ? Storage::disk('public')->url($user->profile_photo_path)
-                    : ($user->id_document_path ? Storage::disk('public')->url($user->id_document_path) : null),
+                    ? PublicStorageUrl::apiUrl($user->profile_photo_path)
+                    : ($user->id_document_path ? PublicStorageUrl::apiUrl($user->id_document_path) : null),
             ],
         ]);
     }
@@ -442,7 +503,7 @@ class BorrowerPortalController extends Controller
                 'sender_type' => $m->sender_type,
                 'message' => $m->message,
                 'attachment_name' => $m->attachment_name,
-                'attachment_url' => $m->attachment_path ? Storage::disk('public')->url($m->attachment_path) : null,
+                'attachment_url' => $m->attachment_path ? PublicStorageUrl::apiUrl($m->attachment_path) : null,
                 'admin_name' => $m->adminUser?->name,
                 'created_at' => optional($m->created_at)?->toIso8601String(),
             ];
@@ -499,7 +560,7 @@ class BorrowerPortalController extends Controller
                 'sender_type' => $msg->sender_type,
                 'message' => $msg->message,
                 'attachment_name' => $msg->attachment_name,
-                'attachment_url' => $msg->attachment_path ? Storage::disk('public')->url($msg->attachment_path) : null,
+                'attachment_url' => $msg->attachment_path ? PublicStorageUrl::apiUrl($msg->attachment_path) : null,
                 'created_at' => optional($msg->created_at)?->toIso8601String(),
             ],
         ], 201);
@@ -517,7 +578,7 @@ class BorrowerPortalController extends Controller
             $items[] = [
                 'source' => 'profile',
                 'label' => 'Valid ID (profile)',
-                'url' => Storage::disk('public')->url($user->id_document_path),
+                'url' => PublicStorageUrl::apiUrl($user->id_document_path),
                 'path' => $user->id_document_path,
             ];
         }
@@ -529,6 +590,9 @@ class BorrowerPortalController extends Controller
             ->get();
 
         foreach ($apps as $app) {
+            if (! $app->isOfficiallySubmitted()) {
+                continue;
+            }
             $loanLabel = config('amalgated_loans.general_loan_types')[$app->loan_type] ?? $app->loan_type;
             foreach ($app->documents ?? [] as $key => $paths) {
                 $docLabel = config('amalgated_loans.general_documents.'.$app->loan_type.'.'.$key.'.label') ?? $key;
@@ -543,7 +607,7 @@ class BorrowerPortalController extends Controller
                         'loan_type_label' => $loanLabel,
                         'doc_key' => $key,
                         'label' => $docLabel,
-                        'url' => Storage::disk('public')->url($p),
+                        'url' => PublicStorageUrl::apiUrl($p),
                         'path' => $p,
                     ];
                 }
@@ -560,43 +624,24 @@ class BorrowerPortalController extends Controller
     {
         $user = $request->user();
 
-        $general = LoanApplication::query()
+        $generalOwned = LoanApplication::query()
             ->where('user_id', $user->id)
             ->whereIn('loan_type', array_keys(config('amalgated_loans.general_loan_types')))
             ->orderByDesc('id')
             ->get()
-            ->filter(fn (LoanApplication $a) => $this->isGeneralApplicationOwnedByUser($a, $user))
-            ->map(function (LoanApplication $a) {
-                $docStatus = LoanApplicationDocumentStatus::forGeneralLoanType($a->loan_type, $a->documents);
+            ->filter(fn (LoanApplication $a) => $this->isGeneralApplicationOwnedByUser($a, $user));
 
-                return [
-                    'id' => $a->id,
-                    'kind' => 'general',
-                    'loan_type' => $a->loan_type,
-                    'loan_type_label' => config('amalgated_loans.general_loan_types')[$a->loan_type] ?? $a->loan_type,
-                    'status' => $a->status,
-                    'is_draft' => $a->submitted_at === null,
-                    'submitted_at' => $a->submitted_at?->toIso8601String(),
-                    'created_at' => $a->created_at?->toIso8601String(),
-                    'documents_checklist' => collect($docStatus)->map(fn ($row, $k) => [
-                        'key' => $k,
-                        'label' => $row['label'],
-                        'uploaded' => $row['ok'],
-                    ])->values(),
-                    'uploaded_documents' => $this->flattenDocumentLinks($docStatus),
-                    'form_preview' => $this->buildFormPreview($a->form_data),
-                    'signatures' => [
-                        'applicant' => $a->applicant_signature ? Storage::disk('public')->url($a->applicant_signature) : null,
-                        'spouse' => $a->spouse_signature ? Storage::disk('public')->url($a->spouse_signature) : null,
-                        'comaker' => $a->comaker_signature ? Storage::disk('public')->url($a->comaker_signature) : null,
-                    ],
-                    'print_url' => SignedPrintUrls::temporaryRoute(
-                        'print.general-loan',
-                        now()->addMinutes(45),
-                        ['loanApplication' => $a->id]
-                    ),
-                ];
-            });
+        $generalSubmitted = $generalOwned
+            ->filter(fn (LoanApplication $a) => $a->isOfficiallySubmitted())
+            ->sortByDesc(fn (LoanApplication $a) => $a->submitted_at?->getTimestamp() ?? $a->id)
+            ->values()
+            ->map(fn (LoanApplication $a) => $this->serializeSubmittedGeneralLendingApplication($a));
+
+        $generalDrafts = $generalOwned
+            ->reject(fn (LoanApplication $a) => $a->isOfficiallySubmitted())
+            ->sortByDesc(fn (LoanApplication $a) => $a->draft_updated_at?->getTimestamp() ?? $a->updated_at?->getTimestamp() ?? $a->id)
+            ->values()
+            ->map(fn (LoanApplication $a) => $this->serializeGeneralDraftLendingApplication($a));
 
         $travel = TravelApplication::query()
             ->where('user_id', $user->id)
@@ -618,8 +663,8 @@ class BorrowerPortalController extends Controller
                     'uploaded_documents' => $this->flattenDocumentLinks($docStatus),
                     'form_preview' => $this->buildFormPreview($a->travel_specific_fields),
                     'signatures' => [
-                        'applicant' => $a->applicant_signature ? Storage::disk('public')->url($a->applicant_signature) : null,
-                        'spouse' => $a->spouse_signature ? Storage::disk('public')->url($a->spouse_signature) : null,
+                        'applicant' => $a->applicant_signature ? PublicStorageUrl::apiUrl($a->applicant_signature) : null,
+                        'spouse' => $a->spouse_signature ? PublicStorageUrl::apiUrl($a->spouse_signature) : null,
                     ],
                     'terms_accepted' => $a->terms_accepted,
                     'print_url' => SignedPrintUrls::temporaryRoute(
@@ -634,9 +679,63 @@ class BorrowerPortalController extends Controller
         return response()->json([
             'ok' => true,
             'data' => [
-                'general' => $general,
+                'general' => $generalSubmitted,
+                'general_drafts' => $generalDrafts,
                 'travel' => $travel,
             ],
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeSubmittedGeneralLendingApplication(LoanApplication $a): array
+    {
+        $docStatus = LoanApplicationDocumentStatus::forGeneralLoanType($a->loan_type, $a->documents);
+
+        return [
+            'id' => $a->id,
+            'kind' => 'general',
+            'loan_type' => $a->loan_type,
+            'loan_type_label' => config('amalgated_loans.general_loan_types')[$a->loan_type] ?? $a->loan_type,
+            'status' => $a->status,
+            'is_submitted' => true,
+            'submitted_at' => $a->submitted_at?->toIso8601String(),
+            'created_at' => $a->created_at?->toIso8601String(),
+            'documents_checklist' => collect($docStatus)->map(fn ($row, $k) => [
+                'key' => $k,
+                'label' => $row['label'],
+                'uploaded' => $row['ok'],
+            ])->values(),
+            'uploaded_documents' => $this->flattenDocumentLinks($docStatus),
+            'form_preview' => $this->buildFormPreview($a->form_data),
+            'signatures' => [
+                'applicant' => $a->applicant_signature ? PublicStorageUrl::apiUrl($a->applicant_signature) : null,
+                'spouse' => $a->spouse_signature ? PublicStorageUrl::apiUrl($a->spouse_signature) : null,
+                'comaker' => $a->comaker_signature ? PublicStorageUrl::apiUrl($a->comaker_signature) : null,
+            ],
+            'print_url' => SignedPrintUrls::temporaryRoute(
+                'print.general-loan',
+                now()->addMinutes(45),
+                ['loanApplication' => $a->id]
+            ),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeGeneralDraftLendingApplication(LoanApplication $a): array
+    {
+        return [
+            'id' => $a->id,
+            'kind' => 'general_draft',
+            'loan_type' => $a->loan_type,
+            'loan_type_label' => config('amalgated_loans.general_loan_types')[$a->loan_type] ?? $a->loan_type,
+            'status' => $a->status,
+            'draft_step' => $a->draft_step,
+            'draft_updated_at' => ($a->draft_updated_at ?? $a->updated_at)?->toIso8601String(),
+            'resume_path' => '/borrower/apply-loan/'.$a->id,
+        ];
     }
 }

@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { io } from 'socket.io-client'
-import { adminSocketUrls, chatFetch, chatJson, hasChatServerAuth, getLendingChatSecret } from '../utils/adminChatApi.js'
+import { adminSocketUrls, chatFetch, chatJson, hasChatServerAuth } from '../utils/adminChatApi.js'
 import { api as adminApi, getToken as getAdminToken } from '../admin/api/client.js'
 import { downloadCsv } from '../admin/utils/export.js'
 
 const STATUS_BADGE = {
   open: 'bg-amber-500/15 text-[color:var(--admin-warn-text)] ring-1 ring-amber-500/25',
-  in_progress: 'bg-sky-500/12 text-sky-900 ring-1 ring-sky-500/20',
+  in_progress: 'bg-red-50 text-red-900 ring-1 ring-red-200',
   resolved: 'bg-emerald-500/15 text-[color:var(--admin-success-text)] ring-1 ring-emerald-500/25',
   archived: 'bg-slate-500/15 text-[color:var(--admin-neutral-text)] ring-1 ring-slate-500/20',
 }
@@ -17,7 +17,8 @@ const STATUS_LABEL = {
   resolved: 'Resolved',
   archived: 'Archived',
 }
-const FILTERS = ['all', 'open', 'in_progress', 'resolved', 'archived']
+/** Inbox lifecycle segments (archived threads remain visible under All). */
+const FILTERS = ['all', 'open', 'in_progress', 'resolved']
 const FILTER_LABEL = {
   all: 'All',
   open: 'Open',
@@ -29,12 +30,44 @@ const FILTER_LABEL = {
 const VISITOR_QUEUE_BUCKETS = [
   { id: 'all', label: 'All queues' },
   { id: 'new', label: 'Needs attention' },
-  { id: 'pending_response', label: 'Pending response' },
-  { id: 'escalated', label: 'Escalated / human requested' },
+  { id: 'pending_response', label: 'Pending reply' },
+  { id: 'escalated', label: 'Escalated' },
   { id: 'ai_handled', label: 'AI handled' },
-  { id: 'human_handled', label: 'Human / staff' },
-  { id: 'feedback_only', label: 'Has visitor feedback' },
+  { id: 'human_handled', label: 'Staff' },
+  { id: 'feedback_only', label: 'Has feedback' },
 ]
+
+function CrmNavIcon({ name }) {
+  const common = 'h-5 w-5 shrink-0'
+  switch (name) {
+    case 'inbox':
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 13.5h3.86a2.25 2.25 0 001.664-.736l1.293-1.293A2.25 2.25 0 0112 10.5h.008a2.25 2.25 0 011.647.736l1.293 1.293c.412.422 1.07.736 1.664.736H22M4.5 19.5h15M8.25 9V6.75A2.25 2.25 0 0110.5 4.5h3a2.25 2.25 0 012.25 2.25V9" />
+        </svg>
+      )
+    case 'leads':
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+        </svg>
+      )
+    case 'tickets':
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25m16.5 0V6A2.25 2.25 0 0018 3.75H8.25A2.25 2.25 0 006 6v12" />
+        </svg>
+      )
+    case 'analytics':
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+        </svg>
+      )
+    default:
+      return null
+  }
+}
 
 const LEAD_STATUS = {
   new: 'New',
@@ -55,8 +88,7 @@ const TICKET_STATUS = {
   closed: 'Closed',
 }
 const CHAT_TIME_ZONE = 'Asia/Manila'
-const CHAT_POLL_MS = 2000
-const CHAT_CONNECTED_POLL_MS = 10000
+const CHAT_POLL_MS = 8000
 
 function responseTimeTextClass(ms) {
   if (ms == null || Number.isNaN(Number(ms))) return 'text-slate-500'
@@ -155,73 +187,6 @@ function mergeMessageRows(prev, incoming) {
   })
 }
 
-function conversationTimeValue(c) {
-  const t = new Date(c?.last_message_at || c?.updated_at || c?.created_at || 0).getTime()
-  return Number.isFinite(t) ? t : 0
-}
-
-function sortConversationRows(rows) {
-  return [...(rows || [])].sort((a, b) => conversationTimeValue(b) - conversationTimeValue(a))
-}
-
-function upsertConversationForRealtimeMessage(prev, cid, message, activeId) {
-  if (!cid) return prev
-  const createdAt = message?.created_at || new Date().toISOString()
-  const normalizedMessage = message
-    ? {
-        id: message.id,
-        content: message.content ?? '',
-        sender: message.sender ?? 'user',
-        created_at: createdAt,
-        admin_name: message.admin_name ?? null,
-      }
-    : null
-  const idx = prev.findIndex((c) => c.id === cid)
-  const unreadIncrement = cid !== activeId && normalizedMessage?.sender !== 'admin' ? 1 : 0
-
-  if (idx < 0) {
-    return sortConversationRows([
-      {
-        id: cid,
-        visitor_name: 'Visitor',
-        visitor_email: '',
-        status: 'open',
-        mode: 'ai',
-        created_at: createdAt,
-        updated_at: createdAt,
-        last_message_at: createdAt,
-        last_message: normalizedMessage,
-        unread_count: unreadIncrement,
-        admin_unread_count: unreadIncrement,
-      },
-      ...prev,
-    ])
-  }
-
-  const current = prev[idx]
-  const nextRow = {
-    ...current,
-    last_message: normalizedMessage || current.last_message,
-    last_message_at: createdAt,
-    updated_at: createdAt,
-    unread_count:
-      unreadIncrement > 0
-        ? Math.max(0, Number(current?.unread_count || 0) + unreadIncrement)
-        : cid === activeId
-          ? 0
-          : current?.unread_count,
-    admin_unread_count:
-      unreadIncrement > 0
-        ? Math.max(0, Number(current?.admin_unread_count ?? current?.unread_count ?? 0) + unreadIncrement)
-        : cid === activeId
-          ? 0
-          : current?.admin_unread_count,
-  }
-  const next = prev.slice()
-  next[idx] = nextRow
-  return sortConversationRows(next)
-}
-
 /** Short human-friendly ref for long conversation IDs (avoid full UUID in lists). */
 function shortConversationRef(id) {
   if (id == null || id === '') return ''
@@ -249,12 +214,11 @@ function normalizeLead(lead) {
   }
 }
 
-const VALID_VIEWS = ['chats', 'feedback', 'leads', 'analytics', 'tickets']
+const VALID_VIEWS = ['chats', 'leads', 'analytics', 'tickets']
 
 /** Left rail + column header title per view */
 const VIEW_TITLE = {
   chats: 'Inbox',
-  feedback: 'Feedback',
   leads: 'Leads',
   analytics: 'Analytics',
   tickets: 'Tickets',
@@ -272,7 +236,6 @@ const FAQ_QUICK_REPLIES = [
 ]
 
 export default function AdminChatDashboard({
-  onLogout,
   canViewAnalytics = true,
   canManageLoans = false,
   canViewBorrowers = false,
@@ -373,7 +336,7 @@ export default function AdminChatDashboard({
       }
       const data = await adminApi(`/admin/chat/conversations?${params}`)
       if (requestSeq !== conversationsRequestSeqRef.current) return
-      setConversations(sortConversationRows(Array.isArray(data) ? data : []))
+      setConversations(Array.isArray(data) ? data : [])
     } catch {
       if (requestSeq === conversationsRequestSeqRef.current) setConversations([])
     }
@@ -604,6 +567,7 @@ export default function AdminChatDashboard({
 
   useEffect(() => {
     if (view !== 'chats' || chatInboxTab !== 'visitor') return
+    if (socketConnected) return
     const tick = () => {
       if (typeof document !== 'undefined' && document.hidden) return
       fetchConversations()
@@ -612,11 +576,8 @@ export default function AdminChatDashboard({
         fetchMessages(activeIdRef.current, { afterId: afterId > 0 ? afterId : 0 })
       }
     }
-    if (!socketConnected) tick()
-    // When socket is connected, push events update the inbox immediately. This poll is
-    // only a small safety net for missed events or HTTP-only visitors.
-    const pollMs = socketConnected ? CHAT_CONNECTED_POLL_MS : CHAT_POLL_MS
-    const iv = setInterval(tick, pollMs)
+    tick()
+    const iv = setInterval(tick, CHAT_POLL_MS)
     const onVis = () => {
       if (typeof document !== 'undefined' && !document.hidden) tick()
     }
@@ -829,7 +790,44 @@ export default function AdminChatDashboard({
           setMessages((prev) => mergeMessageRows(prev, [normalized]))
         }
         if (!cid) return
-        setConversations((prev) => upsertConversationForRealtimeMessage(prev, cid, message, active))
+        setConversations((prev) => {
+          const idx = prev.findIndex((c) => c.id === cid)
+          if (idx < 0) {
+            // New thread reached the inbox through socket before current list snapshot.
+            // Re-fetch so the sidebar updates immediately without manual page reload.
+            fetchConversationsRef.current?.()
+            return prev
+          }
+          const current = prev[idx]
+          const nextRow = {
+            ...current,
+            last_message: message
+              ? {
+                  id: message.id || current?.last_message?.id,
+                  content: message.content ?? current?.last_message?.content ?? '',
+                  sender: message.sender ?? current?.last_message?.sender ?? 'user',
+                  created_at: message.created_at || new Date().toISOString(),
+                  admin_name: message.admin_name ?? current?.last_message?.admin_name ?? null,
+                }
+              : current.last_message,
+            last_message_at: message?.created_at || current.last_message_at,
+            updated_at: message?.created_at || current.updated_at,
+            unread_count:
+              cid !== active
+                ? Math.max(0, Number(current?.unread_count || 0) + 1)
+                : 0,
+            admin_unread_count:
+              cid !== active
+                ? Math.max(
+                    0,
+                    Number(current?.admin_unread_count ?? current?.unread_count ?? 0) + 1,
+                  )
+                : 0,
+          }
+          const next = prev.slice()
+          next[idx] = nextRow
+          return next
+        })
       })
       socket.on('chat:streamStart', ({ conversation_id: cid, stream_id: streamId, created_at }) => {
         if (!cid || !streamId || cid !== activeIdRef.current) return
@@ -885,7 +883,7 @@ export default function AdminChatDashboard({
         if (disposed) return
         setSocketConnected(true)
         setSocketConnectError(null)
-        socket.emit('admin:join', { token: getAdminToken() || '', secret: getLendingChatSecret() || '' })
+        socket.emit('admin:join', { token: getAdminToken() || '' })
         queueMicrotask(() => {
           fetchConversationsRef.current?.().catch(() => {})
           const v = viewRef.current
@@ -1348,16 +1346,15 @@ export default function AdminChatDashboard({
     setLeadEmailSending(true)
     setLeadEmailError('')
     try {
-      const { res } = await chatFetch(`/api/admin/leads/${leadEmailModal.id}/email`, {
+      await adminApi(`/admin/leads/${leadEmailModal.id}/email`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           subject: leadEmailSubject.trim(),
           body: leadEmailBody,
+          email: addr,
+          name: leadEmailModal.name || '',
         }),
       })
-      const data = await res?.json?.().catch(() => ({}))
-      if (!res?.ok) throw new Error(data?.message || 'Failed to send email.')
       setLeadEmailModal(null)
     } catch (e) {
       setLeadEmailError(e.message || 'Failed to send email.')
@@ -1515,47 +1512,40 @@ export default function AdminChatDashboard({
 
       {/* Sidebar: icon rail + conversations */}
       <div
-        className={`absolute inset-y-0 left-0 z-50 flex w-[min(100%-0px,28rem)] max-w-[min(92vw,28rem)] overflow-hidden border-r border-[var(--admin-border)] bg-[var(--admin-sidebar)] shadow-xl transition-transform duration-200 lg:static lg:z-auto lg:w-[min(28rem,36vw)] lg:max-w-[28rem] lg:shadow-none ${
+        className={`absolute inset-y-0 left-0 z-50 flex w-[min(100%-0px,28rem)] max-w-[min(92vw,28rem)] overflow-hidden border-r border-[var(--admin-border)] bg-[var(--admin-sidebar)] shadow-xl transition-transform duration-200 lg:static lg:z-auto lg:w-[min(28rem,36vw)] lg:max-w-[28rem] lg:overflow-visible lg:shadow-none ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
-        {/* Quick nav rail — wide enough for full labels; text wraps to 2 lines if needed */}
-        <div className="hidden h-full min-h-0 w-[6.75rem] shrink-0 flex-col border-r border-[var(--admin-border)] bg-slate-50/90 px-1.5 pb-2 pt-2 lg:flex">
-          <div className="flex shrink-0 justify-center pb-1">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[color:var(--admin-accent)]/10 ring-1 ring-[color:var(--admin-accent)]/15">
-              <svg className="h-3.5 w-3.5 text-[color:var(--admin-accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-            </div>
-          </div>
-          <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-visible overscroll-contain px-0.5 pt-1">
+        {/* Desktop module rail — view icons only (brand & account live in main admin sidebar) */}
+        <div className="hidden h-full min-h-0 w-[4.5rem] shrink-0 flex-col border-r border-[var(--admin-border)] bg-[var(--admin-sidebar)] pt-3 shadow-[1px_0_0_rgba(0,0,0,0.03)] lg:flex">
+          <nav className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto px-1.5 pb-3" aria-label="CRM views">
             {[
-              ['Inbox', 'chats'],
-              ['Feedback', 'feedback'],
-              ['Leads', 'leads'],
-              ['Tickets', 'tickets'],
-              ...(canViewAnalytics ? [['Analytics', 'analytics']] : []),
-            ].map(([label, key]) => (
+              ['Inbox', 'chats', 'inbox'],
+              ['Leads', 'leads', 'leads'],
+              ['Tickets', 'tickets', 'tickets'],
+              ...(canViewAnalytics ? [['Analytics', 'analytics', 'analytics']] : []),
+            ].map(([label, key, icon]) => (
               <button
                 key={key}
                 type="button"
-                onClick={() => (key === 'feedback' ? (goToView('feedback'), fetchFeedback()) : goToView(key))}
-                className={`rounded-lg px-1 py-1.5 text-center text-[10px] font-semibold leading-snug transition [overflow-wrap:anywhere] ${
-                  view === key
-                    ? 'bg-white text-[color:var(--admin-accent)] shadow-sm ring-1 ring-slate-200'
-                    : 'text-[color:var(--admin-muted-2)] hover:bg-white/90 hover:text-[var(--admin-text)]'
-                }`}
+                onClick={() => goToView(key)}
                 title={label}
+                aria-current={view === key ? 'page' : undefined}
+                className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${
+                  view === key
+                    ? 'bg-[color:var(--admin-accent)] text-white shadow-md shadow-red-600/20'
+                    : 'text-[color:var(--admin-muted)] hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)]'
+                }`}
               >
-                {label}
+                <CrmNavIcon name={icon} />
               </button>
             ))}
           </nav>
         </div>
 
         {/* Conversations column */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="sticky top-0 z-10 border-b border-[var(--admin-border)] bg-[var(--admin-sidebar)] px-3 pb-2.5 pt-3">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:min-w-0">
+        <div className="sticky top-0 z-10 border-b border-[var(--admin-border)] bg-[var(--admin-sidebar)] px-3 pb-2.5 pt-3 lg:bg-white">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0 flex-1 pr-2">
               <h1 className="text-[15px] font-semibold tracking-tight text-[var(--admin-text)]">
@@ -1617,32 +1607,12 @@ export default function AdminChatDashboard({
                   />
                 </svg>
               </button>
-              <button
-                onClick={onLogout}
-                title="Logout"
-                className="rounded-lg p-2 text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)]"
-              >
-                <svg
-                  className="h-4 w-4"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-              </button>
             </div>
           </div>
 
           {/* View tabs (hide on desktop when icon rail exists) */}
           <div className="mt-3 flex max-w-full flex-nowrap gap-1.5 overflow-x-auto rounded-xl bg-[var(--admin-surface-2)] p-1.5 ring-1 ring-[var(--admin-border)] lg:hidden sm:flex-wrap sm:overflow-visible">
             <button onClick={() => goToView('chats')} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${view === 'chats' ? 'bg-[var(--admin-surface)] text-[var(--admin-text)] shadow-sm' : 'text-[color:var(--admin-muted)] hover:text-[var(--admin-text)]'}`}>Chats</button>
-            <button onClick={() => { goToView('feedback'); fetchFeedback() }} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${view === 'feedback' ? 'bg-[var(--admin-surface)] text-[var(--admin-text)] shadow-sm' : 'text-[color:var(--admin-muted)] hover:text-[var(--admin-text)]'}`}>Feedback</button>
             <button onClick={() => goToView('leads')} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${view === 'leads' ? 'bg-[var(--admin-surface)] text-[var(--admin-text)] shadow-sm' : 'text-[color:var(--admin-muted)] hover:text-[var(--admin-text)]'}`}>Leads</button>
             {canViewAnalytics ? <button onClick={() => goToView('analytics')} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${view === 'analytics' ? 'bg-[var(--admin-surface)] text-[var(--admin-text)] shadow-sm' : 'text-[color:var(--admin-muted)] hover:text-[var(--admin-text)]'}`}>Analytics</button> : null}
             <button onClick={() => goToView('tickets')} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${view === 'tickets' ? 'bg-[var(--admin-surface)] text-[var(--admin-text)] shadow-sm' : 'text-[color:var(--admin-muted)] hover:text-[var(--admin-text)]'}`}>Tickets</button>
@@ -1659,7 +1629,7 @@ export default function AdminChatDashboard({
                     : 'text-[color:var(--admin-muted)] hover:text-[var(--admin-text)]'
                 }`}
               >
-                Website visitors
+                Website chat
               </button>
               <button
                 type="button"
@@ -1670,39 +1640,43 @@ export default function AdminChatDashboard({
                     : 'text-[color:var(--admin-muted)] hover:text-[var(--admin-text)]'
                 }`}
               >
-                Borrower portal
+                Borrower
               </button>
             </div>
           )}
 
           {view === 'chats' && chatInboxTab === 'visitor' && aiSessionMetrics ? (
             <div className="mt-2 space-y-2 px-0.5">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                <div className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-2 py-2 text-center">
-                  <p className="text-lg font-bold tabular-nums text-[var(--admin-text)]">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-3 text-center shadow-sm">
+                  <p className="text-xl font-bold tabular-nums tracking-tight text-[var(--admin-text)]">
                     {aiSessionMetrics.activeVisitorSessions ?? 0}
                   </p>
-                  <p className="text-[10px] font-medium text-[color:var(--admin-muted-2)]">Active visitor sessions</p>
+                  <p className="mt-0.5 text-[10px] font-medium leading-snug text-[color:var(--admin-muted-2)]">
+                    Active sessions
+                  </p>
                 </div>
-                <div className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-2 py-2 text-center">
-                  <p className="text-lg font-bold tabular-nums text-[var(--admin-text)]">
+                <div className="rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-3 text-center shadow-sm">
+                  <p className="text-xl font-bold tabular-nums tracking-tight text-[color:var(--admin-accent)]">
                     {aiSessionMetrics.averageAiResponseMs != null
                       ? `${aiSessionMetrics.averageAiResponseMs} ms`
                       : '—'}
                   </p>
-                  <p className="text-[10px] font-medium text-[color:var(--admin-muted-2)]">Avg AI response</p>
+                  <p className="mt-0.5 text-[10px] font-medium leading-snug text-[color:var(--admin-muted-2)]">
+                    Avg AI latency
+                  </p>
                 </div>
               </div>
               {Array.isArray(aiSessionMetrics.recentAiReplies) && aiSessionMetrics.recentAiReplies.length > 0 ? (
-                <div className="overflow-hidden rounded-lg border border-[var(--admin-border)] bg-white">
-                  <p className="border-b border-[var(--admin-border)] bg-[var(--admin-surface-2)] px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
-                    Last 10 AI replies (delay)
+                <div className="overflow-hidden rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] shadow-sm">
+                  <p className="border-b border-[var(--admin-border)] bg-[var(--admin-surface-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
+                    Recent AI performance
                   </p>
                   <ul className="max-h-36 overflow-y-auto text-[11px]">
                     {aiSessionMetrics.recentAiReplies.map((row, idx) => (
                       <li
                         key={`${row.conversationId}-${row.at}-${idx}`}
-                        className="flex items-center justify-between gap-2 border-b border-slate-100 px-2 py-1.5 last:border-0"
+                        className="flex items-center justify-between gap-2 border-b border-slate-100/80 px-3 py-2 last:border-0"
                       >
                         <span
                           className="min-w-0 truncate font-mono text-[10px] text-slate-600"
@@ -1723,101 +1697,156 @@ export default function AdminChatDashboard({
             </div>
           ) : null}
 
-          {/* Filters */}
+          {/* Unified inbox filters + bulk actions (visitor) */}
           {view === 'chats' && chatInboxTab === 'visitor' && (
             <div className="mt-2.5 space-y-2">
-              <div className="space-y-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
-                  Queue (Laravel)
-                </label>
-                <select
-                  value={visitorQueueBucket}
-                  onChange={(e) => setVisitorQueueBucket(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-xs text-[var(--admin-text)] outline-none focus:border-[color:var(--admin-accent)]/60 focus:ring-2 focus:ring-[color:var(--admin-accent)]/15"
-                >
-                  {VISITOR_QUEUE_BUCKETS.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.label}
-                    </option>
-                  ))}
-                </select>
-                {visitorQueueBucket !== 'all' ? (
-                  <p className="text-[10px] text-[color:var(--admin-muted-2)]">
-                    Status chips apply when queue is “All queues” only.
-                  </p>
-                ) : null}
-              </div>
-              <div
-                className={`flex flex-wrap gap-1 ${visitorQueueBucket !== 'all' ? 'pointer-events-none opacity-45' : ''}`}
-                title={
-                  visitorQueueBucket !== 'all'
-                    ? 'Switch queue to “All queues” to filter by lifecycle status.'
-                    : undefined
-                }
-              >
-                {FILTERS.map((f) => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => setFilter(f)}
-                    className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition ${
-                      filter === f
-                        ? 'border-[color:var(--admin-accent)]/35 bg-white text-[color:var(--admin-accent)] shadow-sm'
-                        : 'border-transparent bg-[var(--admin-surface-2)] text-[color:var(--admin-muted)] hover:border-slate-200 hover:bg-white'
-                    }`}
+              <div className="rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-3 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--admin-muted)]">
+                      Status
+                    </p>
+                    <div
+                      className={`flex flex-wrap gap-1 ${visitorQueueBucket !== 'all' ? 'pointer-events-none opacity-50' : ''}`}
+                      title={
+                        visitorQueueBucket !== 'all'
+                          ? 'Set queue to “All queues” to filter by status here.'
+                          : undefined
+                      }
+                      role="tablist"
+                      aria-label="Conversation status"
+                    >
+                      {FILTERS.map((f) => (
+                        <button
+                          key={f}
+                          type="button"
+                          role="tab"
+                          aria-selected={filter === f}
+                          onClick={() => setFilter(f)}
+                          className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                            filter === f
+                              ? 'bg-[color:var(--admin-accent)] text-white shadow-sm'
+                              : 'bg-[var(--admin-surface-2)] text-[color:var(--admin-muted)] hover:bg-slate-200/80 hover:text-[var(--admin-text)]'
+                          }`}
+                        >
+                          {FILTER_LABEL[f]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="w-full shrink-0 sm:max-w-[11rem]">
+                    <label htmlFor="crm-queue-bucket" className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-[color:var(--admin-muted)]">
+                      Queue
+                    </label>
+                    <select
+                      id="crm-queue-bucket"
+                      value={visitorQueueBucket}
+                      onChange={(e) => setVisitorQueueBucket(e.target.value)}
+                      className="w-full rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface-2)] px-3 py-2 text-xs font-medium text-[var(--admin-text)] outline-none focus:border-[color:var(--admin-accent)]/50 focus:ring-2 focus:ring-[color:var(--admin-accent)]/20"
+                    >
+                      {VISITOR_QUEUE_BUCKETS.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <label className="sr-only" htmlFor="crm-convo-search">
+                    Search conversations
+                  </label>
+                  <input
+                    id="crm-convo-search"
+                    type="search"
+                    placeholder="Search name, email, ID…"
+                    value={convoSearch}
+                    onChange={(e) => setConvoSearch(e.target.value)}
+                    className="min-w-0 flex-1 rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface-2)] px-3 py-2 text-xs text-[var(--admin-text)] outline-none placeholder:text-[color:var(--admin-muted-2)] focus:border-[color:var(--admin-accent)]/40 focus:ring-2 focus:ring-[color:var(--admin-accent)]/15"
+                  />
+                  <div
+                    className="flex shrink-0 rounded-xl bg-[var(--admin-surface-2)] p-0.5 ring-1 ring-[var(--admin-border)]"
+                    role="group"
+                    aria-label="Read state"
                   >
-                    {FILTER_LABEL[f]}
+                    {[
+                      ['all', 'All'],
+                      ['unread', 'Unread'],
+                      ['read', 'Read'],
+                    ].map(([val, lab]) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setChatReadFilter(val)}
+                        className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                          chatReadFilter === val
+                            ? 'bg-white text-[var(--admin-text)] shadow-sm'
+                            : 'text-[color:var(--admin-muted)] hover:text-[var(--admin-text)]'
+                        }`}
+                      >
+                        {lab}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--admin-border)]/80 pt-2">
+                  <p className="text-[10px] text-[color:var(--admin-muted-2)]">
+                    {filteredList.length} match{filteredList.length !== 1 ? 'es' : ''}
+                  </p>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allIds = filteredList.map((c) => c.id)
+                        const next = {}
+                        allIds.forEach((id) => {
+                          next[id] = true
+                        })
+                        setChatSelected(next)
+                      }}
+                      className="rounded-lg border border-transparent px-2 py-1 text-[11px] font-semibold text-[color:var(--admin-accent)] hover:bg-[color:var(--admin-accent)]/10"
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChatSelected({})}
+                      className="rounded-lg px-2 py-1 text-[11px] font-semibold text-[color:var(--admin-muted)] hover:bg-[var(--admin-surface-2)]"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {hasConversationSelection ? (
+                <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-blue-200/80 bg-blue-50/80 px-3 py-2 shadow-sm">
+                  <span className="text-[11px] font-semibold text-slate-800">
+                    {selectedConversationIds.length} selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => bulkAction('conversations', 'markRead', selectedConversationIds)}
+                    className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200/80 hover:bg-slate-50"
+                  >
+                    Read
                   </button>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <select
-                  value={chatReadFilter}
-                  onChange={(event) => setChatReadFilter(event.target.value)}
-                  className="w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-xs text-[var(--admin-text)] outline-none focus:border-[color:var(--admin-accent)]/60 focus:ring-2 focus:ring-[color:var(--admin-accent)]/15"
-                >
-                  <option value="all">All</option>
-                  <option value="unread">Unread</option>
-                  <option value="read">Read</option>
-                </select>
-              </div>
-              <div>
-                <label className="sr-only" htmlFor="crm-convo-search">
-                  Search conversations
-                </label>
-                <input
-                  id="crm-convo-search"
-                  type="search"
-                  placeholder="Search name, email, or conversation ID…"
-                  value={convoSearch}
-                  onChange={(e) => setConvoSearch(e.target.value)}
-                  className="mt-1.5 w-full rounded-md border border-[var(--admin-border)] bg-white px-2.5 py-1.5 text-xs text-[var(--admin-text)] outline-none placeholder:text-[color:var(--admin-muted-2)] focus:border-slate-300 focus:ring-1 focus:ring-slate-200"
-                />
-                <p className="mt-1 text-[10px] text-[color:var(--admin-muted-2)]">
-                  Showing {filteredList.length} conversation{filteredList.length !== 1 ? 's' : ''}
-                </p>
-              </div>
-              <div className="flex gap-1.5">
-                <button
-                  onClick={() => {
-                    const allIds = filteredList.map((c) => c.id)
-                    const next = {}
-                    allIds.forEach((id) => {
-                      next[id] = true
-                    })
-                    setChatSelected(next)
-                  }}
-                  className="rounded-md border border-[var(--admin-border)] bg-[var(--admin-surface)] px-2 py-1 text-[11px] font-medium text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)]"
-                >
-                  Select all
-                </button>
-                <button
-                  onClick={() => setChatSelected({})}
-                  className="rounded-md border border-[var(--admin-border)] bg-[var(--admin-surface)] px-2 py-1 text-[11px] font-medium text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)]"
-                >
-                  Clear
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => bulkAction('conversations', 'markUnread', selectedConversationIds)}
+                    className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200/80 hover:bg-slate-50"
+                  >
+                    Unread
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => bulkAction('conversations', 'delete', selectedConversationIds)}
+                    className="rounded-lg bg-red-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-red-500"
+                  >
+                    Delete
+                  </button>
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -1969,9 +1998,9 @@ export default function AdminChatDashboard({
                 return (
                   <div
                     key={c.id}
-                    className={`mx-1.5 my-1 flex w-full min-w-0 max-w-full items-start gap-2 rounded-lg border bg-white px-2 py-2 text-left shadow-sm transition hover:border-slate-300 ${
+                    className={`mx-1.5 my-1 flex w-full min-w-0 max-w-full items-start gap-2 rounded-xl border bg-white px-2.5 py-2.5 text-left shadow-sm transition hover:border-slate-300 hover:shadow-md ${
                       isActive
-                        ? 'border-[color:var(--admin-accent)]/40 ring-1 ring-[color:var(--admin-accent)]/15'
+                        ? 'border-[color:var(--admin-accent)]/50 ring-2 ring-[color:var(--admin-accent)]/20'
                         : 'border-[var(--admin-border)]'
                     }`}
                   >
@@ -2001,8 +2030,11 @@ export default function AdminChatDashboard({
                         <div className="flex items-start justify-between gap-1.5">
                           <span className="min-w-0 truncate text-sm font-semibold leading-tight text-[var(--admin-text)]">
                             {displayName(c)}
+                            <span className="ml-1 align-middle text-[8px] font-bold uppercase tracking-wide text-slate-500">
+                              · Web
+                            </span>
                             {unread ? (
-                              <span className="ml-1 inline-flex rounded bg-slate-100 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-slate-600">
+                              <span className="ml-1 inline-flex rounded-md bg-red-50 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-[color:var(--admin-accent)] ring-1 ring-red-200/90">
                                 New
                               </span>
                             ) : null}
@@ -2024,8 +2056,10 @@ export default function AdminChatDashboard({
                           <span className="tabular-nums">{fmtDate(c.updated_at)}</span>
                           <span className="text-slate-300">·</span>
                           <span
-                            className={`font-medium ${
-                              c.mode === 'human' ? 'text-amber-800' : 'text-emerald-800'
+                            className={`rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide ${
+                              c.mode === 'human'
+                                ? 'bg-amber-100 text-amber-900'
+                                : 'bg-emerald-100 text-emerald-900'
                             }`}
                           >
                             {c.mode === 'human' ? 'Human' : 'AI'}
@@ -2066,9 +2100,9 @@ export default function AdminChatDashboard({
                       goToView('chats')
                       if (window.innerWidth < 768) setSidebarOpen(false)
                     }}
-                    className={`mx-1.5 my-1 flex w-full min-w-0 max-w-full items-start gap-2 rounded-lg border bg-white px-2 py-2 text-left shadow-sm transition hover:border-slate-300 ${
+                    className={`mx-1.5 my-1 flex w-full min-w-0 max-w-full items-start gap-2 rounded-xl border bg-white px-2.5 py-2.5 text-left shadow-sm transition hover:border-slate-300 hover:shadow-md ${
                       isActive
-                        ? 'border-[color:var(--admin-accent)]/40 ring-1 ring-[color:var(--admin-accent)]/15'
+                        ? 'border-[color:var(--admin-accent)]/50 ring-2 ring-[color:var(--admin-accent)]/20'
                         : 'border-[var(--admin-border)]'
                     }`}
                   >
@@ -2079,6 +2113,9 @@ export default function AdminChatDashboard({
                       <div className="flex items-start justify-between gap-1.5">
                         <span className="min-w-0 truncate text-sm font-semibold leading-tight text-[var(--admin-text)]">
                           {lead.name || 'Borrower'}
+                          <span className="ml-1 align-middle text-[8px] font-bold uppercase tracking-wide text-[color:var(--admin-accent)]">
+                            · Portal
+                          </span>
                         </span>
                         <span
                           className={`shrink-0 rounded px-1.5 py-px text-[9px] font-semibold ${
@@ -2282,7 +2319,7 @@ export default function AdminChatDashboard({
       {/* Main conversation/detail area — SaaS-style center + optional profile (Intercom-style) */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col border-l border-[var(--admin-border)]/60 bg-[var(--admin-bg)] lg:flex-row">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--admin-bg)]">
-        <div className="sticky top-0 z-20 flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--admin-border)] bg-white/90 px-2 py-2 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur sm:px-3">
+        <div className="sticky top-0 z-20 flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--admin-border)] bg-white px-2 py-2 shadow-sm sm:px-3">
           <div className="flex min-w-0 items-center gap-3">
             <button
               onClick={() => setSidebarOpen((value) => !value)}
@@ -2382,150 +2419,158 @@ export default function AdminChatDashboard({
           </div>
 
           {view === 'chats' && chatInboxTab === 'visitor' && (
-            <div className="flex max-w-full flex-wrap items-center justify-end gap-2 overflow-x-auto rounded-lg [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:max-w-none sm:overflow-visible">
-              <span className="rounded-full bg-[var(--admin-surface-2)] px-2.5 py-1 text-[11px] font-medium text-[color:var(--admin-muted)] ring-1 ring-[var(--admin-border)]">
-                Selected: {selectedConversationIds.length}
-              </span>
-              {hasConversationSelection ? (
-                <>
-                  <button
-                    onClick={() => bulkAction('conversations', 'markRead', selectedConversationIds)}
-                    className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-xs font-semibold text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)] focus:outline-none focus:ring-2 focus:ring-[color:var(--admin-accent)]/20"
-                  >
-                    Mark read
-                  </button>
-                  <button
-                    onClick={() => bulkAction('conversations', 'markUnread', selectedConversationIds)}
-                    className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-xs font-semibold text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)] focus:outline-none focus:ring-2 focus:ring-[color:var(--admin-accent)]/20"
-                  >
-                    Mark unread
-                  </button>
-                  <button
-                    onClick={() => bulkAction('conversations', 'delete', selectedConversationIds)}
-                    className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
-                  >
-                    Delete selected
-                  </button>
-                </>
-              ) : null}
-              {activeConvo && (
+            <div className="flex max-w-full flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+              {activeConvo ? (
                 <>
                   <button
                     type="button"
                     onClick={() => setCrmProfileOpen((v) => !v)}
-                    className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                    className={`rounded-xl border px-3 py-1.5 text-xs font-semibold shadow-sm transition ${
                       crmProfileOpen
-                        ? 'border-[color:var(--admin-accent)] bg-[color:var(--admin-accent)]/10 text-[color:var(--admin-accent)]'
-                        : 'border-[var(--admin-border)] bg-[var(--admin-surface)] text-[color:var(--admin-muted)] hover:bg-[var(--admin-surface-2)]'
+                        ? 'border-[color:var(--admin-accent)] bg-red-50 text-[color:var(--admin-accent)]'
+                        : 'border-[var(--admin-border)] bg-white text-[var(--admin-text)] hover:bg-[var(--admin-surface-2)]'
                     }`}
                   >
-                    {crmProfileOpen ? 'Hide profile' : 'Profile'}
+                    Profile
                   </button>
                   <button
+                    type="button"
                     onClick={() => toggleAIMode(activeId)}
                     title={
                       activeConvo.mode === 'ai'
-                        ? 'AI is responding. Click to switch to Human Agent only.'
-                        : 'Human Agent only. Click to re-enable AI responses.'
+                        ? 'AI replies on. Click for human-only mode.'
+                        : 'Human-only. Click to let AI assist again.'
                     }
-                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    className={`rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide shadow-sm ring-1 transition ${
                       activeConvo.mode === 'ai'
-                        ? 'bg-emerald-500/15 text-emerald-800 ring-1 ring-emerald-500/25 hover:bg-emerald-500/25'
-                        : 'bg-orange-500/15 text-orange-800 ring-1 ring-orange-500/25 hover:bg-orange-500/25'
+                        ? 'bg-[color:var(--admin-accent)] text-white ring-red-700/35 hover:opacity-95'
+                        : 'border border-[var(--admin-border)] bg-white text-[var(--admin-text)] hover:bg-[var(--admin-surface-2)]'
                     }`}
+                    aria-pressed={activeConvo.mode === 'ai'}
                   >
-                    {activeConvo.mode === 'ai' ? 'AI On' : 'AI Off'}
-                    <svg
-                      className="h-3.5 w-3.5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M8 7h8m-8 4h8m-8 4h8"
-                      />
-                    </svg>
+                    {activeConvo.mode === 'ai' ? 'AI on' : 'Human'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTicketModal({ conversation_id: activeId })}
+                    className="rounded-xl border border-[var(--admin-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--admin-text)] shadow-sm hover:bg-[var(--admin-surface-2)]"
+                    title="Create support ticket"
+                  >
+                    Ticket
+                  </button>
+                  <button
+                    type="button"
+                    disabled={conversationWarehouseBusy || !!activeConvo?.needs_human}
+                    onClick={() => patchConversationNeedsHuman(true)}
+                    className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-950 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Escalate
                   </button>
                   <div className="relative">
                     <button
+                      type="button"
                       onClick={() => setStatusDropdown((value) => !value)}
-                      className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${STATUS_BADGE[activeConvo.status]}`}
+                      className={`flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-semibold shadow-sm ring-1 transition ${STATUS_BADGE[activeConvo.status]}`}
                     >
                       {STATUS_LABEL[activeConvo.status]}
-                      <svg
-                        className="h-3.5 w-3.5"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M19 9l-7 7-7-7"
-                        />
+                      <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
-                    {statusDropdown && (
+                    {statusDropdown ? (
                       <>
-                        <div
-                          className="fixed inset-0 z-10"
+                        <button
+                          type="button"
+                          className="fixed inset-0 z-10 cursor-default bg-transparent"
+                          aria-label="Close menu"
                           onClick={() => setStatusDropdown(false)}
                         />
-                        <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] py-1 shadow-lg">
-                          {['open', 'in_progress', 'resolved', 'archived'].map(
-                            (status) => (
-                              <button
-                                key={status}
-                                onClick={() => changeStatus(activeId, status)}
-                                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition hover:bg-[var(--admin-surface-2)] ${
-                                  activeConvo.status === status
-                                    ? 'font-semibold text-[var(--admin-text)]'
-                                    : 'text-[color:var(--admin-muted)]'
+                        <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] py-1 shadow-lg">
+                          {['open', 'in_progress', 'resolved', 'archived'].map((status) => (
+                            <button
+                              key={status}
+                              type="button"
+                              onClick={() => changeStatus(activeId, status)}
+                              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition hover:bg-[var(--admin-surface-2)] ${
+                                activeConvo.status === status
+                                  ? 'font-semibold text-[var(--admin-text)]'
+                                  : 'text-[color:var(--admin-muted)]'
+                              }`}
+                            >
+                              <span
+                                className={`h-2 w-2 shrink-0 rounded-full ${
+                                  status === 'open'
+                                    ? 'bg-amber-400'
+                                    : status === 'in_progress'
+                                      ? 'bg-[color:var(--admin-accent)]'
+                                      : status === 'resolved'
+                                        ? 'bg-emerald-500'
+                                        : 'bg-slate-400'
                                 }`}
-                              >
-                                <span
-                                  className={`h-2 w-2 rounded-full ${
-                                    status === 'open'
-                                      ? 'bg-yellow-400'
-                                      : status === 'in_progress'
-                                        ? 'bg-blue-400'
-                                        : status === 'resolved'
-                                          ? 'bg-green-400'
-                                          : 'bg-gray-400'
-                                  }`}
-                                />
-                                {STATUS_LABEL[status]}
-                              </button>
-                            ),
-                          )}
+                              />
+                              {STATUS_LABEL[status]}
+                            </button>
+                          ))}
                         </div>
                       </>
-                    )}
+                    ) : null}
                   </div>
-                  <button
-                    title="Delete conversation"
-                    onClick={() => setDeleteTarget(activeId)}
-                    className="rounded-lg p-2 text-[color:var(--admin-muted)] transition hover:bg-rose-500/10 hover:text-[color:var(--admin-danger-text)]"
-                  >
-                    <svg
-                      className="h-4 w-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                    </svg>
-                  </button>
+                  <details className="relative">
+                    <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-xl border border-[var(--admin-border)] bg-white text-[color:var(--admin-muted)] shadow-sm marker:hidden [&::-webkit-details-marker]:hidden hover:bg-[var(--admin-surface-2)]">
+                      <span className="sr-only">More actions</span>
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                        <path d="M12 8a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 5.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 5.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" />
+                      </svg>
+                    </summary>
+                    <div className="absolute right-0 z-30 mt-1 w-56 overflow-hidden rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] py-1 shadow-lg">
+                      {canAssignStaff ? (
+                        <div className="border-b border-[var(--admin-border)] px-3 py-2">
+                          <label htmlFor="crm-assign-toolbar" className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
+                            Assign to
+                          </label>
+                          <select
+                            id="crm-assign-toolbar"
+                            disabled={conversationWarehouseBusy || assignStaffRows.length === 0}
+                            value={
+                              activeConvo?.assigned_to != null && activeConvo.assigned_to !== ''
+                                ? String(activeConvo.assigned_to)
+                                : ''
+                            }
+                            onChange={(ev) => {
+                              const next = ev.target.value
+                              if (!next) return
+                              assignConversationToStaff(next)
+                            }}
+                            className="w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface-2)] px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-[color:var(--admin-accent)]/25 disabled:opacity-50"
+                          >
+                            <option value="">Choose staff…</option>
+                            {assignStaffRows.map((u) => (
+                              <option key={u.id} value={String(u.id)}>
+                                {u.name || u.email || `User ${u.id}`}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={conversationWarehouseBusy || !activeConvo?.needs_human}
+                        onClick={() => patchConversationNeedsHuman(false)}
+                        className="flex w-full px-3 py-2 text-left text-xs font-semibold text-[var(--admin-text)] hover:bg-[var(--admin-surface-2)] disabled:opacity-40"
+                      >
+                        Clear escalation
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(activeId)}
+                        className="flex w-full px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50"
+                      >
+                        Delete thread…
+                      </button>
+                    </div>
+                  </details>
                 </>
-              )}
+              ) : null}
             </div>
           )}
 
@@ -2536,11 +2581,11 @@ export default function AdminChatDashboard({
                 onClick={() => setCrmProfileOpen((v) => !v)}
                 className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
                   crmProfileOpen
-                    ? 'border-[color:var(--admin-accent)] bg-[color:var(--admin-accent)]/10 text-[color:var(--admin-accent)]'
-                    : 'border-[var(--admin-border)] bg-[var(--admin-surface)] text-[color:var(--admin-muted)] hover:bg-[var(--admin-surface-2)]'
+                    ? 'border-[color:var(--admin-accent)] bg-red-50 text-[color:var(--admin-accent)]'
+                    : 'border-[var(--admin-border)] bg-white text-[var(--admin-text)] hover:bg-[var(--admin-surface-2)]'
                 }`}
               >
-                {crmProfileOpen ? 'Hide profile' : 'Profile'}
+                Profile
               </button>
               {canViewBorrowers && activeBorrowerLead.user_id ? (
                 <Link
@@ -2657,15 +2702,6 @@ export default function AdminChatDashboard({
             </button>
           )}
 
-          {view === 'chats' && chatInboxTab === 'visitor' && activeId && (
-            <button
-              onClick={() => setTicketModal({ conversation_id: activeId })}
-              className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-xs font-semibold text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)]"
-              title="Create ticket from this conversation"
-            >
-              Create ticket
-            </button>
-          )}
         </div>
 
         {/* Main content area */}
@@ -2675,86 +2711,33 @@ export default function AdminChatDashboard({
         >
           {view === 'chats' && chatInboxTab === 'visitor' && activeId && activeConvo && (
             <div className="mb-3 space-y-2">
-              <div
-                className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-950 shadow-sm"
-                role="note"
-              >
-                Yellow indicator = AI stream not yet connected. Advise the customer to wait before sending.
-              </div>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-slate-200/90 bg-white/95 px-3 py-1.5 text-[11px] text-slate-600 shadow-sm">
-                <span className="font-medium text-slate-800">SLA</span>
-                <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-800 ring-1 ring-emerald-500/15">
-                  5 min first reply
-                </span>
-                <span className="hidden text-slate-400 sm:inline">·</span>
-                <span className="hidden sm:inline">Typing and receipts live</span>
-              </div>
+              <details className="group rounded-xl border border-amber-200/90 bg-amber-50/95 text-[11px] text-amber-950 shadow-sm">
+                <summary className="cursor-pointer list-none px-3 py-2 font-semibold marker:hidden [&::-webkit-details-marker]:hidden">
+                  <span className="inline-flex items-center gap-1.5">
+                    <svg className="h-3.5 w-3.5 shrink-0 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                    </svg>
+                    Visitor connection tip
+                  </span>
+                </summary>
+                <p className="border-t border-amber-200/60 px-3 py-2 leading-relaxed text-amber-900/95">
+                  Amber status dot on the inbox card means the visitor is not on the live AI stream yet—ask them to wait until it turns green before expecting instant AI replies.
+                </p>
+              </details>
               {warehouseActionError ? (
                 <div
-                  className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-950 shadow-sm"
+                  className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-950 shadow-sm"
                   role="alert"
                 >
                   {warehouseActionError}
                 </div>
               ) : null}
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200/90 bg-white/95 px-3 py-2 text-[11px] text-slate-700 shadow-sm">
-                <span className="font-medium text-slate-800">Queue</span>
-                {activeConvo?.needs_human ? (
-                  <span className="rounded-md bg-amber-50 px-1.5 py-0.5 font-medium text-amber-900 ring-1 ring-amber-500/20">
-                    Escalated — needs human
-                  </span>
-                ) : (
-                  <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-600 ring-1 ring-slate-200/80">
-                    Standard
-                  </span>
-                )}
-                <button
-                  type="button"
-                  disabled={conversationWarehouseBusy || !!activeConvo?.needs_human}
-                  onClick={() => patchConversationNeedsHuman(true)}
-                  className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-950 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  Escalate
-                </button>
-                <button
-                  type="button"
-                  disabled={conversationWarehouseBusy || !activeConvo?.needs_human}
-                  onClick={() => patchConversationNeedsHuman(false)}
-                  className="rounded-md border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  Clear escalation
-                </button>
-                {canAssignStaff ? (
-                  <>
-                    <span className="hidden text-slate-300 sm:inline">|</span>
-                    <label className="font-medium text-slate-800" htmlFor="crm-assign-staff">
-                      Assign to
-                    </label>
-                    <select
-                      id="crm-assign-staff"
-                      disabled={conversationWarehouseBusy || assignStaffRows.length === 0}
-                      value={
-                        activeConvo?.assigned_to != null && activeConvo.assigned_to !== ''
-                          ? String(activeConvo.assigned_to)
-                          : ''
-                      }
-                      onChange={(ev) => {
-                        const next = ev.target.value
-                        if (!next) return
-                        assignConversationToStaff(next)
-                      }}
-                      className="max-w-[11rem] rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] outline-none focus:border-[color:var(--admin-accent)]/50 disabled:opacity-45 sm:max-w-[14rem]"
-                    >
-                      <option value="">Staff…</option>
-                      {assignStaffRows.map((u) => (
-                        <option key={u.id} value={String(u.id)}>
-                          {u.name || u.email || `User ${u.id}`}
-                        </option>
-                      ))}
-                    </select>
-                  </>
-                ) : null}
-              </div>
+              {activeConvo?.needs_human ? (
+                <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-[11px] font-medium text-amber-950 shadow-sm">
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
+                  Escalated — awaiting human response
+                </div>
+              ) : null}
             </div>
           )}
           {/* Leads table */}
@@ -3412,6 +3395,7 @@ export default function AdminChatDashboard({
             messages.map((msg, index) => {
               const isUser = msg.sender === 'user'
               const isAdmin = msg.sender === 'admin'
+              const isAi = msg.sender === 'ai'
               return (
                 <div
                   key={msg.id ?? `m-${index}`}
@@ -3423,28 +3407,28 @@ export default function AdminChatDashboard({
                         {msg.admin_name}
                       </p>
                     )}
-                    {msg.sender === 'ai' && (
-                      <p className="mb-1 text-right text-[10px] font-semibold text-[color:var(--admin-muted)]">
-                        AI Bot
+                    {isAi && (
+                      <p className="mb-1 text-right text-[10px] font-bold uppercase tracking-wide text-[color:var(--admin-accent)]">
+                        AI
                       </p>
                     )}
                     <div
                       className={`whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
                         isUser
-                          ? 'rounded-tl-md border border-[var(--admin-border)] bg-[var(--admin-surface)] text-[var(--admin-text)]'
+                          ? 'rounded-tl-md border border-slate-200/90 bg-white text-slate-900 shadow-sm'
                           : isAdmin
-                            ? 'rounded-tr-md bg-[color:var(--admin-accent)] text-white'
-                            : 'rounded-tr-md bg-[color:var(--admin-accent)]/90 text-white'
+                            ? 'rounded-tr-md bg-[color:var(--admin-accent)] text-white shadow-md shadow-blue-500/15'
+                            : 'rounded-tr-md border border-[var(--admin-ai-border)] bg-[var(--admin-ai-bg)] text-[var(--admin-ai-text)]'
                       }`}
                     >
                       {msg.content}
                     </div>
                     <p
-                      className={`mt-1 text-[10px] text-[color:var(--admin-muted-2)] ${
+                      className={`mt-1.5 text-[11px] tabular-nums text-[color:var(--admin-muted-2)] ${
                         isUser ? 'pl-1' : 'pr-1 text-right'
                       }`}
                     >
-                      {fmtTime(msg.created_at)}
+                      {fmtDate(msg.created_at)}
                     </p>
                   </div>
                 </div>
@@ -3491,7 +3475,7 @@ export default function AdminChatDashboard({
                         isBorrower ? 'pl-1' : 'pr-1 text-right'
                       }`}
                     >
-                      {msg.created_at ? fmtTime(msg.created_at) : ''}
+                      {msg.created_at ? fmtDate(msg.created_at) : ''}
                     </p>
                   </div>
                 </div>
@@ -3562,21 +3546,26 @@ export default function AdminChatDashboard({
                   <div className="flex shrink-0 items-center gap-1">
                     <button
                       type="button"
-                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-base text-slate-600 transition hover:bg-slate-50"
+                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50"
                       title="Insert emoji"
                       onClick={() => setShowEmojiPicker((v) => !v)}
                     >
-                      🙂
+                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+                        <circle cx="12" cy="12" r="9" />
+                        <path strokeLinecap="round" d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
+                      </svg>
                     </button>
                     <button
                       type="button"
-                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-base text-slate-600 transition hover:bg-slate-50"
+                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50"
                       title="Attach file (preview)"
                       onClick={() =>
                         window.alert('File upload: connect multipart endpoint + virus scan in production.')
                       }
                     >
-                      📎
+                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.657 18.217a6 6 0 108.486-8.486L7.757 10.657" />
+                      </svg>
                     </button>
                     <button
                       onClick={handleSend}

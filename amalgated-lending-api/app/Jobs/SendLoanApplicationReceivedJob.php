@@ -3,15 +3,14 @@
 namespace App\Jobs;
 
 use App\Mail\LoanApplicationReceivedMail;
-use App\Models\Loan;
 use App\Models\User;
-use App\Services\BrevoMailService;
+use App\Services\TransactionalMailSender;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Cache;
 
 class SendLoanApplicationReceivedJob implements ShouldQueue
 {
@@ -20,18 +19,32 @@ class SendLoanApplicationReceivedJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
-    public int $tries = 3;
+    public int $tries = 4;
 
-    public function __construct(public int $borrowerId, public int $loanId)
-    {
+    /** @var array<int, int> */
+    public array $backoff = [25, 90, 300, 900];
+
+    public function __construct(
+        public int $borrowerId,
+        public int $loanId,
+    ) {
         $this->onQueue('notifications');
     }
 
-    public function handle(BrevoMailService $brevo): void
+    public function handle(TransactionalMailSender $sender): void
     {
-        $borrower = User::find($this->borrowerId);
-        $loan = Loan::find($this->loanId);
-        if (! $borrower || ! $loan) {
+        $dedupeKey = 'email_sent:loan_app_received:'.$this->loanId;
+        if (Cache::has($dedupeKey)) {
+            return;
+        }
+
+        $borrower = User::query()->find($this->borrowerId);
+        if (! $borrower instanceof User) {
+            return;
+        }
+
+        $loan = \App\Models\Loan::query()->find($this->loanId);
+        if (! $loan) {
             return;
         }
 
@@ -41,18 +54,17 @@ class SendLoanApplicationReceivedJob implements ShouldQueue
         }
 
         $mailable = new LoanApplicationReceivedMail($loan, (string) $borrower->name);
-        $subject = 'We received your loan application — Amalgated Lending';
+        $loanRef = 'AL-'.str_pad((string) $loan->id, 7, '0', STR_PAD_LEFT);
+        $subject = 'Application received — '.$loanRef.' — '.config('app.name', 'Amalgated Lending');
 
-        if ($brevo->isConfigured()) {
-            try {
-                $brevo->sendHtml($email, (string) $borrower->name, $subject, $mailable->render());
+        $ok = $sender->sendHtmlMailable($mailable, $email, (string) $borrower->name, $subject, [
+            'job' => __CLASS__,
+            'loan_id' => $loan->id,
+            'borrower_id' => $borrower->id,
+        ])['ok'] ?? false;
 
-                return;
-            } catch (\Throwable) {
-                // Fall through to default mail transport.
-            }
+        if ($ok) {
+            Cache::put($dedupeKey, true, now()->addDays(7));
         }
-
-        Mail::to($email)->queue($mailable);
     }
 }

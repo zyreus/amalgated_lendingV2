@@ -62,6 +62,7 @@ export default function BorrowersPage() {
   const [risk, setRisk] = useState('')
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
 
   const load = async (page = 1) => {
@@ -85,6 +86,16 @@ export default function BorrowersPage() {
 
   const rows = data?.data || []
 
+  const requestDelete = (b) => {
+    if (!can('borrowers.delete') || deletingId) return
+    const loanCount = Number(b.loans_count ?? 0)
+    if (loanCount > 0) {
+      showToast('Cannot delete a borrower who has loan records.', 'error')
+      return
+    }
+    setConfirmDeleteId((prev) => (prev === b.id ? null : b.id))
+  }
+
   const handleDelete = async (b) => {
     if (!can('borrowers.delete') || deletingId) return
     const loanCount = Number(b.loans_count ?? 0)
@@ -92,14 +103,11 @@ export default function BorrowersPage() {
       showToast('Cannot delete a borrower who has loan records.', 'error')
       return
     }
-    const ok = window.confirm(
-      `Delete borrower account for "${b.name}" (${b.email})? This cannot be undone.`,
-    )
-    if (!ok) return
     setDeletingId(b.id)
     try {
       await api(`/borrowers/${b.id}`, { method: 'DELETE', body: '{}' })
       showToast('Borrower account deleted.', 'success')
+      setConfirmDeleteId(null)
       await load(data?.current_page || 1)
     } catch (e) {
       showToast(e.message || 'Delete failed.', 'error')
@@ -222,19 +230,40 @@ export default function BorrowersPage() {
                   View
                 </Link>
                 {can('borrowers.delete') ? (
-                  <button
-                    type="button"
-                    disabled={deletingId === b.id || Number(b.loans_count ?? 0) > 0}
-                    title={
-                      Number(b.loans_count ?? 0) > 0
-                        ? 'Remove loan records before deleting this borrower.'
-                        : 'Delete borrower account'
-                    }
-                    onClick={() => handleDelete(b)}
-                    className="text-sm font-medium text-red-700/90 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-400/90"
-                  >
-                    {deletingId === b.id ? 'Deleting…' : 'Delete'}
-                  </button>
+                  confirmDeleteId === b.id ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={deletingId === b.id}
+                        onClick={() => handleDelete(b)}
+                        className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                      >
+                        {deletingId === b.id ? 'Deleting…' : 'Confirm'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deletingId === b.id}
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="rounded-md border border-gray-300 px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-[#1F2937]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={deletingId === b.id || Number(b.loans_count ?? 0) > 0}
+                      title={
+                        Number(b.loans_count ?? 0) > 0
+                          ? 'Remove loan records before deleting this borrower.'
+                          : 'Delete borrower account'
+                      }
+                      onClick={() => requestDelete(b)}
+                      className="text-sm font-medium text-red-700/90 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-400/90"
+                    >
+                      Delete
+                    </button>
+                  )
                 ) : null}
               </div>
             </div>
@@ -311,19 +340,40 @@ export default function BorrowersPage() {
                         View
                       </Link>
                       {can('borrowers.delete') ? (
-                        <button
-                          type="button"
-                          disabled={deletingId === b.id || Number(b.loans_count ?? 0) > 0}
-                          title={
-                            Number(b.loans_count ?? 0) > 0
-                              ? 'Remove loan records before deleting this borrower.'
-                              : 'Delete borrower account'
-                          }
-                          onClick={() => handleDelete(b)}
-                          className="text-sm font-medium text-red-700/90 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-400/90"
-                        >
-                          {deletingId === b.id ? 'Deleting…' : 'Delete'}
-                        </button>
+                        confirmDeleteId === b.id ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={deletingId === b.id}
+                              onClick={() => handleDelete(b)}
+                              className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                            >
+                              {deletingId === b.id ? 'Deleting…' : 'Confirm'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={deletingId === b.id}
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="rounded-md border border-gray-300 px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-[#1F2937]"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={deletingId === b.id || Number(b.loans_count ?? 0) > 0}
+                            title={
+                              Number(b.loans_count ?? 0) > 0
+                                ? 'Remove loan records before deleting this borrower.'
+                                : 'Delete borrower account'
+                            }
+                            onClick={() => requestDelete(b)}
+                            className="text-sm font-medium text-red-700/90 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-400/90"
+                          >
+                            Delete
+                          </button>
+                        )
                       ) : null}
                     </div>
                   </td>

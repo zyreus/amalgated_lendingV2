@@ -1,55 +1,62 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Loan application update</title>
-</head>
-<body style="font-family: system-ui, -apple-system, Segoe UI, sans-serif; line-height: 1.6; color: #111827; max-width: 640px; margin: 0; padding: 24px;">
-    @php $isRejected = $decision === 'rejected'; @endphp
-    <p style="margin: 0 0 16px;">Hello {{ $borrowerName }},</p>
+<h1 style="margin:0 0 14px;font-size:21px;line-height:1.3;color:{{ $isRejected ? '#b45309' : '#15803d' }};">
+  {{ $isRejected ? 'Loan decision: not approved' : 'Loan decision: approved' }}
+</h1>
+<p style="margin:0 0 16px;">Hi {{ $borrowerName }},</p>
 
-    @if ($isRejected)
-        <p style="margin: 0 0 16px;">Your loan application has been <strong>rejected</strong>.</p>
-    @else
-        <p style="margin: 0 0 16px;">Good news — your loan application has been <strong>approved</strong>.</p>
+@if(!$isRejected)
+<p style="margin:0 0 16px;">Congratulations — your facility was <strong>approved</strong>. Your repayment schedule has been booked in our system.</p>
+<table role="presentation" cellpadding="12" cellspacing="0" border="1" bordercolor="#e2e8f0" style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px;">
+  <tbody>
+    <tr><td style="background:#f8fafc;font-weight:700;width:42%;">Reference</td><td>{{ $loanRef }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Branch</td><td>{{ $branchInstruction }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Approved principal</td><td>₱ {{ $principal }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Term</td><td>{{ $termMonths }} months</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Monthly amortization</td><td>₱ {{ $monthlyPayment }}</td></tr>
+    @if(isset($estimatedTotalPayments) && $estimatedTotalPayments !== '')
+    <tr><td style="background:#f8fafc;font-weight:700;">Est. installments</td><td>{{ $estimatedTotalPayments }}</td></tr>
     @endif
+    <tr><td style="background:#f8fafc;font-weight:700;">Approval date</td><td>{{ $approvedAt ?: '—' }}</td></tr>
+  </tbody>
+</table>
+@if(!empty($schedulePreview))
+<h2 style="font-size:14px;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin:20px 0 8px;">First payments (preview)</h2>
+<table role="presentation" cellpadding="8" cellspacing="0" border="1" bordercolor="#e2e8f0" style="width:100%;border-collapse:collapse;font-size:12px;">
+  <thead>
+    <tr style="background:#f1f5f9;"><th align="left">#</th><th align="left">Due date</th><th align="right">Amount</th></tr>
+  </thead>
+  <tbody>
+  @foreach($schedulePreview as $row)
+    <tr>
+      <td>{{ $row['no'] }}</td>
+      <td>{{ $row['due'] }}</td>
+      <td align="right">₱ {{ $row['amt'] }}</td>
+    </tr>
+  @endforeach
+  </tbody>
+</table>
+@endif
+<p style="margin:16px 0 8px;"><strong>Branch instructions:</strong></p>
+<p style="margin:0;color:#475569;line-height:1.6;font-size:14px;">Visit your servicing branch {{ $branchInstruction }} at your earliest convenience to complete release formalities listed in your borrower portal.</p>
 
-    <table style="width: 100%; border-collapse: collapse; margin: 0 0 24px; font-size: 14px;">
-        <tr>
-            <td style="padding: 8px 0; color: #6b7280;">Reference</td>
-            <td style="padding: 8px 0; font-weight: 600;">#{{ $loanId }}</td>
-        </tr>
-        <tr>
-            <td style="padding: 8px 0; color: #6b7280;">Amount</td>
-            <td style="padding: 8px 0;">₱{{ $principal }}</td>
-        </tr>
-        <tr>
-            <td style="padding: 8px 0; color: #6b7280;">Term</td>
-            <td style="padding: 8px 0;">{{ $termMonths }} months</td>
-        </tr>
-        @if (! $isRejected)
-            <tr>
-                <td style="padding: 8px 0; color: #6b7280;">Monthly payment</td>
-                <td style="padding: 8px 0;">₱{{ number_format($monthlyPayment, 2) }}</td>
-            </tr>
-        @endif
-        @if (!empty($approvedAt))
-            <tr>
-                <td style="padding: 8px 0; color: #6b7280;">Decision date</td>
-                <td style="padding: 8px 0;">{{ $approvedAt }}</td>
-            </tr>
-        @endif
-    </table>
+@else
+<p style="margin:0 0 16px;">
+  After careful review, we regret that we cannot approve your application at this time.
+</p>
+<table role="presentation" cellpadding="12" cellspacing="0" border="1" bordercolor="#e2e8f0" style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px;">
+  <tbody>
+    <tr><td style="background:#f8fafc;font-weight:700;width:42%;">Reference</td><td>{{ $loanRef }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Summary</td><td>Application not approved · System loan ID #{{ $loanId }}</td></tr>
+  </tbody>
+</table>
+@if($rejectionReason !== '')
+<p style="margin:0 0 16px;"><strong>Reviewer note:</strong><br>{{ $rejectionReason }}</p>
+@endif
+<p style="margin:0 0 16px;color:#475569;font-size:14px;">
+  You remain welcome to submit a refreshed application once your profile or collateral position improves — start a new wizard in your borrower portal.
+</p>
+@endif
 
-    @if ($isRejected && !empty($rejectionReason))
-        <p style="margin: 0 0 12px;"><strong>Reason:</strong> {{ $rejectionReason }}</p>
-    @endif
-
-    <p style="margin: 0 0 16px;">You can sign in to the borrower portal to review details.</p>
-    <p style="margin: 0; color: #374151; font-size: 13px;">
-        — Amalgated Lending<br>
-        <span style="color: #6b7280;">This is an automated message; please do not reply directly to this email.</span>
-    </p>
-</body>
-</html>
+<p style="margin:24px 0 0;color:#94a3b8;font-size:12px;">
+  This automated notice references {{ config('app.name', 'Amalgated Lending Inc.') }} internal records — keep this email confidential.
+</p>
+@endsection

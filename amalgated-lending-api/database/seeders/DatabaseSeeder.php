@@ -25,6 +25,7 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Approve / reject loans', 'slug' => 'loans.approve', 'group_name' => 'Loans'],
             ['name' => 'Assign loan officer', 'slug' => 'loans.assign', 'group_name' => 'Loans'],
             ['name' => 'Manage payments', 'slug' => 'payments.manage', 'group_name' => 'Payments'],
+            ['name' => 'Adjust final loan payment', 'slug' => 'payments.adjust_final', 'group_name' => 'Payments'],
             ['name' => 'View borrowers', 'slug' => 'borrowers.view', 'group_name' => 'Borrowers'],
             ['name' => 'Delete borrowers', 'slug' => 'borrowers.delete', 'group_name' => 'Borrowers'],
             ['name' => 'View reports', 'slug' => 'reports.view', 'group_name' => 'Reports'],
@@ -32,6 +33,7 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Manage settings', 'slug' => 'settings.manage', 'group_name' => 'Settings'],
             ['name' => 'View activity logs', 'slug' => 'activity.view', 'group_name' => 'Audit'],
             ['name' => 'View notifications', 'slug' => 'notifications.view', 'group_name' => 'Notifications'],
+            ['name' => 'Manage printable PDF forms', 'slug' => 'forms.printable.manage', 'group_name' => 'Forms'],
         ];
 
         $ids = [];
@@ -146,5 +148,6 @@ class DatabaseSeeder extends Seeder
 
         $this->call(AdminNavigationSeeder::class);
         $this->call(LoanProductSeeder::class);
+        $this->call(PrintableFormSeeder::class);
     }
 }

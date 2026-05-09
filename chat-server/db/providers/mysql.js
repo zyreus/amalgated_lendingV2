@@ -17,12 +17,47 @@ const MYSQL_USER = env('MYSQL_USER', 'root')
 const MYSQL_PASSWORD = env('MYSQL_PASSWORD', '')
 const MYSQL_DATABASE = safeMysqlIdentifier(env('MYSQL_DATABASE', 'amalgated_lending_chat'))
 
+const MYSQL_CONNECT_RETRIES = Math.min(Math.max(Number(env('MYSQL_CONNECT_RETRIES', '30')) || 30, 1), 120)
+const MYSQL_CONNECT_RETRY_MS = Math.min(Math.max(Number(env('MYSQL_CONNECT_RETRY_MS', '1000')) || 1000, 200), 30000)
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** Connect with retries so startup survives MySQL starting slightly later (e.g. XAMPP). */
+async function createConnectionWithRetry(opts) {
+  let lastErr
+  for (let attempt = 1; attempt <= MYSQL_CONNECT_RETRIES; attempt += 1) {
+    try {
+      return await mysql.createConnection(opts)
+    } catch (e) {
+      lastErr = e
+      const transient =
+        e?.code === 'ECONNREFUSED' ||
+        e?.code === 'ETIMEDOUT' ||
+        e?.code === 'ENOTFOUND' ||
+        e?.errno === -4078
+      if (!transient || attempt >= MYSQL_CONNECT_RETRIES) break
+      if (attempt === 1 || attempt % 5 === 0) {
+        console.warn(
+          `[chat-db] Waiting for MySQL at ${opts.host}:${opts.port} (attempt ${attempt}/${MYSQL_CONNECT_RETRIES})…`,
+        )
+      }
+      await sleep(MYSQL_CONNECT_RETRY_MS)
+    }
+  }
+  console.error(
+    `[chat-db] Cannot reach MySQL at ${MYSQL_HOST}:${MYSQL_PORT}. Start MySQL (e.g. XAMPP Control Panel → MySQL Start), then retry. Check MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD.`,
+  )
+  throw lastErr
+}
+
 /**
  * Ensures MYSQL_DATABASE exists (matches db/mysql-init.sql).
  * Separate from Laravel amalgated_lending_db — hosts Node CRM/socket tables only.
  */
 async function ensureMysqlDatabaseExists() {
-  const conn = await mysql.createConnection({
+  const conn = await createConnectionWithRetry({
     host: MYSQL_HOST,
     port: MYSQL_PORT,
     user: MYSQL_USER,
@@ -1405,26 +1440,25 @@ export async function getActivityLogs(limit = 100) {
 }
 
 export async function getAdminStats() {
-  const users = (await one(`SELECT COUNT(1) AS count FROM users`))?.count ?? 0
-  const messages = (await one(`SELECT COUNT(1) AS count FROM messages`))?.count ?? 0
-  const posts = (await one(`SELECT COUNT(1) AS count FROM posts`))?.count ?? 0
-  const activeChats = (await one(`SELECT COUNT(1) AS count FROM conversations WHERE status IN ('open','in_progress')`))?.count ?? 0
-  const unreadChat = (await one(`SELECT COALESCE(SUM(admin_unread_count), 0) AS count FROM conversations`))?.count ?? 0
-  const unreadTickets = (await one(`SELECT COUNT(1) AS count FROM tickets WHERE is_unread = 1`))?.count ?? 0
-  const subscribers = (await one(`SELECT COUNT(1) AS count FROM subscribers`))?.count ?? 0
-  const openChatTickets = (await one(`SELECT COUNT(1) AS count FROM tickets WHERE status IN ('open','pending')`))?.count ?? 0
-  let openCrmTickets = 0
-  try {
-    openCrmTickets = (await one(`SELECT COUNT(1) AS count FROM crm_tickets WHERE status IN ('open','in_progress')`))?.count ?? 0
-  } catch {
-    // crm_tickets table may not exist yet
+  const safeCount = async (sql) => {
+    try {
+      return Number((await one(sql))?.count ?? 0)
+    } catch {
+      // Keep dashboard/chat server alive even when optional/legacy tables are missing.
+      return 0
+    }
   }
-  let jobApplications = 0
-  try {
-    jobApplications = (await one(`SELECT COUNT(1) AS count FROM applications`))?.count ?? 0
-  } catch {
-    /* applications table may not exist */
-  }
+
+  const users = await safeCount(`SELECT COUNT(1) AS count FROM users`)
+  const messages = await safeCount(`SELECT COUNT(1) AS count FROM messages`)
+  const posts = await safeCount(`SELECT COUNT(1) AS count FROM posts`)
+  const activeChats = await safeCount(`SELECT COUNT(1) AS count FROM conversations WHERE status IN ('open','in_progress')`)
+  const unreadChat = await safeCount(`SELECT COALESCE(SUM(admin_unread_count), 0) AS count FROM conversations`)
+  const unreadTickets = await safeCount(`SELECT COUNT(1) AS count FROM tickets WHERE is_unread = 1`)
+  const subscribers = await safeCount(`SELECT COUNT(1) AS count FROM subscribers`)
+  const openChatTickets = await safeCount(`SELECT COUNT(1) AS count FROM tickets WHERE status IN ('open','pending')`)
+  const openCrmTickets = await safeCount(`SELECT COUNT(1) AS count FROM crm_tickets WHERE status IN ('open','in_progress')`)
+  const jobApplications = await safeCount(`SELECT COUNT(1) AS count FROM applications`)
   return {
     users,
     messages,

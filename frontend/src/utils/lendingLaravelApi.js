@@ -72,11 +72,6 @@ function buildUrl(base, path) {
 export function laravelApiBases() {
   const bases = []
   const explicit = (import.meta.env.VITE_LENDING_API_URL || '').trim().replace(/\/$/, '')
-  const proxyTarget = (import.meta.env.VITE_API_PROXY_TARGET || '').trim().replace(/\/$/, '')
-  const backendPort = String(
-    import.meta.env.VITE_BACKEND_PORT || import.meta.env.LARAVEL_PORT || '8001',
-  ).trim()
-  const localDirect = `http://127.0.0.1:${backendPort}/api/v1`
   const winHost =
     typeof window !== 'undefined' && window.location?.hostname ? String(window.location.hostname) : ''
   const onPublicHost = !isLoopbackHostname(winHost)
@@ -84,9 +79,6 @@ export function laravelApiBases() {
   // Dev: same-origin `/api/v1` via Vite proxy.
   if (typeof window !== 'undefined' && import.meta.env.DEV) {
     addBase(bases, '')
-    // Safety fallback when Vite proxy target resolution is stale/missing.
-    if (proxyTarget) addBase(bases, normalizeLaravelApiBase(proxyTarget))
-    addBase(bases, normalizeLaravelApiBase(localDirect))
   }
 
   if (explicit) {
@@ -176,9 +168,18 @@ export function getLaravelStorageFileUrl(relativePath) {
     return `${publicOrigin}/api/v1/public-files/${encoded}`
   }
 
+  /** API already returned a same-origin public-files path */
+  if (s.startsWith('/api/v1/public-files/')) {
+    return `${publicOrigin}${s}`
+  }
+
   if (/^https?:\/\//i.test(s)) {
     try {
       const u = new URL(s)
+      const pub = u.pathname.match(/^\/api\/v1\/public-files\/(.+)$/i)
+      if (pub && pub[1]) {
+        return toPublicFilesUrl(decodeURIComponent(pub[1]))
+      }
       const m = u.pathname.match(/^\/storage\/(.+)$/i)
       if (m && m[1]) {
         return toPublicFilesUrl(m[1])

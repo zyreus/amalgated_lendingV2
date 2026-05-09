@@ -112,8 +112,8 @@
 @php
     $blank = ' ';
     $na = fn ($v) => ($v === null || $v === '') ? $blank : $v;
-    $docUrl = fn ($path) => $path ? url('storage/'.ltrim($path, '/')) : null;
-    $sigUrl = fn ($path) => $path ? url('storage/'.ltrim($path, '/')) : null;
+    $docUrl = fn ($path) => $path ? \App\Support\PublicStorageUrl::absoluteUrl($path) : null;
+    $sigUrl = fn ($path) => $path ? \App\Support\PublicStorageUrl::absoluteUrl($path) : null;
     $docStatus = $docStatus ?? [];
     $extForm = $form['extended_application_form'] ?? null;
     $hasExtForm = is_array($extForm) && count($extForm) > 0;

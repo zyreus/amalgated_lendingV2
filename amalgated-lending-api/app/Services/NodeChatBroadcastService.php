@@ -13,11 +13,6 @@ class NodeChatBroadcastService
 {
     public static function relayAdminReply(ChatMessage $message): void
     {
-        self::relayMessage($message);
-    }
-
-    public static function relayMessage(ChatMessage $message): void
-    {
         $url = trim((string) config('services.node_chat.broadcast_url'));
         $secret = (string) config('services.node_chat.broadcast_secret');
 
@@ -30,7 +25,7 @@ class NodeChatBroadcastService
             'message' => [
                 'id' => $message->id,
                 'conversation_id' => $message->session_id,
-                'sender' => $message->is_from_visitor ? 'user' : ($message->sender_type ?: 'admin'),
+                'sender' => 'admin',
                 'content' => $message->message,
                 'created_at' => optional($message->created_at)?->toIso8601String(),
                 'admin_name' => $message->adminUser?->name ?? $message->sender_name,

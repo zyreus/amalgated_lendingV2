@@ -35,7 +35,7 @@ class LoanProductFeeCalculator
         $ins = round($la / 1000 * 35 + 2000, 2);
         $ds = round($la / 200 * 1.5, 2);
         $notarial = 1500.0;
-        $mortgageFee = $la >= 200_000 ? round($la * 0.025, 2) : 0.0;
+        $mortgageFee = round($la * 0.025, 2);
         $mp = round($la / $term, 2);
         $mi = round($la * ($monthlyRatePercent / 100), 2);
         $mort = round($mp + $mi, 2);
@@ -48,9 +48,7 @@ class LoanProductFeeCalculator
             'doc_stamp' => $ds,
             'notarial_fee' => $notarial,
             'mortgage_fee' => $mortgageFee,
-            'mortgage_fee_note' => $la >= 200_000
-                ? 'Mortgage fee 2.5% of loan (non-refundable) for loans above ₱200,000.'
-                : 'For loans below ₱200,000 a refundable mortgage deposit may apply instead—confirm with the branch.',
+            'mortgage_fee_note' => 'Mortgage fee is 2.5% of loan amount per company policy.',
             'monthly_principal' => $mp,
             'monthly_interest_on_full_principal' => $mi,
             'monthly_amortization_straight_line' => $mort,

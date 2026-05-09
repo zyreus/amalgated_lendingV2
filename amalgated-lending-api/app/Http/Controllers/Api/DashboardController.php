@@ -12,21 +12,30 @@ class DashboardController extends Controller
 {
     public function summary(): JsonResponse
     {
-        $totalUsers = User::count();
+        $totalUsers = (int) User::query()->count();
 
-        $activeLoans = Loan::where('status', Loan::STATUS_ONGOING)->count();
-        $pendingApplications = Loan::where('status', Loan::STATUS_PENDING)->count();
-        $rejectedLoans = Loan::where('status', Loan::STATUS_REJECTED)->count();
-        $completedLoans = Loan::where('status', Loan::STATUS_COMPLETED)->count();
+        $o = Loan::STATUS_ONGOING;
+        $p = Loan::STATUS_PENDING;
+        $r = Loan::STATUS_REJECTED;
+        $c = Loan::STATUS_COMPLETED;
 
-        $totalPrincipalReleased = (float) Loan::query()
-            ->whereIn('status', [Loan::STATUS_ONGOING, Loan::STATUS_COMPLETED])
-            ->sum('principal');
+        /** One round-trip for status counts + released principal (was five separate aggregates). */
+        $loanAgg = Loan::query()
+            ->selectRaw(
+                'SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as active_loans, '.
+                'SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending_applications, '.
+                'SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as rejected_loans, '.
+                'SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as completed_loans, '.
+                'COALESCE(SUM(CASE WHEN status IN (?, ?) THEN principal ELSE 0 END), 0) as total_principal_released',
+                [$o, $p, $r, $c, $o, $c]
+            )
+            ->first();
 
-        $totalRevenue = (float) Payment::sum('amount_paid');
+        $totalPrincipalReleased = (float) ($loanAgg->total_principal_released ?? 0);
+        $totalRevenue = (float) Payment::query()->sum('amount_paid');
 
         $overdueLoans = Loan::query()
-            ->whereIn('status', [Loan::STATUS_ONGOING])
+            ->where('status', Loan::STATUS_ONGOING)
             ->whereHas('payments', function ($q) {
                 $q->where('status', '!=', Payment::STATUS_PAID)
                     ->whereDate('due_date', '<', now()->toDateString());
@@ -37,10 +46,10 @@ class DashboardController extends Controller
             'ok' => true,
             'summary' => [
                 'total_users' => $totalUsers,
-                'active_loans' => $activeLoans,
-                'pending_applications' => $pendingApplications,
-                'rejected_loans' => $rejectedLoans,
-                'completed_loans' => $completedLoans,
+                'active_loans' => (int) ($loanAgg->active_loans ?? 0),
+                'pending_applications' => (int) ($loanAgg->pending_applications ?? 0),
+                'rejected_loans' => (int) ($loanAgg->rejected_loans ?? 0),
+                'completed_loans' => (int) ($loanAgg->completed_loans ?? 0),
                 'total_principal_released' => round($totalPrincipalReleased, 2),
                 'total_revenue' => round($totalRevenue, 2),
                 'overdue_loans' => $overdueLoans,

@@ -1,31 +1,28 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Application received</title>
-</head>
-<body style="font-family: system-ui, -apple-system, Segoe UI, sans-serif; line-height: 1.6; color: #111827; max-width: 640px; margin: 0; padding: 24px;">
-    <p style="margin: 0 0 16px;">Hello {{ $borrowerName }},</p>
-    <p style="margin: 0 0 16px;">Thank you for applying with <strong>Amalgated Lending Inc.</strong>. Your application has been submitted. Please wait for <strong>Amalgated Lending Inc.</strong> confirmation.</p>
-    <table style="width: 100%; border-collapse: collapse; margin: 0 0 24px; font-size: 14px;">
-        <tr>
-            <td style="padding: 8px 0; color: #6b7280;">Reference</td>
-            <td style="padding: 8px 0; font-weight: 600;">#{{ $loanId }}</td>
-        </tr>
-        <tr>
-            <td style="padding: 8px 0; color: #6b7280;">Amount requested</td>
-            <td style="padding: 8px 0;">₱{{ $principal }}</td>
-        </tr>
-        <tr>
-            <td style="padding: 8px 0; color: #6b7280;">Term</td>
-            <td style="padding: 8px 0;">{{ $termMonths }} months</td>
-        </tr>
-    </table>
-    <p style="margin: 0 0 16px;">You can log in to your borrower portal anytime to check status updates.</p>
-    <p style="margin: 0; color: #374151; font-size: 13px;">
-        — Amalgated Lending Inc.<br>
-        <span style="color: #6b7280;">This is an automated message; please do not reply directly to this email.</span>
-    </p>
-</body>
-</html>
+@extends('mail.layout')
+
+@section('mail_body')
+<p style="margin:0 0 14px;color:#64748b;font-size:13px;">Application reference · <strong style="color:#111827">{{ $loanRef ?? '' }}</strong></p>
+<h1 style="margin:0 0 14px;font-size:21px;line-height:1.3;">We received your loan application.</h1>
+<p style="margin:0 0 16px;">
+  Hi {{ $borrowerName }},
+</p>
+<p style="margin:0 0 16px;">
+  Thank you for applying with {{ config('app.name', 'Amalgated Lending Inc.') }}. Your submission is queued for credit review by our underwriting team.
+</p>
+<table role="presentation" cellpadding="12" cellspacing="0" border="1" bordercolor="#e2e8f0" style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px;">
+  <tbody>
+    <tr><td style="background:#f8fafc;font-weight:700;width:42%;">Reference</td><td>{{ $loanRef ?? '' }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Product</td><td>{{ $productLabel }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Branch note</td><td>{{ $branchNote }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Amount requested</td><td>₱ {{ $principal }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Term</td><td>{{ $termMonths }} months</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">System loan ID</td><td>#{{ $loanId }}</td></tr>
+  </tbody>
+</table>
+<p style="margin:0 0 16px;color:#475569;font-size:14px;">
+  We will email you once a decision has been recorded. You can also monitor status in your borrower portal.
+</p>
+<p style="margin:24px 0 0;color:#94a3b8;font-size:12px;">
+  If you did not submit this application, contact us immediately — this inbox is not monitored for replies for loan instructions.
+</p>
+@endsection

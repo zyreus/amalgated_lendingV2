@@ -75,10 +75,13 @@ function buildApplicationPayload(source) {
 
 export async function postPublicInquiry(payload) {
   const source = payload || {}
-  const messageParts = [String(source.message || '').trim()]
-  if (String(source.loanType || '').trim()) {
-    messageParts.push(`Loan type: ${String(source.loanType).trim()}`)
-  }
+  const preferredLoanType = String(source.preferredLoanType || source.loanType || '').trim()
+  const estimatedLoanAmount = String(source.estimatedLoanAmount || '').trim()
+  const contactNumber = String(source.contactNumber || source.phone || '').trim()
+  const messageParts = ['Website borrower inquiry']
+  if (preferredLoanType) messageParts.push(`Preferred loan type: ${preferredLoanType}`)
+  if (estimatedLoanAmount) messageParts.push(`Estimated amount: PHP ${estimatedLoanAmount}`)
+  if (contactNumber) messageParts.push(`Contact number: ${contactNumber}`)
 
   const { res, data } = await publicChatJson('/api/inquiry', {
     method: 'POST',
@@ -86,7 +89,7 @@ export async function postPublicInquiry(payload) {
     body: JSON.stringify({
       name: String(source.name || '').trim(),
       email: String(source.email || '').trim(),
-      phone: String(source.phone || '').trim(),
+      phone: contactNumber,
       company: String(source.organization || source.company || '').trim(),
       message: messageParts.filter(Boolean).join('\n\n'),
       source_page: '/contact',

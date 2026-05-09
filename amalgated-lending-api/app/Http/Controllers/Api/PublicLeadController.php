@@ -5,10 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Lead;
 use App\Models\LeadMessage;
+use App\Support\PublicStorageUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class PublicLeadController extends Controller
@@ -65,7 +65,7 @@ class PublicLeadController extends Controller
                 'sender_type' => $m->sender_type,
                 'message' => $m->message,
                 'attachment_name' => $m->attachment_name,
-                'attachment_url' => $m->attachment_path ? Storage::disk('public')->url($m->attachment_path) : null,
+                'attachment_url' => $m->attachment_path ? PublicStorageUrl::apiUrl($m->attachment_path) : null,
                 'created_at' => optional($m->created_at)?->toIso8601String(),
             ];
         });
@@ -114,7 +114,7 @@ class PublicLeadController extends Controller
                 'sender_type' => $msg->sender_type,
                 'message' => $msg->message,
                 'attachment_name' => $msg->attachment_name,
-                'attachment_url' => $msg->attachment_path ? Storage::disk('public')->url($msg->attachment_path) : null,
+                'attachment_url' => $msg->attachment_path ? PublicStorageUrl::apiUrl($msg->attachment_path) : null,
                 'created_at' => optional($msg->created_at)?->toIso8601String(),
             ],
         ], 201);

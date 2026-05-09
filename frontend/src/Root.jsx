@@ -14,6 +14,7 @@ import RouteLoadingFallback from './components/RouteLoadingFallback.jsx'
 import AdminLoginPage from './admin/pages/AdminLoginPage.jsx'
 import AdminForgotPasswordPage from './admin/pages/AdminForgotPasswordPage.jsx'
 import BorrowerLoginPage from './borrower/pages/BorrowerLoginPage.jsx'
+import BorrowerRegisterPage from './borrower/pages/BorrowerRegisterPage.jsx'
 import BorrowerForgotPasswordPage from './borrower/pages/BorrowerForgotPasswordPage.jsx'
 import UnauthorizedPage from './pages/UnauthorizedPage.jsx'
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx'
@@ -24,14 +25,12 @@ const ContactPage = lazy(() => import('./pages/ContactPage.jsx'))
 const LoanProductsPage = lazy(() => import('./pages/LoanProductsPage.jsx'))
 const FeaturesPage = lazy(() => import('./pages/FeaturesPage.jsx'))
 const BranchesPage = lazy(() => import('./pages/BranchesPage.jsx'))
-const ApplyPage = lazy(() => import('./pages/ApplyPage.jsx'))
 const ChattelMortgagePage = lazy(() => import('./pages/ChattelMortgagePage.jsx'))
 const RealEstateMortgagePage = lazy(() => import('./pages/RealEstateMortgagePage.jsx'))
 const SalaryLoanPage = lazy(() => import('./pages/SalaryLoanPage.jsx'))
 const TravelAssistanceLoanPage = lazy(() => import('./pages/TravelAssistanceLoanPage.jsx'))
 const SssPensionLoanPage = lazy(() => import('./pages/SssPensionLoanPage.jsx'))
 const ApplicationFormLayout = lazy(() => import('./pages/ApplicationFormLayout.jsx'))
-const DocumentLoanApplyPage = lazy(() => import('./pages/DocumentLoanApplyPage.jsx'))
 const DocumentLoanApplicationsPage = lazy(() => import('./admin/pages/DocumentLoanApplicationsPage.jsx'))
 const DocumentLoanApplicationDetailPage = lazy(() => import('./admin/pages/DocumentLoanApplicationDetailPage.jsx'))
 const AdminLayout = lazy(() => import('./admin/AdminLayout.jsx'))
@@ -59,7 +58,9 @@ const BorrowerSecurityPage = lazy(() => import('./borrower/pages/BorrowerSecurit
 const BorrowerProfilePage = lazy(() => import('./borrower/pages/BorrowerProfilePage.jsx'))
 const BorrowerLoanWizardPage = lazy(() => import('./borrower/pages/BorrowerLoanWizardPage.jsx'))
 const BorrowerApplicationsPage = lazy(() => import('./borrower/pages/BorrowerApplicationsPage.jsx'))
+const BorrowerPrintableFormsPage = lazy(() => import('./borrower/pages/BorrowerPrintableFormsPage.jsx'))
 const AdminLoanProductsPage = lazy(() => import('./admin/pages/AdminLoanProductsPage.jsx'))
+const PrintableFormsPage = lazy(() => import('./admin/pages/PrintableFormsPage.jsx'))
 const ApplicationFlowPage = lazy(() => import('./pages/ApplicationFlowPage.jsx'))
 const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage.jsx'))
 
@@ -177,6 +178,7 @@ export default function Root() {
                     <Route path="loans/new" element={<AdminNewLoanPage />} />
                     <Route path="loans/:id" element={<LoanDetailPage />} />
                     <Route path="loan-products" element={<AdminLoanProductsPage />} />
+                    <Route path="printable-forms" element={<PrintableFormsPage />} />
                     <Route path="reports" element={<ReportsPage />} />
                     <Route path="leads" element={<Navigate to="/admin/chat-crm?view=leads" replace />} />
                     <Route path="payments" element={<PaymentsPage />} />
@@ -192,12 +194,14 @@ export default function Root() {
                 </Route>
               </Route>
               <Route path="/borrower/login" element={<BorrowerLoginPage />} />
+              <Route path="/borrower/register" element={<BorrowerRegisterPage />} />
               <Route path="/borrower/forgot-password" element={<BorrowerForgotPasswordPage />} />
               <Route path="/borrower" element={<BorrowerProtectedRoute />}>
                 <Route element={<BorrowerLayout />}>
                   <Route index element={<Navigate to="/borrower/dashboard" replace />} />
                   <Route path="dashboard" element={<BorrowerDashboardPage />} />
                   <Route path="applications" element={<BorrowerApplicationsPage />} />
+                  <Route path="printable-forms" element={<BorrowerPrintableFormsPage />} />
                   <Route path="notifications" element={<Navigate to="/borrower/dashboard" replace />} />
                   <Route path="payments" element={<BorrowerPaymentsPage />} />
                   <Route path="chat" element={<BorrowerChatPage />} />
@@ -214,11 +218,11 @@ export default function Root() {
               <Route path="/features" element={<FeaturesPage />} />
               <Route path="/branches" element={<BranchesPage />} />
               <Route path="/contact" element={<ContactPage />} />
-              <Route path="/apply" element={<ApplyPage />} />
+              <Route path="/apply" element={<Navigate to="/borrower/login" replace />} />
               <Route path="/application-flow" element={<ApplicationFlowPage />} />
               <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
               <Route element={<ApplicationFormLayout />}>
-                <Route path="/apply/documents/:slug" element={<DocumentLoanApplyPage />} />
+                <Route path="/apply/documents/:slug" element={<Navigate to="/borrower/login" replace />} />
                 <Route path="/loans/chattel-mortgage" element={<ChattelMortgagePage />} />
                 <Route path="/loans/real-estate-mortgage" element={<RealEstateMortgagePage />} />
                 <Route path="/loans/salary-loan" element={<SalaryLoanPage />} />

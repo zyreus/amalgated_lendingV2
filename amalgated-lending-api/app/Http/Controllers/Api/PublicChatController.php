@@ -4,12 +4,15 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChatMessage;
+use App\Models\FeedbackTicket;
 use App\Models\SupportChatFeedback;
 use App\Models\SupportConversation;
-use App\Services\NodeChatBroadcastService;
+use App\Models\User;
+use App\Services\NotificationCenter;
 use App\Support\SupportChatPresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PublicChatController extends Controller
 {
@@ -113,7 +116,25 @@ class PublicChatController extends Controller
         $conv->save();
 
         $message->loadMissing('adminUser:id,name');
-        NodeChatBroadcastService::relayMessage($message);
+
+        app(NotificationCenter::class)->notifyStaff(
+            NotificationCenter::CATEGORY_CRM_INQUIRY,
+            'visitor_chat_message',
+            'Visitor message — '.mb_substr($clean, 0, 72),
+            mb_substr($clean, 0, 500),
+            [
+                'session_id' => $conv->session_id,
+                'support_conversation_id' => $conv->id,
+                'chat_message_id' => $message->id,
+            ],
+            null,
+            [
+                'module' => NotificationCenter::MODULE_CRM,
+                'throttle_key' => 'chat:'.$conv->session_id,
+                'throttle_max' => 12,
+                'throttle_decay_seconds' => 3600,
+            ],
+        );
 
         return response()->json([
             'ok' => true,
@@ -166,7 +187,7 @@ class PublicChatController extends Controller
 
         $conv = SupportConversation::query()->where('session_id', trim($data['session_id']))->first();
 
-        SupportChatFeedback::create([
+        $supportFeedback = SupportChatFeedback::create([
             'support_conversation_id' => $conv?->id,
             'session_id' => trim($data['session_id']),
             'rating' => (int) $data['rating'],
@@ -178,12 +199,56 @@ class PublicChatController extends Controller
             'is_from_sync' => false,
         ]);
 
+        // Feedback Management Center: create a ticket mirror if migrated.
+        if (DB::getSchemaBuilder()->hasTable('feedback_tickets')) {
+            $borrowerId = null;
+            if (! empty($data['email'])) {
+                $borrowerId = User::query()
+                    ->where('email', trim((string) $data['email']))
+                    ->value('id');
+            }
+
+            FeedbackTicket::query()->firstOrCreate(
+                ['support_chat_feedback_id' => $supportFeedback->id],
+                [
+                    'borrower_id' => $borrowerId,
+                    'support_conversation_id' => $conv?->id,
+                    'category' => 'General Feedback',
+                    'priority' => 'Medium',
+                    'status' => 'New',
+                    'subject' => isset($data['subject']) ? trim((string) $data['subject']) : null,
+                    'message' => $comment,
+                    'rating' => (int) $data['rating'],
+                    'email' => $data['email'] ?? null,
+                ],
+            );
+        }
+
         if ($conv) {
             $conv->customer_rating = (int) $data['rating'];
             $conv->rating_comment = mb_substr($comment, 0, 5000);
             $conv->rated_at = now();
             $conv->save();
         }
+
+        app(NotificationCenter::class)->notifyStaff(
+            NotificationCenter::CATEGORY_FEEDBACK,
+            'visitor_feedback',
+            'Visitor feedback — '.((int) $data['rating']).'/5',
+            mb_substr($comment, 0, 500),
+            [
+                'session_id' => trim($data['session_id']),
+                'support_conversation_id' => $conv?->id,
+                'support_chat_feedback_id' => $supportFeedback->id,
+            ],
+            null,
+            [
+                'module' => NotificationCenter::MODULE_FEEDBACK,
+                'throttle_key' => 'feedback:'.trim($data['session_id']),
+                'throttle_max' => 6,
+                'throttle_decay_seconds' => 7200,
+            ],
+        );
 
         return response()->json(['ok' => true]);
     }

@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\AdminFeedbackController;
 use App\Http\Controllers\Api\AdminLeadController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BorrowerAuthController;
+use App\Http\Controllers\Api\BorrowerEmailVerificationController;
 use App\Http\Controllers\Api\BorrowerController;
 use App\Http\Controllers\Api\BorrowerLendingSignatureController;
 use App\Http\Controllers\Api\BorrowerLoanApplicationWizardController;
@@ -29,9 +30,12 @@ use App\Http\Controllers\Api\LoanProductController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\NavigationController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\NotificationPreferenceController;
 use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PermissionController;
+use App\Http\Controllers\Api\PrintableFormAdminController;
+use App\Http\Controllers\Api\PrintableFormBorrowerController;
 use App\Http\Controllers\Api\PublicChatController;
 use App\Http\Controllers\Api\PublicFileController;
 use App\Http\Controllers\Api\PublicLeadController;
@@ -57,10 +61,16 @@ Route::prefix('v1')->group(function () {
 
     Route::post('/admin/login', [AdminAuthController::class, 'login']);
     Route::post('/borrower/login', [BorrowerAuthController::class, 'login']);
+    Route::post('/borrower/register', [BorrowerAuthController::class, 'register']);
     Route::post('/auth/login', [AuthController::class, 'login']);
     Route::post('/borrower/forgot-password', [PasswordResetController::class, 'requestBorrower']);
     Route::post('/admin/forgot-password', [PasswordResetController::class, 'requestAdmin']);
     Route::post('/password/reset', [PasswordResetController::class, 'reset']);
+
+    /** Signed inbox link — redirects to SPA after marking email_verified_at. */
+    Route::get('/borrower/email/verify', [BorrowerEmailVerificationController::class, 'verify'])
+        ->middleware(['signed', 'throttle:72,1'])
+        ->name('api.borrower.email.verify');
 
     Route::post('/liveness/verify', [LivenessController::class, 'verify'])
         ->middleware(['auth:api', 'active', 'borrower', 'throttle:liveness']);
@@ -130,10 +140,12 @@ Route::prefix('v1')->group(function () {
         Route::middleware('permission:users.view')->group(function () {
             Route::get('/users', [UserController::class, 'index']);
             Route::get('/users/{user}', [UserController::class, 'show']);
+            Route::get('/users-export', [UserController::class, 'export']);
         });
         Route::middleware('permission:users.manage')->group(function () {
             Route::post('/users', [UserController::class, 'store']);
             Route::put('/users/{user}', [UserController::class, 'update']);
+            Route::post('/users/{user}/verify-email', [UserController::class, 'verifyBorrowerEmail']);
             Route::delete('/users/{user}', [UserController::class, 'destroy']);
         });
 
@@ -155,6 +167,7 @@ Route::prefix('v1')->group(function () {
         });
         Route::middleware('permission:loans.approve')->group(function () {
             Route::post('/loans', [LoanController::class, 'store']);
+            Route::patch('/loans/{loan}/document-review', [LoanController::class, 'patchDocumentReview']);
             Route::post('/loans/{loan}/approve', [LoanController::class, 'approve']);
             Route::post('/loans/{loan}/reject', [LoanController::class, 'reject']);
             Route::put('/loan/{loanApplication}', [TravelLoanApplicationAdminController::class, 'update']);
@@ -196,6 +209,11 @@ Route::prefix('v1')->group(function () {
             Route::put('/payments/{payment}', [PaymentController::class, 'record']);
             Route::patch('/payments/{payment}/status', [PaymentController::class, 'updateStatus']);
             Route::get('/users/{user}/payment-history', [PaymentController::class, 'forUser']);
+
+            Route::middleware('permission:payments.adjust_final')->group(function () {
+                Route::patch('/payments/{payment}/adjust-final', [PaymentController::class, 'adjustFinal']);
+                Route::get('/payments/{payment}/adjustment-audits', [PaymentController::class, 'adjustmentAudits']);
+            });
         });
 
         Route::middleware('permission:cms.manage')->group(function () {
@@ -215,17 +233,28 @@ Route::prefix('v1')->group(function () {
 
         Route::middleware('permission:dashboard.view')->group(function () {
             Route::get('/feedbacks', [AdminFeedbackController::class, 'index']);
-            Route::get('/feedbacks/{feedback}', [AdminFeedbackController::class, 'show']);
-            Route::patch('/feedbacks/{feedback}/status', [AdminFeedbackController::class, 'updateStatus']);
+            Route::get('/feedbacks/staff', [AdminFeedbackController::class, 'staffList']);
+            Route::get('/feedbacks/reporting/summary', [AdminFeedbackController::class, 'reportingSummary']);
+            Route::get('/feedbacks/{ticket}', [AdminFeedbackController::class, 'show']);
+            Route::patch('/feedbacks/{ticket}/status', [AdminFeedbackController::class, 'updateStatus']);
+            Route::patch('/feedbacks/{ticket}', [AdminFeedbackController::class, 'updateTicket']);
+            Route::delete('/feedbacks/{ticket}', [AdminFeedbackController::class, 'destroy']);
+            Route::get('/feedbacks/{ticket}/replies', [AdminFeedbackController::class, 'replies']);
+            Route::post('/feedbacks/{ticket}/replies', [AdminFeedbackController::class, 'addReply']);
+            Route::get('/feedbacks/{ticket}/analytics', [AdminFeedbackController::class, 'analytics']);
         });
 
         Route::middleware('permission:notifications.view')->group(function () {
+            Route::get('/notifications/poll', [NotificationController::class, 'poll']);
             Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
             Route::get('/notifications', [NotificationController::class, 'index']);
             Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
             Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
+            Route::post('/notifications/{notification}/unread', [NotificationController::class, 'markUnread']);
             Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
             Route::post('/notifications/bulk-delete', [NotificationController::class, 'bulkDestroy']);
+            Route::get('/notification-preferences', [NotificationPreferenceController::class, 'show']);
+            Route::put('/notification-preferences', [NotificationPreferenceController::class, 'update']);
         });
 
         Route::middleware('permission:loans.view')->group(function () {
@@ -234,6 +263,17 @@ Route::prefix('v1')->group(function () {
         });
         Route::middleware('permission:loans.approve')->group(function () {
             Route::patch('/uploaded-documents/{uploadedDocument}', [DocumentLoanAdminController::class, 'updateUpload']);
+        });
+
+        Route::middleware('permission:forms.printable.manage')->group(function () {
+            Route::get('/printable-forms', [PrintableFormAdminController::class, 'index']);
+            Route::post('/printable-forms', [PrintableFormAdminController::class, 'store']);
+            Route::put('/printable-forms/{printableForm}', [PrintableFormAdminController::class, 'update']);
+            Route::delete('/printable-forms/{printableForm}', [PrintableFormAdminController::class, 'destroy']);
+            Route::post('/printable-forms/{printableForm}/upload-template', [PrintableFormAdminController::class, 'uploadTemplate']);
+            Route::post('/printable-forms/{printableForm}/test-pdf', [PrintableFormAdminController::class, 'testPdf']);
+            Route::get('/printable-forms/{printableForm}/master-template', [PrintableFormAdminController::class, 'downloadMasterTemplate']);
+            Route::get('/printable-form-logs', [PrintableFormAdminController::class, 'logs']);
         });
 
         Route::middleware('borrower')->group(function () {
@@ -262,7 +302,7 @@ Route::prefix('v1')->group(function () {
         Route::delete('/leads/{lead}', [AdminLeadController::class, 'destroy']);
         Route::get('/leads/{lead}/messages', [AdminLeadController::class, 'messages']);
         Route::post('/leads/{lead}/messages', [AdminLeadController::class, 'sendMessage']);
-        Route::post('/leads/{lead}/email', [AdminLeadController::class, 'sendEmail']);
+        Route::post('/leads/{leadRef}/email', [AdminLeadController::class, 'sendEmail']);
         Route::get('/chat/conversations', [AdminChatController::class, 'conversations']);
         Route::get('/chat/conversations/{sessionId}/messages', [AdminChatController::class, 'messages']);
         Route::post('/chat/conversations/{sessionId}/messages', [AdminChatController::class, 'sendMessage']);
@@ -292,6 +332,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/loan-applications/{loanApplication}/validate-step', [BorrowerLoanApplicationWizardController::class, 'validateStep']);
         Route::post('/loan-applications/{loanApplication}/signature', [BorrowerLoanApplicationWizardController::class, 'saveSignature']);
         Route::post('/loan-applications/{loanApplication}/submit', [BorrowerLoanApplicationWizardController::class, 'submit']);
+        Route::delete('/loan-applications/{loanApplication}', [BorrowerLoanApplicationWizardController::class, 'destroy']);
         Route::get('/document-loan-applications', [DocumentLoanApplicationController::class, 'borrowerIndex']);
         Route::get('/profile/documents', [BorrowerPortalController::class, 'profileDocuments']);
         Route::get('/lending-applications', [BorrowerPortalController::class, 'lendingApplications']);
@@ -302,17 +343,29 @@ Route::prefix('v1')->group(function () {
         Route::post('/lending-applications/travel/{travelApplication}/signature/spouse', [BorrowerLendingSignatureController::class, 'travelSpouse']);
         Route::get('/me', [BorrowerAuthController::class, 'me']);
         Route::post('/logout', [BorrowerAuthController::class, 'logout']);
+        Route::post('/email/resend-verification', [BorrowerEmailVerificationController::class, 'resend'])
+            ->middleware('throttle:6,1');
         Route::post('/change-password', [BorrowerAuthController::class, 'changePassword']);
         Route::get('/dashboard', [BorrowerPortalController::class, 'dashboard']);
         Route::get('/payments', [BorrowerPortalController::class, 'payments']);
         Route::get('/payments/history', [BorrowerPortalController::class, 'paymentHistory']);
         Route::post('/upload-payment', [BorrowerPortalController::class, 'uploadPayment']);
+        Route::get('/notifications/poll', [BorrowerNotificationController::class, 'poll']);
         Route::get('/notifications/unread-count', [BorrowerNotificationController::class, 'unreadCount']);
         Route::get('/notifications', [BorrowerNotificationController::class, 'index']);
         Route::post('/notifications/read-all', [BorrowerNotificationController::class, 'markAllRead']);
         Route::post('/notifications/{borrowerNotification}/read', [BorrowerNotificationController::class, 'markRead']);
+        Route::post('/notifications/{borrowerNotification}/unread', [BorrowerNotificationController::class, 'markUnread']);
+        Route::post('/notifications/{borrowerNotification}/archive', [BorrowerNotificationController::class, 'archive']);
+        Route::post('/notifications/clear-all', [BorrowerNotificationController::class, 'clearAll']);
+        Route::get('/notification-preferences', [NotificationPreferenceController::class, 'show']);
+        Route::put('/notification-preferences', [NotificationPreferenceController::class, 'update']);
         Route::post('/profile', [BorrowerPortalController::class, 'updateProfile']);
         Route::get('/chat/messages', [BorrowerPortalController::class, 'chatMessages']);
         Route::post('/chat/messages', [BorrowerPortalController::class, 'sendChatMessage']);
+
+        Route::get('/printable-forms', [PrintableFormBorrowerController::class, 'index']);
+        Route::post('/printable-forms/{printableForm}/generate', [PrintableFormBorrowerController::class, 'generate']);
+        Route::post('/printable-forms/download-log', [PrintableFormBorrowerController::class, 'recordDownload']);
     });
 });

@@ -15,6 +15,7 @@ class LoanApplicationResource extends JsonResource
             'loan_product_id' => $this->loan_product_id,
             'loan_product' => $this->whenLoaded('loanProduct', fn () => new LoanProductResource($this->loanProduct)),
             'loan_amount' => $this->loan_amount !== null ? (float) $this->loan_amount : null,
+            'approved_amount' => $this->approved_amount !== null ? (float) $this->approved_amount : null,
             'term_months' => $this->term_months,
             'loan_type' => $this->loan_type,
             'application_nature' => data_get($this->form_data, 'application_nature'),

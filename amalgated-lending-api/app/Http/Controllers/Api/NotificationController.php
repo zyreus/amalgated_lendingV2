@@ -4,45 +4,116 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AdminNotification;
+use App\Models\AdminNotificationRead;
+use App\Services\NotificationCenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 
 class NotificationController extends Controller
 {
+    public function __construct(
+        private NotificationCenter $notifications,
+    ) {}
+
+    public function poll(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $sinceRaw = $request->query('since');
+        $changed = true;
+        if (is_string($sinceRaw) && $sinceRaw !== '') {
+            try {
+                $since = Carbon::parse($sinceRaw);
+                $changed = AdminNotification::query()
+                    ->where(function ($w) use ($since) {
+                        $w->where('created_at', '>', $since)
+                            ->orWhere('updated_at', '>', $since);
+                    })
+                    ->whereNull('dismissed_globally_at')
+                    ->exists()
+                    || AdminNotificationRead::query()
+                        ->where('user_id', (int) $user->id)
+                        ->where('updated_at', '>', $since)
+                        ->exists();
+            } catch (\Throwable) {
+                $changed = true;
+            }
+        }
+
+        $unread = $this->notifications->adminNotificationsUnreadQuery((int) $user->id)->count();
+        $latest = AdminNotification::query()->orderByDesc('id')->value('created_at');
+
+        return response()->json([
+            'ok' => true,
+            'changed' => $changed,
+            'unread_count' => $unread,
+            'latest_created_at' => optional($latest)?->toIso8601String(),
+        ]);
+    }
+
     public function unreadCount(Request $request): JsonResponse
     {
-        $n = AdminNotification::query()->whereNull('read_at')->count();
+        $n = $this->notifications->adminNotificationsUnreadQuery((int) $request->user()->id)->count();
 
         return response()->json(['ok' => true, 'count' => $n]);
     }
 
     public function index(Request $request): JsonResponse
     {
-        $q = AdminNotification::query()->orderByDesc('created_at');
+        $userId = (int) $request->user()->id;
+        $perPage = max(5, min(50, (int) $request->query('per_page', 20)));
 
-        if ($request->boolean('unread_only')) {
-            $q->whereNull('read_at');
+        $q = AdminNotification::query()
+            ->whereNull('dismissed_globally_at')
+            ->withExists(['userReads as is_read' => fn ($w) => $w->where('user_id', $userId)])
+            ->orderByDesc('priority')
+            ->orderByDesc('created_at');
+
+        $category = trim((string) $request->query('category', ''));
+        if ($category !== '') {
+            $q->where('category', $category);
+        }
+        $module = trim((string) $request->query('module', ''));
+        if ($module !== '') {
+            $q->where('module', $module);
         }
 
-        $items = $q->paginate((int) $request->query('per_page', 20));
+        if ($request->boolean('unread_only')) {
+            $q->whereDoesntHave('userReads', fn ($w) => $w->where('user_id', $userId));
+        }
+
+        $items = $q->paginate($perPage);
 
         return response()->json(['ok' => true, 'data' => $items]);
     }
 
     public function markRead(Request $request, AdminNotification $notification): JsonResponse
     {
-        $notification->read_at = now();
-        $notification->save();
+        if ($notification->dismissed_globally_at) {
+            return response()->json(['ok' => true, 'note' => 'dismissed_broadcast']);
+        }
+
+        $this->notifications->markAdminNotificationReadForUser($notification, (int) $request->user()->id);
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function markUnread(Request $request, AdminNotification $notification): JsonResponse
+    {
+        AdminNotificationRead::query()
+            ->where('admin_notification_id', $notification->id)
+            ->where('user_id', (int) $request->user()->id)
+            ->delete();
 
         return response()->json(['ok' => true]);
     }
 
     public function markAllRead(Request $request): JsonResponse
     {
-        AdminNotification::whereNull('read_at')->update(['read_at' => now()]);
+        $n = $this->notifications->markAllAdminNotificationsReadForUser((int) $request->user()->id);
 
-        return response()->json(['ok' => true]);
+        return response()->json(['ok' => true, 'marked' => $n]);
     }
 
     public function destroy(Request $request, AdminNotification $notification): JsonResponse

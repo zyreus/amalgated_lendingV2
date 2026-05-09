@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { api } from '../api/client.js'
 import { useToast } from '../context/ToastContext.jsx'
 import { admin, TableSkeletonRows, EmptyTableRow } from '../components/AdminUi.jsx'
+import ConfirmModal from '../components/ConfirmModal.jsx'
 import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
 
 function formatDueDate(value) {
@@ -155,6 +156,15 @@ export default function PaymentsPage() {
   const [loading, setLoading] = useState(true)
   const [confirmingId, setConfirmingId] = useState(null)
   const [confirmTarget, setConfirmTarget] = useState(null)
+  const [adjustPanel, setAdjustPanel] = useState(null)
+  const [adjustPaymentId, setAdjustPaymentId] = useState(null)
+  const [adjustAmount, setAdjustAmount] = useState('')
+  const [adjustReason, setAdjustReason] = useState('')
+  const [adjustConfirmOpen, setAdjustConfirmOpen] = useState(false)
+  const [adjustSaving, setAdjustSaving] = useState(false)
+  const [auditFor, setAuditFor] = useState(null)
+  const [auditRows, setAuditRows] = useState([])
+  const [auditLoading, setAuditLoading] = useState(false)
   const [borrowerFilter, setBorrowerFilter] = useState('')
   const [borrowerNameFilter, setBorrowerNameFilter] = useState('')
   const [loanNumberFilter, setLoanNumberFilter] = useState('')
@@ -289,6 +299,64 @@ export default function PaymentsPage() {
 
   const openConfirmModal = (payment) => {
     setConfirmTarget(payment)
+  }
+
+  const canAdjustFinal = (p) =>
+    Boolean(p?.is_final_payment) && String(p?.loan?.status || '').toLowerCase() === 'ongoing'
+
+  const openAdjustPanel = (p) => {
+    setAdjustPanel(p)
+    setAdjustPaymentId(null)
+    setAdjustAmount(String(Number(p.amount_due ?? 0)))
+    setAdjustReason('')
+    setAdjustConfirmOpen(false)
+  }
+
+  const runAdjustFinal = async () => {
+    const id = adjustPaymentId ?? adjustPanel?.id
+    if (!id) return
+    const amt = Number(adjustAmount)
+    if (!Number.isFinite(amt) || amt < 0) {
+      showToast('Enter a valid non-negative amount.', 'error')
+      throw new Error('validation')
+    }
+    const reason = adjustReason.trim()
+    if (reason.length < 8) {
+      showToast('Reason must be at least 8 characters.', 'error')
+      throw new Error('validation')
+    }
+    setAdjustSaving(true)
+    try {
+      await api(`/payments/${id}/adjust-final`, {
+        method: 'PATCH',
+        body: JSON.stringify({ amount_due: amt, adjustment_reason: reason }),
+      })
+      showToast('Final installment updated.', 'success')
+      setAdjustConfirmOpen(false)
+      setAdjustPanel(null)
+      setAdjustPaymentId(null)
+      await loadPayments()
+    } catch (e) {
+      showToast(e.message || 'Adjustment failed.', 'error')
+      throw e
+    } finally {
+      setAdjustSaving(false)
+    }
+  }
+
+  const openAuditModal = async (p) => {
+    setAuditFor(p)
+    setAuditLoading(true)
+    setAuditRows([])
+    try {
+      const res = await api(`/payments/${p.id}/adjustment-audits`)
+      setAuditRows(Array.isArray(res?.data) ? res.data : [])
+    } catch (e) {
+      showToast(e.message || 'Could not load audit trail.', 'error')
+      setAuditFor(null)
+    } finally {
+      setAuditLoading(false)
+    }
   }
 
   const confirmPayment = async () => {
@@ -457,6 +525,24 @@ export default function PaymentsPage() {
                 ) : null}
                 </>
               ) : null}
+              <div className="mt-2 flex flex-wrap gap-2">
+                {canAdjustFinal(p) ? (
+                  <button
+                    type="button"
+                    onClick={() => openAdjustPanel(p)}
+                    className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-200"
+                  >
+                    Adjust final
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void openAuditModal(p)}
+                  className="rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-semibold text-gray-800 dark:border-[#374151] dark:text-gray-200"
+                >
+                  Audit trail
+                </button>
+              </div>
                   </>
                 )
               })()}
@@ -475,18 +561,21 @@ export default function PaymentsPage() {
               <th className={admin.tableCell}>#</th>
               <th className={admin.tableCell}>Due</th>
               <th className={admin.tableCell}>Due amount</th>
+              <th className={admin.tableCell}>Orig. final</th>
+              <th className={admin.tableCell}>Remaining</th>
               <th className={admin.tableCell}>Paid</th>
               <th className={admin.tableCell}>Status</th>
               <th className={admin.tableCell}>Reference</th>
               <th className={admin.tableCell}>Proof</th>
+              <th className={admin.tableCell}>Final / Audit</th>
               <th className={admin.tableCell}>Action</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <TableSkeletonRows cols={10} rows={5} />
+              <TableSkeletonRows cols={13} rows={5} />
             ) : filteredRows.length === 0 ? (
-              <EmptyTableRow colSpan={10} message="No payments found." />
+              <EmptyTableRow colSpan={13} message="No payments found." />
             ) : (
               filteredRows.map((p) => (
                 <tr key={p.id} className={admin.tbodyRow}>
@@ -511,13 +600,50 @@ export default function PaymentsPage() {
                   <td className={`${admin.tableCell} whitespace-nowrap`}>{p.installment_no}</td>
                   <td className={`${admin.tableCell} whitespace-nowrap`}>{formatDueDate(p.due_date)}</td>
                   <td className={`${admin.tableCell} whitespace-nowrap`}>₱{Number(p.amount_due).toLocaleString()}</td>
+                  <td className={`${admin.tableCell} whitespace-nowrap text-xs`}>
+                    {p.original_amount_due != null ? `₱${Number(p.original_amount_due).toLocaleString()}` : '—'}
+                  </td>
+                  <td className={`${admin.tableCell} whitespace-nowrap text-xs`}>
+                    {p.loan_outstanding_balance != null
+                      ? `₱${Number(p.loan_outstanding_balance).toLocaleString()}`
+                      : '—'}
+                  </td>
                   <td className={`${admin.tableCell} whitespace-nowrap`}>₱{Number(p.amount_paid || 0).toLocaleString()}</td>
-                  <td className={`${admin.tableCell} capitalize whitespace-nowrap`}>{p.status}</td>
+                  <td className={`${admin.tableCell} capitalize whitespace-nowrap`}>
+                    <span className="inline-flex flex-col gap-0.5">
+                      <span>{p.status}</span>
+                      {p.adjusted_at ? (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
+                          Adjusted final
+                        </span>
+                      ) : null}
+                    </span>
+                  </td>
                   <td className={`${admin.tableCell} max-w-[12rem] break-words font-mono text-xs`}>
                     {p.paymentRef || '—'}
                   </td>
                   <td className={`${admin.tableCell} align-middle`}>
                     <ProofCell payment={p} />
+                  </td>
+                  <td className={`${admin.tableCell} max-w-[10rem] whitespace-normal text-xs`}>
+                    <div className="flex flex-col gap-1">
+                      {canAdjustFinal(p) ? (
+                        <button
+                          type="button"
+                          onClick={() => openAdjustPanel(p)}
+                          className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-200"
+                        >
+                          Adjust final
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => void openAuditModal(p)}
+                        className="rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-semibold text-gray-800 hover:bg-gray-50 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/5"
+                      >
+                        Audit trail
+                      </button>
+                    </div>
                   </td>
                   <td className={`${admin.tableCell} whitespace-nowrap`}>
                     {pending ? (
@@ -597,6 +723,153 @@ export default function PaymentsPage() {
                 className={`${admin.btnPrimary} disabled:opacity-60`}
               >
                 {confirmingId === confirmTarget.id ? 'Confirming...' : 'Confirm as Paid'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {adjustPanel ? (
+        <div
+          className={admin.modalOverlay}
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setAdjustPanel(null)
+          }}
+        >
+          <div
+            className={`${admin.modalCard} max-w-lg`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="adjust-final-title"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h3 id="adjust-final-title" className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Adjust final installment
+            </h3>
+            <p className={`mt-1 text-sm ${admin.textMuted}`}>
+              Loan {paymentLoanId(adjustPanel) ? `#${paymentLoanId(adjustPanel)}` : '—'}
+              {adjustPanel.loanNumber ? ` (${adjustPanel.loanNumber})` : ''} · Installment {adjustPanel.installment_no}
+              {adjustPanel.original_amount_due != null ? (
+                <>
+                  {' '}
+                  · Original scheduled ₱{Number(adjustPanel.original_amount_due).toLocaleString()}
+                </>
+              ) : null}
+            </p>
+            <div className="mt-4 space-y-3">
+              <label className="block">
+                <span className={`text-xs font-medium ${admin.textMuted}`}>New amount due (₱)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={adjustAmount}
+                  onChange={(e) => setAdjustAmount(e.target.value)}
+                  className={`mt-1 w-full ${admin.input}`}
+                />
+              </label>
+              <label className="block">
+                <span className={`text-xs font-medium ${admin.textMuted}`}>Reason (required for audit)</span>
+                <textarea
+                  value={adjustReason}
+                  onChange={(e) => setAdjustReason(e.target.value)}
+                  rows={3}
+                  className={`mt-1 w-full ${admin.input}`}
+                  placeholder="e.g. Early settlement discount approved by credit committee…"
+                />
+              </label>
+            </div>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button type="button" className={admin.btnSecondary} onClick={() => setAdjustPanel(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={admin.btnPrimary}
+                onClick={() => {
+                  const amt = Number(adjustAmount)
+                  if (!Number.isFinite(amt) || amt < 0) {
+                    showToast('Enter a valid non-negative amount.', 'error')
+                    return
+                  }
+                  if (adjustReason.trim().length < 8) {
+                    showToast('Reason must be at least 8 characters.', 'error')
+                    return
+                  }
+                  setAdjustPaymentId(adjustPanel.id)
+                  setAdjustPanel(null)
+                  setAdjustConfirmOpen(true)
+                }}
+              >
+                Review &amp; confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <ConfirmModal
+        open={adjustConfirmOpen}
+        onClose={() => {
+          if (adjustSaving) return
+          setAdjustConfirmOpen(false)
+          setAdjustPaymentId(null)
+        }}
+        title="Save final installment adjustment?"
+        description={`This updates the scheduled amount due for the last installment to ₱${Number(adjustAmount || 0).toLocaleString()} and notifies the borrower. This action is logged for audit.`}
+        confirmLabel="Save adjustment"
+        cancelLabel="Back"
+        tone="danger"
+        onConfirm={runAdjustFinal}
+      />
+
+      {auditFor ? (
+        <div
+          className={admin.modalOverlay}
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setAuditFor(null)
+          }}
+        >
+          <div
+            className={`${admin.modalCard} max-w-2xl`}
+            role="dialog"
+            aria-modal="true"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Adjustment audit trail</h3>
+            <p className={`mt-1 text-sm ${admin.textMuted}`}>
+              Payment #{auditFor.id} · Loan {paymentLoanId(auditFor) ? `#${paymentLoanId(auditFor)}` : '—'}
+            </p>
+            <div className={`mt-4 max-h-80 overflow-y-auto text-sm ${admin.textMuted}`}>
+              {auditLoading ? (
+                <p>Loading…</p>
+              ) : auditRows.length === 0 ? (
+                <p>No adjustments recorded for this installment.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {auditRows.map((a) => (
+                    <li
+                      key={a.id}
+                      className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-[#374151] dark:bg-[#0F172A]/50"
+                    >
+                      <p className="font-medium text-gray-900 dark:text-gray-100">
+                        ₱{Number(a.previous_amount_due).toLocaleString()} → ₱{Number(a.new_amount_due).toLocaleString()}
+                      </p>
+                      <p className="mt-1 text-xs">
+                        {a.created_at ? new Date(a.created_at).toLocaleString() : '—'} ·{' '}
+                        {a.admin_user?.name || a.admin_user?.email || 'Admin'}
+                      </p>
+                      <p className="mt-2 text-xs text-gray-700 dark:text-gray-300">{a.reason}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button type="button" className={admin.btnSecondary} onClick={() => setAuditFor(null)}>
+                Close
               </button>
             </div>
           </div>

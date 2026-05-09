@@ -6,15 +6,19 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\LoanListResource;
 use App\Jobs\SendLoanApplicationReceivedJob;
 use App\Jobs\SendLoanDecisionJob;
-use App\Models\AdminNotification;
 use App\Models\Loan;
+use App\Models\LoanApplication;
+use App\Models\LoanDocument;
+use App\Models\LoanProduct;
 use App\Models\Payment;
 use App\Models\Role;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\LoanAmortizationService;
+use App\Services\LoanCalculator;
 use App\Services\LoanProductRateResolver;
+use App\Services\NotificationCenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +28,7 @@ use Illuminate\Support\Str;
 class LoanController extends Controller
 {
     public function __construct(
+        private LoanCalculator $calculator,
         private LoanAmortizationService $amortization,
         private LoanProductRateResolver $loanProductRates,
     ) {}
@@ -35,6 +40,7 @@ class LoanController extends Controller
                 'id',
                 'borrower_id',
                 'principal',
+                'requested_principal',
                 'term_months',
                 'annual_interest_rate',
                 'application_payload',
@@ -80,13 +86,17 @@ class LoanController extends Controller
             'approver',
             'payments',
             'receipts',
-            'loanApplication.documents',
+            'loanApplication.documents.verifiedBy',
             'loanApplication.coMaker',
             'loanApplication.travelLoanWizardForm',
             'loanApplication.dependents',
             'loanApplication.contactPersons',
             'loanApplication.creditMemorandum',
         ]);
+
+        if ($loan->loanApplication) {
+            $this->augmentLoanApplicationForAdminResponse($loan->loanApplication);
+        }
 
         return response()->json(['ok' => true, 'loan' => $loan]);
     }
@@ -99,47 +109,163 @@ class LoanController extends Controller
             return response()->json(['ok' => false, 'message' => 'Only pending loans can be approved.'], 422);
         }
 
-        $rate = $this->resolveApprovalAnnualRate($loan);
+        $payload = is_array($loan->application_payload) ? $loan->application_payload : [];
+        $productSlug = isset($payload['loan_product_slug']) && is_string($payload['loan_product_slug'])
+            ? trim($payload['loan_product_slug'])
+            : null;
+        if (! $productSlug) {
+            // Travel wizard + other flows might attach loanApplication (legacy).
+            $la = $loan->loanApplication;
+            if ($la) {
+                $productSlug = match ($la->loan_type) {
+                    LoanApplication::TYPE_REAL_ESTATE => 'real-estate-mortgage',
+                    LoanApplication::TYPE_CHATTEL => 'chattel-mortgage',
+                    LoanApplication::TYPE_SALARY => 'salary-loan',
+                    LoanApplication::TYPE_TRAVEL_ASSISTANCE => 'travel-assistance-loan',
+                    LoanApplication::TYPE_SSS_PENSION => 'sss-pension-loan',
+                    default => null,
+                };
+            }
+        }
 
-        $result = DB::transaction(function () use ($request, $loan, $logger, $rate) {
-            $schedule = $this->amortization->buildSchedule(
-                (float) $loan->principal,
-                $rate,
-                (int) $loan->term_months
-            );
+        $applicationNature = (string) ($payload['application_nature'] ?? 'new');
+        $age = $payload['age'] ?? null;
+        $monthlyPension = $payload['monthly_pension'] ?? null;
 
-            $loan->annual_interest_rate = $rate;
+        $result = DB::transaction(function () use ($request, $loan, $logger, $productSlug, $applicationNature, $age, $monthlyPension) {
+            if (! is_string($productSlug) || trim($productSlug) === '') {
+                // Legacy continuity: admin-created loans might not have product slug persisted yet.
+                // Infer from configured monthly interest rate (official product rates are controlled).
+                $monthlyRateGuess = null;
+                $appPayloadLocal = is_array($loan->application_payload) ? $loan->application_payload : [];
+                if (isset($appPayloadLocal['selected_interest_rate']) && is_numeric($appPayloadLocal['selected_interest_rate'])) {
+                    $monthlyRateGuess = (float) $appPayloadLocal['selected_interest_rate'];
+                } else {
+                    $monthlyRateGuess = (float) ($loan->annual_interest_rate / 12.0);
+                }
+
+                $candidate = LoanProduct::query()
+                    ->active()
+                    ->orderBy('sort_order')
+                    ->orderBy('id')
+                    ->get()
+                    ->first(function (LoanProduct $p) use ($monthlyRateGuess) {
+                        return abs((float) $p->interest_rate - (float) $monthlyRateGuess) < 0.0001;
+                    });
+
+                $productSlug = $candidate?->slug ?? 'real-estate-mortgage';
+            }
+
+            $compute = $this->calculator->compute([
+                'product_slug' => (string) $productSlug,
+                'loan_amount' => (float) $loan->principal,
+                'term_months' => (int) $loan->term_months,
+                'application_nature' => $applicationNature,
+                'age' => $age !== null && $age !== '' ? (int) $age : null,
+                'monthly_pension' => $monthlyPension !== null && $monthlyPension !== '' ? (float) $monthlyPension : null,
+            ]);
+
+            $product = is_array($compute['product'] ?? null) ? $compute['product'] : [];
+            $breakdown = is_array($compute['breakdown'] ?? null) ? $compute['breakdown'] : [];
+            $schedule = is_array($compute['schedule'] ?? null) ? $compute['schedule'] : [];
+
+            $monthlyRate = isset($product['monthly_rate_percent_effective']) ? (float) $product['monthly_rate_percent_effective'] : null;
+            if ($monthlyRate !== null) {
+                $loan->annual_interest_rate = round($monthlyRate * 12.0, 4);
+            }
             $loan->status = Loan::STATUS_ONGOING;
             $loan->approved_by = $request->user()->id;
             $loan->approved_at = now();
             $loan->disbursed_at = now();
-            $loan->monthly_payment = $schedule['monthly_payment'];
-            $loan->total_interest = $schedule['total_interest'];
-            $loan->outstanding_balance = (float) $loan->principal;
-            $loan->schedule_json = $schedule['rows'];
+            $loan->monthly_payment = isset($breakdown['monthly_amortization']) ? (float) $breakdown['monthly_amortization'] : $loan->monthly_payment;
+            $loan->total_interest = isset($breakdown['total_add_on_interest']) ? (float) $breakdown['total_add_on_interest'] : $loan->total_interest;
+            $loan->schedule_json = $schedule;
+            $loan->outstanding_balance = round((float) array_sum(array_map(fn ($r) => (float) ($r['payment'] ?? 0), $schedule)), 2);
             $loan->admin_notes = $request->input('admin_notes') ?? $loan->admin_notes;
+
+            $loanApp = $loan->loanApplication;
+            if ($loanApp && $loanApp->loan_amount !== null) {
+                $loan->requested_principal = round((float) $loanApp->loan_amount, 2);
+            } elseif ($loan->requested_principal === null) {
+                $loan->requested_principal = round((float) $loan->principal, 2);
+            }
+
             $loan->save();
 
-            foreach ($schedule['rows'] as $row) {
+            if ($loanApp) {
+                $loanApp->status = LoanApplication::STATUS_APPROVED;
+                $loanApp->verified_at = now();
+                $loanApp->rejection_reason = null;
+                $loanApp->approved_amount = round((float) $loan->principal, 2);
+                $loanApp->save();
+            }
+
+            // Rebuild payment ledger from official schedule.
+            $termMonths = max(1, (int) $loan->term_months);
+            Payment::query()->where('loan_id', $loan->id)->delete();
+            foreach ($schedule as $row) {
+                $instNo = (int) ($row['installment_no'] ?? 0);
                 Payment::create([
                     'loan_id' => $loan->id,
-                    'installment_no' => $row['installment_no'],
-                    'due_date' => $row['due_date'],
-                    'amount_due' => $row['payment'],
-                    'principal_portion' => $row['principal'],
-                    'interest_portion' => $row['interest'],
+                    'installment_no' => $instNo,
+                    'is_final_payment' => $instNo === $termMonths,
+                    'due_date' => $row['due_date'] ?? null,
+                    'amount_due' => (float) ($row['payment'] ?? ($row['amortization'] ?? 0)),
+                    'principal_portion' => (float) ($row['principal'] ?? 0),
+                    'interest_portion' => (float) ($row['interest'] ?? 0),
                     'status' => Payment::STATUS_PENDING,
                     'source' => 'system',
+                    'penalty_amount' => 0.0,
                 ]);
             }
+
+            // Persist an SOA snapshot for historical accuracy (used by SOA printable templates).
+            $appPayload = is_array($loan->application_payload) ? $loan->application_payload : [];
+            $appPayload['loan_product_slug'] = $appPayload['loan_product_slug'] ?? (string) ($product['slug'] ?? $productSlug);
+            $appPayload['soa_engine_version'] = 'soa_v2';
+            $appPayload['soa_snapshot'] = [
+                'product' => $product,
+                'inputs' => is_array($compute['inputs'] ?? null) ? $compute['inputs'] : [],
+                'breakdown' => $breakdown,
+                'summary' => is_array($compute['summary'] ?? null) ? $compute['summary'] : [],
+                'notes' => is_array($compute['notes'] ?? null) ? $compute['notes'] : [],
+                'generated_at' => now()->toIso8601String(),
+            ];
+            $loan->application_payload = $appPayload;
+            $loan->save();
 
             $logger->log($request->user(), 'loans.approve', $loan, ['loan_id' => $loan->id]);
 
             return $loan->fresh(['payments']);
         });
 
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
         $result->loadMissing(['borrower', 'approver']);
         $this->notifyBorrowerLoanDecision($result);
+
+        $nc = app(NotificationCenter::class);
+        if ($result->borrower) {
+            $nc->notifyBorrower(
+                $result->borrower,
+                NotificationCenter::CATEGORY_LOAN_APPROVED,
+                'loan_approved',
+                'Loan approved',
+                'Your loan #'.$result->id.' was approved. Your repayment schedule is ready in the borrower portal.',
+                ['loan_id' => $result->id],
+                ['dedupe_key' => 'loan_decision:'.$result->id, 'module' => NotificationCenter::MODULE_LOANS],
+            );
+        }
+        $nc->notifyStaff(
+            NotificationCenter::CATEGORY_LOAN_APPROVED,
+            'loan_approved',
+            'Loan approved',
+            'Loan #'.$result->id.($result->borrower ? ' — '.$result->borrower->name : '').' was approved.',
+            ['loan_id' => $result->id],
+            (int) $request->user()->id,
+            ['module' => NotificationCenter::MODULE_LOANS],
+        );
 
         return response()->json(['ok' => true, 'loan' => $result]);
     }
@@ -160,10 +286,40 @@ class LoanController extends Controller
         $loan->approved_at = now();
         $loan->save();
 
+        $loanApp = $loan->loanApplication;
+        if ($loanApp) {
+            $loanApp->status = LoanApplication::STATUS_REJECTED;
+            $loanApp->verified_at = now();
+            $loanApp->rejection_reason = $data['rejection_reason'];
+            $loanApp->save();
+        }
+
         $logger->log($request->user(), 'loans.reject', $loan);
 
         $loan->loadMissing(['borrower', 'approver']);
         $this->notifyBorrowerLoanDecision($loan);
+
+        $nc = app(NotificationCenter::class);
+        if ($loan->borrower) {
+            $nc->notifyBorrower(
+                $loan->borrower,
+                NotificationCenter::CATEGORY_LOAN_REJECTED,
+                'loan_rejected',
+                'Loan application update',
+                'Your loan #'.$loan->id.' was not approved. Reason: '.mb_substr((string) $loan->rejection_reason, 0, 500),
+                ['loan_id' => $loan->id],
+                ['dedupe_key' => 'loan_decision:'.$loan->id, 'module' => NotificationCenter::MODULE_LOANS, 'priority' => 4],
+            );
+        }
+        $nc->notifyStaff(
+            NotificationCenter::CATEGORY_LOAN_REJECTED,
+            'loan_rejected',
+            'Loan rejected',
+            'Loan #'.$loan->id.($loan->borrower ? ' — '.$loan->borrower->name : '').' was rejected.',
+            ['loan_id' => $loan->id],
+            (int) $request->user()->id,
+            ['module' => NotificationCenter::MODULE_LOANS],
+        );
 
         return response()->json(['ok' => true, 'loan' => $loan]);
     }
@@ -342,13 +498,20 @@ class LoanController extends Controller
             $loan->save();
         }
 
-        AdminNotification::create([
-            'user_id' => null,
-            'type' => 'loan_submitted',
-            'title' => 'New loan application',
-            'body' => 'New application from '.$borrower->name.' — ₱'.number_format($loan->principal, 2),
-            'data' => ['loan_id' => $loan->id],
-        ]);
+        app(NotificationCenter::class)->notifyStaff(
+            NotificationCenter::CATEGORY_LOAN_SUBMITTED,
+            'loan_submitted',
+            'New loan application',
+            'New application from '.$borrower->name.' — ₱'.number_format($loan->principal, 2),
+            ['loan_id' => $loan->id],
+            null,
+            [
+                'module' => NotificationCenter::MODULE_LOANS,
+                'throttle_key' => 'loan_submitted:'.$loan->id,
+                'throttle_max' => 1,
+                'throttle_decay_seconds' => 120,
+            ],
+        );
 
         SendLoanApplicationReceivedJob::dispatch($borrower->id, $loan->id);
 
@@ -362,6 +525,209 @@ class LoanController extends Controller
     private function notifyBorrowerLoanDecision(Loan $loan): void
     {
         SendLoanDecisionJob::dispatch($loan->id);
+    }
+
+    /**
+     * Underwriting: mark a {@see LoanDocument} row or an ad-hoc stored file path as verified / rejected / etc.
+     */
+    public function patchDocumentReview(Request $request, Loan $loan, ActivityLogger $logger): JsonResponse
+    {
+        $data = $request->validate([
+            'loan_document_id' => 'nullable|integer|exists:loan_documents,id',
+            'storage_path' => 'nullable|string|max:1024',
+            'status' => 'required|string|in:pending,verified,rejected,requires_resubmission',
+            'notes' => 'nullable|string|max:5000',
+        ]);
+
+        if (empty($data['loan_document_id']) && empty($data['storage_path'])) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Provide loan_document_id or storage_path.',
+            ], 422);
+        }
+
+        $loan->loadMissing(['loanApplication']);
+
+        $notes = isset($data['notes']) ? trim((string) $data['notes']) : '';
+        $status = $data['status'];
+        $user = $request->user();
+
+        if (! empty($data['loan_document_id'])) {
+            $doc = LoanDocument::query()->whereKey((int) $data['loan_document_id'])->first();
+            if (! $doc) {
+                return response()->json(['ok' => false, 'message' => 'Document not found.'], 422);
+            }
+            $appId = $loan->loanApplication?->getKey();
+            if (! $appId || (int) $doc->loan_application_id !== (int) $appId) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Document does not belong to this loan application.',
+                ], 422);
+            }
+
+            DB::transaction(function () use ($loan, $doc, $status, $notes, $user, $logger): void {
+                $doc->verification_status = $status;
+                $doc->review_notes = $notes !== '' ? $notes : null;
+                $doc->verified_by = $status === 'pending' ? null : $user->id;
+                $doc->verified_at = $status === 'pending' ? null : now();
+                $doc->save();
+
+                $reviews = is_array($loan->document_reviews) ? $loan->document_reviews : [];
+                $pathKey = (string) $doc->file_path;
+                if ($pathKey !== '') {
+                    $reviews[$pathKey] = [
+                        'status' => $status,
+                        'notes' => $notes !== '' ? $notes : null,
+                        'reviewed_by' => $doc->verified_by,
+                        'reviewed_at' => $doc->verified_at?->toIso8601String(),
+                        'source' => 'loan_document',
+                        'loan_document_id' => $doc->id,
+                    ];
+                    $loan->document_reviews = $reviews;
+                    $loan->save();
+                }
+
+                $logger->log($user, 'loans.document_review', $loan, [
+                    'loan_document_id' => $doc->id,
+                    'status' => $status,
+                ]);
+            });
+        } else {
+            $path = trim((string) $data['storage_path']);
+            if ($path === '') {
+                return response()->json(['ok' => false, 'message' => 'Invalid storage path.'], 422);
+            }
+
+            $allowed = array_flip($this->collectLoanOwnedStoragePaths($loan));
+            if (! isset($allowed[$path])) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'That file is not part of this loan.',
+                ], 422);
+            }
+
+            DB::transaction(function () use ($loan, $path, $status, $notes, $user, $logger): void {
+                $reviews = is_array($loan->document_reviews) ? $loan->document_reviews : [];
+                $reviews[$path] = [
+                    'status' => $status,
+                    'notes' => $notes !== '' ? $notes : null,
+                    'reviewed_by' => $status === 'pending' ? null : $user->id,
+                    'reviewed_at' => $status === 'pending' ? null : now()->toIso8601String(),
+                    'source' => 'storage_path',
+                ];
+                $loan->document_reviews = $reviews;
+                $loan->save();
+
+                $logger->log($user, 'loans.document_review', $loan, [
+                    'storage_path' => $path,
+                    'status' => $status,
+                ]);
+            });
+        }
+
+        $loan->refresh();
+        $loan->load([
+            'borrower',
+            'approver',
+            'payments',
+            'receipts',
+            'loanApplication.documents.verifiedBy',
+            'loanApplication.coMaker',
+            'loanApplication.travelLoanWizardForm',
+            'loanApplication.dependents',
+            'loanApplication.contactPersons',
+            'loanApplication.creditMemorandum',
+        ]);
+        if ($loan->loanApplication) {
+            $this->augmentLoanApplicationForAdminResponse($loan->loanApplication);
+        }
+
+        if ($loan->borrower && $status !== 'pending') {
+            $docKey = ! empty($data['loan_document_id']) ? 'ld:'.(int) $data['loan_document_id'] : 'path:'.md5((string) ($data['storage_path'] ?? ''));
+            $title = match ($status) {
+                'verified' => 'Document verified',
+                'rejected' => 'Document not accepted',
+                'requires_resubmission' => 'Resubmit a document',
+                default => 'Document review update',
+            };
+            $body = $notes !== '' ? $notes : 'Your loan #'.$loan->id.' has a document status update: '.$status.'.';
+            app(NotificationCenter::class)->notifyBorrower(
+                $loan->borrower,
+                NotificationCenter::CATEGORY_DOCUMENT_REVIEW,
+                'document_'.$status,
+                $title,
+                $body,
+                ['loan_id' => $loan->id, 'status' => $status],
+                [
+                    'dedupe_key' => 'docreview:'.$loan->id.':'.$docKey.':'.$status,
+                    'module' => NotificationCenter::MODULE_LOANS,
+                    'priority' => $status === 'rejected' ? 4 : 3,
+                ],
+            );
+        }
+
+        return response()->json(['ok' => true, 'loan' => $loan]);
+    }
+
+    private function augmentLoanApplicationForAdminResponse(LoanApplication $app): void
+    {
+        $rawDocs = $app->getRawOriginal('documents');
+        $payloadDocs = is_string($rawDocs) ? json_decode($rawDocs, true) : $rawDocs;
+        $app->setAttribute('documents_payload', is_array($payloadDocs) ? $payloadDocs : []);
+
+        $records = $app->relationLoaded('documents')
+            ? $app->getRelation('documents')
+            : $app->documents()->get();
+        $app->setAttribute('documents_records', $records);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function collectLoanOwnedStoragePaths(Loan $loan): array
+    {
+        $paths = [];
+        $push = function (?string $p) use (&$paths): void {
+            $p = $p !== null ? trim($p) : '';
+            if ($p !== '') {
+                $paths[$p] = true;
+            }
+        };
+
+        $push($loan->face_photo_path);
+
+        foreach ($loan->kyc_documents ?? [] as $doc) {
+            if (is_array($doc)) {
+                $push(isset($doc['path']) ? (string) $doc['path'] : null);
+            }
+        }
+
+        $app = $loan->loanApplication;
+        if ($app) {
+            $push($app->applicant_signature);
+            $push($app->spouse_signature);
+            $push($app->comaker_signature);
+
+            $walk = function ($node) use (&$walk, $push): void {
+                if (is_string($node)) {
+                    $push($node);
+                } elseif (is_array($node)) {
+                    foreach ($node as $v) {
+                        $walk($v);
+                    }
+                }
+            };
+
+            $rawDocs = $app->getRawOriginal('documents');
+            $payloadDocs = is_string($rawDocs) ? json_decode($rawDocs, true) : $rawDocs;
+            $walk(is_array($payloadDocs) ? $payloadDocs : []);
+
+            foreach (LoanDocument::query()->where('loan_application_id', $app->id)->cursor() as $row) {
+                $push($row->file_path);
+            }
+        }
+
+        return array_keys($paths);
     }
 
     public function assignOfficer(Request $request, Loan $loan, ActivityLogger $logger): JsonResponse
@@ -392,6 +758,16 @@ class LoanController extends Controller
             'loan_id' => $loan->id,
             'officer_id' => $data['officer_id'],
         ]);
+
+        app(NotificationCenter::class)->notifyStaff(
+            NotificationCenter::CATEGORY_LOAN_OFFICER_ASSIGNED,
+            'loan_officer_assigned',
+            'Loan officer assigned',
+            $officer->name.' is now assigned to loan #'.$loan->id.'.',
+            ['loan_id' => $loan->id, 'officer_id' => $officer->id],
+            (int) $request->user()->id,
+            ['module' => NotificationCenter::MODULE_LOANS],
+        );
 
         return response()->json([
             'ok' => true,

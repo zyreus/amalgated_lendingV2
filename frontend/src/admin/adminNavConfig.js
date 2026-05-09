@@ -15,6 +15,7 @@ export const ADMIN_NAV_GROUPS = [
     items: [
       { to: '/admin/borrowers', label: 'Borrowers', perm: 'borrowers.view', icon_key: 'borrowers' },
       { to: '/admin/loan-products', label: 'Loan products', perm: 'loans.view', icon_key: 'products' },
+      { to: '/admin/printable-forms', label: 'Printable PDF forms', perm: 'forms.printable.manage', icon_key: 'forms' },
       { to: '/admin/loans', label: 'Applications', perm: 'loans.view', icon_key: 'loans' },
       { to: '/admin/payments', label: 'Payments', perm: 'payments.manage', icon_key: 'pay' },
     ],

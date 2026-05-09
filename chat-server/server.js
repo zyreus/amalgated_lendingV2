@@ -14,6 +14,26 @@ import multer from 'multer';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const CHAT_ACTIVE_PORT_FILE = path.resolve(__dirname, '..', 'scripts', '.chat-active-port');
+
+function writeChatActivePort(activePort) {
+  try {
+    fs.writeFileSync(CHAT_ACTIVE_PORT_FILE, String(activePort), 'utf8');
+  } catch (err) {
+    console.warn('[chat] Could not write active port file:', err?.message || err);
+  }
+}
+
+function clearChatActivePort() {
+  try {
+    fs.unlinkSync(CHAT_ACTIVE_PORT_FILE);
+  } catch {
+    /* ignore */
+  }
+}
+
+clearChatActivePort();
+process.on('exit', clearChatActivePort);
 import authRoutes from './api/routes/authRoutes.js';
 import postsRoutes from './api/routes/postsRoutes.js';
 import { LENDING_AI_APPEND, LENDING_CUSTOMER_FAQ, getLendingFallbackReply } from './ai/lendingTraining.js';
@@ -219,7 +239,7 @@ if (process.env.NODE_ENV === 'production' && chatCorsOrigins.length === 0) {
   console.warn('[chat] NODE_ENV=production but CHAT_CORS_ORIGINS is empty — all origins allowed. Set CHAT_CORS_ORIGINS for stricter CORS.');
 }
 
-let port = Number(process.env.PORT) || 8010;
+let port = Number(process.env.CHAT_PORT || process.env.PORT) || 8010;
 const httpServer = createServer(app);
 /**
  * Keep Socket.IO / Engine.IO CORS disabled — Express `cors(chatCorsConfig)` already answers preflights.
@@ -305,7 +325,7 @@ function emitConversationsRefresh() {
     } catch (err) {
       console.warn('[chat] conversations:refresh emit failed', err?.message || err);
     }
-  }, 25);
+  }, 150);
 }
 
 function emitAnalyticsRefresh() {
@@ -1322,6 +1342,7 @@ app.post('/api/feedback', limitPublicChat, async (req, res) => {
 // ── Admin Authentication ──
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
+const lendingAdminSecret = String(process.env.LENDING_ADMIN_API_SECRET || '').trim();
 
 function normalizeLaravelMeUrl(value) {
   const raw = String(value || '').trim().replace(/\/$/, '');
@@ -2861,7 +2882,7 @@ io.on('connection', (socket) => {
   socket.on('admin:join', (payload) => {
     const token = String(payload?.token || '').trim();
     const secret = String(payload?.secret || '').trim();
-    if (secret && process.env.LENDING_ADMIN_API_SECRET && secret === process.env.LENDING_ADMIN_API_SECRET) {
+    if (secret && lendingAdminSecret && secret === lendingAdminSecret) {
       socket.join('admin');
       socket.data.role = 'admin';
       return;
@@ -3367,6 +3388,7 @@ if (fs.existsSync(clientDir)) {
 }
 
 function onChatListening() {
+  writeChatActivePort(port);
   console.log(`Amalgated Lending chat server listening on http://localhost:${port}`);
 }
 

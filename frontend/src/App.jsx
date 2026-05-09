@@ -152,7 +152,7 @@ function App() {
                 </motion.p>
                 <motion.div variants={sectionVariants} custom={1.2} className="mt-8 flex flex-wrap items-center gap-4">
                   <Link
-                    to="/apply"
+                    to="/borrower/login"
                     className="inline-flex items-center justify-center gap-2 rounded-full bg-brand-primary px-6 py-3 text-sm font-semibold text-white shadow-brand-primary transition hover:scale-[1.02] hover:bg-brand-primary-hover hover:shadow-[0_4px_12px_rgba(220,38,38,0.4)]"
                   >
                     Apply Now
@@ -266,7 +266,7 @@ function App() {
                 <h2 className="mt-2 text-2xl font-semibold">Get your loan decision with guided support.</h2>
                 <p className="mt-3 text-sm text-brand-text/70">Our team can help you choose the right product and prepare requirements quickly.</p>
                 <div className="mt-5 flex flex-wrap gap-3">
-                  <Link to="/apply" className="rounded-full bg-brand-primary px-5 py-3 text-sm font-semibold text-white">Start Application</Link>
+                  <Link to="/borrower/login" className="rounded-full bg-brand-primary px-5 py-3 text-sm font-semibold text-white">Apply via Borrower Portal</Link>
                   <Link to="/application-flow" className="rounded-full border border-black/15 px-5 py-3 text-sm font-semibold">View Process</Link>
                 </div>
                 <ul className="mt-5 space-y-2 text-sm text-brand-text/70">
@@ -307,7 +307,7 @@ function App() {
               <h2 className="text-2xl font-semibold">Need funds with a trusted local lending partner?</h2>
               <p className="mt-2 text-sm text-brand-text/70">Apply online, track your status, and print your documents securely.</p>
               <div className="mt-5 flex justify-center gap-3">
-                <Link to="/apply" className="rounded-full bg-brand-primary px-6 py-3 text-sm font-semibold text-white">Apply Now</Link>
+                <Link to="/borrower/login" className="rounded-full bg-brand-primary px-6 py-3 text-sm font-semibold text-white">Apply Now</Link>
                 <Link to="/contact" className="rounded-full border border-black/15 px-6 py-3 text-sm font-semibold">Contact Us</Link>
               </div>
             </div>

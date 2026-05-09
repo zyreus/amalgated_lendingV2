@@ -4,15 +4,33 @@ import { borrowerApi } from '../api/client.js'
 import SignaturePad from '../components/SignaturePad.jsx'
 import { admin as ui } from '../../admin/components/AdminUi.jsx'
 import PrivacyPolicyModal from '../../components/privacy/PrivacyPolicyModal.jsx'
+import ConfirmDialog from '../../components/ConfirmDialog.jsx'
 import PrivacyConsentCheckbox from '../../components/privacy/PrivacyConsentCheckbox.jsx'
 import { PRIVACY_POLICY_VERSION } from '../../components/privacy/PrivacyPolicyContent.jsx'
+import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
 
 const STEPS = [
-  { id: 1, title: 'Application form' },
-  { id: 2, title: 'Documents' },
-  { id: 3, title: 'Signatures' },
-  { id: 4, title: 'Preview & submit' },
+  { id: 1, title: 'Personal, employment, and loan details' },
+  { id: 2, title: 'Document upload center' },
+  { id: 3, title: 'Signatures and authorization' },
+  { id: 4, title: 'Review and submit' },
 ]
+const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/png']
+const MAX_UPLOAD_MB = 15
+
+function signaturePreviewUrl(value) {
+  if (value == null) return ''
+  const raw = String(value).trim()
+  if (!raw) return ''
+  if (raw.startsWith('data:image/')) return raw
+  return getLaravelStorageFileUrl(raw)
+}
+
+function shouldRedirectToApplications(appRecord) {
+  if (!appRecord || appRecord.is_draft) return false
+  const status = String(appRecord.status || '').toLowerCase()
+  return ['submitted', 'under_review', 'for_review', 'approved', 'passed', 'rejected'].includes(status) || status !== 'draft'
+}
 
 function useDebouncedCallback(fn, delay) {
   const t = useRef(null)
@@ -38,10 +56,21 @@ export default function BorrowerLoanWizardPage() {
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
   const [privacyModalOpen, setPrivacyModalOpen] = useState(false)
+  const [draggingDocKey, setDraggingDocKey] = useState('')
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   const sigApplicant = useRef(null)
   const sigSpouse = useRef(null)
   const sigComaker = useRef(null)
+  const signaturePreview = useMemo(
+    () => ({
+      applicant: signaturePreviewUrl(app?.signatures?.applicant),
+      spouse: signaturePreviewUrl(app?.signatures?.spouse),
+      comaker: signaturePreviewUrl(app?.signatures?.comaker),
+    }),
+    [app?.signatures?.applicant, app?.signatures?.spouse, app?.signatures?.comaker],
+  )
 
   const loadSchema = useCallback(async () => {
     const res = await borrowerApi('/borrower/loan-applications/wizard/schema')
@@ -56,6 +85,26 @@ export default function BorrowerLoanWizardPage() {
     setLoanType(d.loan_type || 'salary')
     setStep(Math.min(Math.max(d.draft_step || 1, 1), 4))
   }, [])
+
+  const openDeleteConfirm = useCallback(() => {
+    if (!applicationId || !app?.is_draft) return
+    setConfirmDeleteOpen(true)
+  }, [applicationId, app?.is_draft])
+
+  const performDeleteApplication = useCallback(async () => {
+    if (!applicationId || !app?.is_draft) return
+    setDeleteBusy(true)
+    setError('')
+    try {
+      await borrowerApi(`/borrower/loan-applications/${applicationId}`, { method: 'DELETE' })
+      setConfirmDeleteOpen(false)
+      navigate('/borrower/applications', { replace: true })
+    } catch (e) {
+      setError(e.message || 'Could not delete application.')
+    } finally {
+      setDeleteBusy(false)
+    }
+  }, [applicationId, app?.is_draft, navigate])
 
   useEffect(() => {
     let cancelled = false
@@ -78,11 +127,17 @@ export default function BorrowerLoanWizardPage() {
     }
   }, [applicationId, loadApp, loadSchema])
 
+  useEffect(() => {
+    if (!applicationId) return
+    if (!shouldRedirectToApplications(app)) return
+    navigate('/borrower/applications', { replace: true })
+  }, [applicationId, app, navigate])
+
   const persist = useDebouncedCallback(async (nextForm, nextStep, nextLoanType) => {
     if (!applicationId || !app) return
     setSaving(true)
     try {
-      await borrowerApi(`/borrower/loan-applications/${applicationId}`, {
+      const res = await borrowerApi(`/borrower/loan-applications/${applicationId}`, {
         method: 'PATCH',
         body: JSON.stringify({
           form_data: nextForm,
@@ -90,6 +145,7 @@ export default function BorrowerLoanWizardPage() {
           loan_type: nextLoanType,
         }),
       })
+      if (res?.data) setApp(res.data)
     } catch (e) {
       setError(e.message || 'Autosave failed.')
     } finally {
@@ -146,6 +202,20 @@ export default function BorrowerLoanWizardPage() {
     return schema.loan_type_fields?.[loanType] || []
   }, [schema, loanType])
 
+  const productMap = schema?.loan_type_product_map || {}
+  const products = schema?.loan_products || []
+  const selectedProductId = Number(formData.loan_product_id || 0)
+  const selectedProduct = useMemo(
+    () => products.find((p) => Number(p.id) === selectedProductId) || null,
+    [products, selectedProductId],
+  )
+  const expectedSlug = productMap[loanType] || null
+  const filteredProducts = useMemo(() => {
+    if (!expectedSlug) return products
+    const match = products.filter((p) => p.slug === expectedSlug)
+    return match.length ? match : products
+  }, [products, expectedSlug])
+
   const docDefs = useMemo(() => {
     if (!schema || !loanType) return {}
     return schema.documents_by_type?.[loanType] || {}
@@ -187,6 +257,15 @@ export default function BorrowerLoanWizardPage() {
   const uploadDoc = async (docKey, file) => {
     if (!file || !applicationId) return
     setError('')
+    const maxBytes = MAX_UPLOAD_MB * 1024 * 1024
+    if (!ALLOWED_MIME.includes(file.type)) {
+      setError('Only PDF, JPG, and PNG files are allowed.')
+      return
+    }
+    if (file.size > maxBytes) {
+      setError(`File is too large. Maximum size is ${MAX_UPLOAD_MB} MB.`)
+      return
+    }
     const body = new FormData()
     body.append('file', file)
     try {
@@ -229,8 +308,7 @@ export default function BorrowerLoanWizardPage() {
         body: '{}',
       })
       setToast(res.message || 'Submitted.')
-      setApp(res.data)
-      setStep(4)
+      navigate('/borrower/applications', { replace: true })
     } catch (e) {
       const body = e.body || {}
       const msg = Array.isArray(body.errors) ? body.errors.join(' ') : body.message || e.message || 'Submit failed.'
@@ -247,6 +325,13 @@ export default function BorrowerLoanWizardPage() {
     onField('privacy_consent', nextConsent)
     setError('')
   }
+
+  useEffect(() => {
+    if (!schema || !loanType || formData.loan_product_id) return
+    const preferredSlug = productMap[loanType]
+    const preferred = products.find((p) => p.slug === preferredSlug) || filteredProducts[0]
+    if (preferred?.id) onField('loan_product_id', String(preferred.id))
+  }, [schema, loanType, formData.loan_product_id, productMap, products, filteredProducts])
 
   if (loading) {
     return <p className={`text-sm ${ui.textMuted}`}>Loading wizard…</p>
@@ -310,9 +395,21 @@ export default function BorrowerLoanWizardPage() {
             {app.is_draft ? 'Draft — progress auto-saves.' : 'Submitted'} {saving ? ' · Saving…' : ''}
           </p>
         </div>
-        <Link to="/borrower/dashboard" className="text-sm font-medium text-red-600 hover:underline dark:text-red-400">
-          Dashboard
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          {app.is_draft ? (
+            <button
+              type="button"
+              disabled={deleteBusy}
+              onClick={openDeleteConfirm}
+              className="text-sm font-medium text-gray-600 hover:text-red-800 disabled:opacity-50 dark:text-gray-400 dark:hover:text-red-300"
+            >
+              {deleteBusy ? 'Deleting…' : 'Delete draft'}
+            </button>
+          ) : null}
+          <Link to="/borrower/dashboard" className="text-sm font-medium text-red-600 hover:underline dark:text-red-400">
+            Dashboard
+          </Link>
+        </div>
       </div>
 
       <ol className="flex flex-wrap gap-2">
@@ -399,6 +496,83 @@ export default function BorrowerLoanWizardPage() {
           <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:col-span-2 dark:border-[#1F2937] dark:bg-[#111827]">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Loan-specific details</h3>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <label className="block text-sm md:col-span-2">
+                <span className="text-gray-700 dark:text-gray-300">Loan product</span>
+                <select
+                  className={`mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-[#0F172A] ${ui.input}`}
+                  value={formData.loan_product_id ?? ''}
+                  onChange={(e) => onField('loan_product_id', e.target.value)}
+                >
+                  <option value="">Select product</option>
+                  {filteredProducts.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="text-gray-700 dark:text-gray-300">Loan amount</span>
+                <input
+                  type="number"
+                  min="0"
+                  max={selectedProduct?.max_amount || undefined}
+                  className={`mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-[#0F172A] ${ui.input}`}
+                  value={formData.loan_amount ?? ''}
+                  onChange={(e) => onField('loan_amount', e.target.value)}
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="text-gray-700 dark:text-gray-300">Term (months)</span>
+                <input
+                  type="number"
+                  min="1"
+                  max={selectedProduct?.max_term || 360}
+                  className={`mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-[#0F172A] ${ui.input}`}
+                  value={formData.term_months ?? ''}
+                  onChange={(e) => onField('term_months', e.target.value)}
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="text-gray-700 dark:text-gray-300">Application nature</span>
+                <select
+                  className={`mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-[#0F172A] ${ui.input}`}
+                  value={formData.application_nature ?? 'new'}
+                  onChange={(e) => onField('application_nature', e.target.value)}
+                >
+                  <option value="new">New loan</option>
+                  <option value="reloan">Re-loan</option>
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="text-gray-700 dark:text-gray-300">Age</span>
+                <input
+                  type="number"
+                  min="18"
+                  max="100"
+                  className={`mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-[#0F172A] ${ui.input}`}
+                  value={formData.age ?? ''}
+                  onChange={(e) => onField('age', e.target.value)}
+                />
+              </label>
+              {selectedProduct?.slug === 'sss-pension-loan' ? (
+                <label className="block text-sm md:col-span-2">
+                  <span className="text-gray-700 dark:text-gray-300">Monthly pension</span>
+                  <input
+                    type="number"
+                    min="0"
+                    className={`mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-[#0F172A] ${ui.input}`}
+                    value={formData.monthly_pension ?? ''}
+                    onChange={(e) => onField('monthly_pension', e.target.value)}
+                  />
+                </label>
+              ) : null}
+              {selectedProduct ? (
+                <div className={`rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs md:col-span-2 ${ui.textMuted}`}>
+                  Product rules: {selectedProduct.collateral_type || 'Collateral not set'} · Max term {selectedProduct.max_term || '—'} · Max loan{' '}
+                  {selectedProduct.max_amount ? `₱${Number(selectedProduct.max_amount).toLocaleString()}` : '—'}
+                </div>
+              ) : null}
               {loanFields.map((row) => (
                 <label key={row.key} className="block text-sm">
                   <span className="text-gray-700 dark:text-gray-300">{row.label}</span>
@@ -420,6 +594,17 @@ export default function BorrowerLoanWizardPage() {
                 </label>
               ))}
             </div>
+            {app?.computation_breakdown?.breakdown ? (
+              <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3 text-sm dark:border-emerald-800/50 dark:bg-emerald-900/10">
+                <p className="font-semibold text-emerald-900 dark:text-emerald-200">Live product computation</p>
+                <div className="mt-2 grid gap-1 text-xs text-emerald-900 dark:text-emerald-200/90 md:grid-cols-2">
+                  <p>Monthly amortization: ₱{Number(app.computation_breakdown.breakdown.monthly_amortization || 0).toLocaleString()}</p>
+                  <p>Monthly interest: ₱{Number(app.computation_breakdown.breakdown.monthly_interest || 0).toLocaleString()}</p>
+                  <p>Total miscellaneous: ₱{Number(app.computation_breakdown.breakdown.total_miscellaneous_fees || 0).toLocaleString()}</p>
+                  <p>Net proceeds: ₱{Number(app.computation_breakdown.breakdown.net_proceeds || 0).toLocaleString()}</p>
+                </div>
+              </div>
+            ) : null}
           </section>
         </div>
       ) : null}
@@ -427,17 +612,41 @@ export default function BorrowerLoanWizardPage() {
       {step === 2 ? (
         <div className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#1F2937] dark:bg-[#111827]">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Required documents</h3>
+          <p className={`text-xs ${ui.textMuted}`}>
+            Upload clear files via drag-and-drop or file picker. Allowed: PDF/JPG/PNG, max {MAX_UPLOAD_MB}MB each.
+          </p>
           <ul className="space-y-4">
             {Object.entries(docDefs).map(([key, meta]) => (
               <li key={key} className="rounded-lg border border-gray-100 p-3 dark:border-[#1F2937]">
                 <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{meta.label}</p>
                 <p className={`text-xs ${ui.textMuted}`}>{meta.required ? 'Required' : 'Optional'}</p>
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  className="mt-2 w-full text-sm"
-                  onChange={(e) => uploadDoc(key, e.target.files?.[0])}
-                />
+                <label
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    setDraggingDocKey(key)
+                  }}
+                  onDragLeave={() => setDraggingDocKey((prev) => (prev === key ? '' : prev))}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    setDraggingDocKey('')
+                    const dropped = e.dataTransfer?.files?.[0]
+                    if (dropped) uploadDoc(key, dropped)
+                  }}
+                  className={`mt-2 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-4 py-5 text-center transition ${
+                    draggingDocKey === key
+                      ? 'border-red-400 bg-red-50/60 dark:border-red-500 dark:bg-red-900/20'
+                      : 'border-gray-300 bg-gray-50/60 hover:border-red-300 hover:bg-red-50/30 dark:border-gray-600 dark:bg-[#0F172A]/50'
+                  }`}
+                >
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    className="hidden"
+                    onChange={(e) => uploadDoc(key, e.target.files?.[0])}
+                  />
+                  <span className="text-sm font-medium text-gray-800 dark:text-gray-100">Drag and drop file here</span>
+                  <span className={`mt-1 text-xs ${ui.textMuted}`}>or click to browse</span>
+                </label>
                 {app.documents?.[key]?.urls?.length ? (
                   <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-400">
                     ✔ Uploaded:{' '}
@@ -509,16 +718,16 @@ export default function BorrowerLoanWizardPage() {
           <div>
             <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Signatures</p>
             <div className="mt-2 flex flex-wrap gap-4">
-              {app.signatures?.applicant ? (
-                <img src={app.signatures.applicant} alt="Applicant" className="h-24 rounded border border-gray-200 bg-white" />
+              {signaturePreview.applicant ? (
+                <img src={signaturePreview.applicant} alt="Applicant" className="h-24 rounded border border-gray-200 bg-white" />
               ) : (
                 <span className="text-sm text-amber-700">Applicant signature missing</span>
               )}
-              {app.signatures?.spouse ? (
-                <img src={app.signatures.spouse} alt="Spouse" className="h-24 rounded border border-gray-200 bg-white" />
+              {signaturePreview.spouse ? (
+                <img src={signaturePreview.spouse} alt="Spouse" className="h-24 rounded border border-gray-200 bg-white" />
               ) : null}
-              {app.signatures?.comaker ? (
-                <img src={app.signatures.comaker} alt="Co-maker" className="h-24 rounded border border-gray-200 bg-white" />
+              {signaturePreview.comaker ? (
+                <img src={signaturePreview.comaker} alt="Co-maker" className="h-24 rounded border border-gray-200 bg-white" />
               ) : null}
             </div>
           </div>
@@ -576,6 +785,14 @@ export default function BorrowerLoanWizardPage() {
         </div>
       ) : null}
       <PrivacyPolicyModal open={privacyModalOpen} onClose={() => setPrivacyModalOpen(false)} />
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Confirm deletion"
+        message="Delete this application draft? All progress, uploads, and signatures will be removed. This cannot be undone."
+        onCancel={() => setConfirmDeleteOpen(false)}
+        onConfirm={performDeleteApplication}
+        busy={deleteBusy}
+      />
     </div>
   )
 }

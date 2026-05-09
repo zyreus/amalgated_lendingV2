@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client.js'
 import { useToast } from '../context/ToastContext.jsx'
@@ -21,6 +21,132 @@ function describeLoanRate(loan) {
   return '—'
 }
 
+const DOC_VERIFY_OPTIONS = [
+  { value: 'pending', label: 'Pending review' },
+  { value: 'verified', label: 'Verified' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'requires_resubmission', label: 'Requires resubmission' },
+]
+
+function verificationPillClass(status) {
+  switch (status) {
+    case 'verified':
+      return 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/35 dark:text-emerald-100'
+    case 'rejected':
+      return 'bg-red-100 text-red-900 dark:bg-red-900/35 dark:text-red-100'
+    case 'requires_resubmission':
+      return 'bg-amber-100 text-amber-900 dark:bg-amber-900/35 dark:text-amber-100'
+    default:
+      return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+  }
+}
+
+function buildApplicantUploads(loan) {
+  const list = []
+  if (!loan) return list
+
+  const reviews =
+    loan.document_reviews && typeof loan.document_reviews === 'object' && !Array.isArray(loan.document_reviews)
+      ? loan.document_reviews
+      : {}
+
+  const push = ({ kind = 'file', label, path, originalName, loanDocumentId = null, record = null }) => {
+    if (!path || typeof path !== 'string') return
+
+    let reviewStatus = 'pending'
+    let reviewNotes = ''
+    if (record) {
+      reviewStatus = record.verification_status || reviewStatus
+      reviewNotes = record.review_notes || ''
+    }
+    const pathRev = reviews[path]
+    if (pathRev && typeof pathRev === 'object' && pathRev.status) {
+      reviewStatus = pathRev.status
+      if (pathRev.notes != null && pathRev.notes !== '') {
+        reviewNotes = pathRev.notes
+      }
+    }
+
+    const key = loanDocumentId ? `ld-${loanDocumentId}` : `${kind}-${label}-${path}`
+
+    list.push({
+      key,
+      kind,
+      label,
+      path,
+      originalName: originalName || 'Open file',
+      loanDocumentId,
+      reviewStatus,
+      reviewNotes,
+    })
+  }
+
+  if (loan.face_photo_path) {
+    push({
+      kind: 'face',
+      label: 'Face photo (liveness)',
+      path: loan.face_photo_path,
+      originalName: 'Face capture',
+    })
+  }
+
+  if (Array.isArray(loan.kyc_documents)) {
+    loan.kyc_documents.forEach((doc, idx) => {
+      push({
+        label: doc?.label || `KYC document ${idx + 1}`,
+        path: doc?.path,
+        originalName: doc?.original_name,
+      })
+    })
+  }
+
+  const app = loan.loan_application || null
+  if (app) {
+    const payloadDocs = app.documents_payload
+    if (payloadDocs && typeof payloadDocs === 'object' && !Array.isArray(payloadDocs)) {
+      Object.entries(payloadDocs).forEach(([docKey, value]) => {
+        const arr = Array.isArray(value) ? value : [value]
+        arr.forEach((path, idx) => {
+          push({
+            label: `${String(docKey).replace(/_/g, ' ')}${arr.length > 1 ? ` #${idx + 1}` : ''}`,
+            path,
+            originalName: `Open ${docKey}`,
+          })
+        })
+      })
+    }
+
+    const records = Array.isArray(app.documents_records) ? app.documents_records : []
+    records.forEach((d) => {
+      push({
+        label: (d?.document_type || 'Document').replace(/_/g, ' '),
+        path: d?.file_path,
+        originalName: d?.original_name || 'Open',
+        loanDocumentId: d?.id ?? null,
+        record: d,
+      })
+    })
+
+    push({
+      label: 'Applicant signature',
+      path: app.applicant_signature_path || app.applicant_signature,
+      originalName: 'Open applicant signature',
+    })
+    push({
+      label: 'Spouse signature',
+      path: app.spouse_signature_path || app.spouse_signature,
+      originalName: 'Open spouse signature',
+    })
+    push({
+      label: 'Co-maker signature',
+      path: app.comaker_signature_path || app.comaker_signature,
+      originalName: 'Open co-maker signature',
+    })
+  }
+
+  return list
+}
+
 export default function LoanDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -32,6 +158,7 @@ export default function LoanDetailPage() {
   const [rejectReason, setRejectReason] = useState('')
   const [staff, setStaff] = useState([])
   const [officerId, setOfficerId] = useState('')
+  const [reviewEdits, setReviewEdits] = useState({})
 
   const load = async () => {
     setLoading(true)
@@ -137,11 +264,42 @@ export default function LoanDetailPage() {
     }
   }
 
+  const applicantUploads = useMemo(() => buildApplicantUploads(loan), [loan])
+
+  useEffect(() => {
+    if (!loan) return
+    const next = {}
+    applicantUploads.forEach((u) => {
+      next[u.key] = { status: u.reviewStatus || 'pending', notes: u.reviewNotes || '' }
+    })
+    setReviewEdits(next)
+  }, [loan, applicantUploads])
+
+  const saveDocReview = async (doc) => {
+    const edit = reviewEdits[doc.key]
+    if (!edit) return
+    try {
+      await api(`/loans/${id}/document-review`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          ...(doc.loanDocumentId ? { loan_document_id: doc.loanDocumentId } : { storage_path: doc.path }),
+          status: edit.status,
+          notes: edit.notes?.trim() ? edit.notes.trim() : null,
+        }),
+      })
+      showToast('Document verification saved.', 'success')
+      load()
+    } catch (e) {
+      showToast(e.message, 'error')
+    }
+  }
+
   if (loading || !loan) {
     return <AdminPageSkeleton />
   }
 
   const payments = loan.payments || []
+  const app = loan.loan_application || null
 
   return (
     <div className="w-full min-w-0 space-y-8">
@@ -153,9 +311,11 @@ export default function LoanDetailPage() {
         ← Back
       </button>
 
-      <div>
-        <h1 className={admin.pageTitle}>Loan #{loan.id}</h1>
-        <p className={`mt-1 text-sm capitalize ${admin.textMuted}`}>Status: {loan.status}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className={admin.pageTitle}>Loan #{loan.id}</h1>
+          <p className={`mt-1 text-sm capitalize ${admin.textMuted}`}>Status: {loan.status}</p>
+        </div>
       </div>
 
       {loan.status === 'pending' && can('loans.approve') && (
@@ -257,52 +417,103 @@ export default function LoanDetailPage() {
         </div>
       </div>
 
-      {(loan.face_photo_path || (Array.isArray(loan.kyc_documents) && loan.kyc_documents.length > 0)) ? (
+      {applicantUploads.length > 0 ? (
         <div className={`text-sm ${admin.cardNoHover}`}>
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Application KYC</h2>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Applicant uploaded files</h2>
           <p className={`mt-1 text-xs ${admin.textMuted}`}>
-            Face capture and documents from the online application (stored on the lending API).
+            Verification statuses apply to borrower portal uploads, KYC attachments, signatures, and structured loan
+            documents. Changes are logged for audit.
           </p>
-          {loan.face_photo_path ? (
-            <div className="mt-4">
-              <p className={`text-xs font-medium ${admin.textMuted}`}>Face photo</p>
-              <a
-                href={getLaravelStorageFileUrl(loan.face_photo_path)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-block"
-              >
-                <img
-                  src={getLaravelStorageFileUrl(loan.face_photo_path)}
-                  alt="Applicant face"
-                  className="max-h-56 rounded-lg border border-gray-200 object-contain dark:border-[#1F2937]"
-                />
-              </a>
-              {loan.face_capture_at ? (
-                <p className={`mt-1 text-xs ${admin.textMuted}`}>Captured: {String(loan.face_capture_at)}</p>
-              ) : null}
-            </div>
-          ) : null}
-          {Array.isArray(loan.kyc_documents) && loan.kyc_documents.length > 0 ? (
-            <div className="mt-4">
-              <p className={`text-xs font-medium ${admin.textMuted}`}>Documents</p>
-              <ul className="mt-2 list-inside list-disc space-y-1">
-                {loan.kyc_documents.map((doc, idx) => (
-                  <li key={doc.key || doc.path || idx}>
-                    <span className="font-medium text-gray-800 dark:text-gray-100">{doc.label || 'Document'}: </span>
-                    <a
-                      href={getLaravelStorageFileUrl(doc.path)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-red-600 hover:underline dark:text-red-400"
-                    >
-                      {doc.original_name || 'Open file'}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+          <ul className="mt-4 space-y-6 border-t border-gray-100 pt-4 dark:border-[#1F2937]">
+            {applicantUploads.map((doc) => {
+              const edit = reviewEdits[doc.key] || { status: doc.reviewStatus, notes: doc.reviewNotes }
+              const displayStatus = edit.status || doc.reviewStatus || 'pending'
+              return (
+                <li key={doc.key} className="list-none">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-gray-900 dark:text-gray-100">{doc.label}</span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${verificationPillClass(displayStatus)}`}
+                        >
+                          {String(displayStatus).replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      {doc.kind === 'face' ? (
+                        <a
+                          href={getLaravelStorageFileUrl(doc.path)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-block"
+                        >
+                          <img
+                            src={getLaravelStorageFileUrl(doc.path)}
+                            alt="Applicant face"
+                            className="max-h-56 rounded-lg border border-gray-200 object-contain dark:border-[#1F2937]"
+                          />
+                        </a>
+                      ) : (
+                        <a
+                          href={getLaravelStorageFileUrl(doc.path)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-red-600 hover:underline dark:text-red-400"
+                        >
+                          {doc.originalName || 'Open file'}
+                        </a>
+                      )}
+                      {doc.kind === 'face' && loan.face_capture_at ? (
+                        <p className={`text-xs ${admin.textMuted}`}>Captured: {String(loan.face_capture_at)}</p>
+                      ) : null}
+                    </div>
+                    {can('loans.approve') ? (
+                      <div className="w-full min-w-[220px] max-w-md space-y-2 rounded-lg border border-gray-100 bg-gray-50/80 p-3 dark:border-[#1F2937] dark:bg-[#111827]/60">
+                        <label className={`text-[10px] font-semibold uppercase tracking-wide ${admin.textMuted}`}>
+                          Verification
+                        </label>
+                        <select
+                          value={edit.status || 'pending'}
+                          onChange={(e) =>
+                            setReviewEdits((prev) => ({
+                              ...prev,
+                              [doc.key]: { ...edit, status: e.target.value },
+                            }))
+                          }
+                          className={`w-full ${admin.input}`}
+                        >
+                          {DOC_VERIFY_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                        <textarea
+                          placeholder="Review notes (optional)"
+                          value={edit.notes ?? ''}
+                          onChange={(e) =>
+                            setReviewEdits((prev) => ({
+                              ...prev,
+                              [doc.key]: { ...edit, notes: e.target.value },
+                            }))
+                          }
+                          rows={2}
+                          className={`w-full ${admin.input}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => saveDocReview(doc)}
+                          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+                        >
+                          Save review
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
         </div>
       ) : null}
 
@@ -405,25 +616,6 @@ export default function LoanDetailPage() {
               Stencil:{' '}
               <span className="whitespace-pre-wrap text-gray-900 dark:text-gray-100">{loan.loan_application.stencil_text}</span>
             </p>
-          ) : null}
-          {Array.isArray(loan.loan_application.documents) && loan.loan_application.documents.length > 0 ? (
-            <ul className="mt-3 list-inside list-disc space-y-1">
-              {loan.loan_application.documents.map((d) => (
-                <li key={d.id}>
-                  <span className="font-medium capitalize text-gray-800 dark:text-gray-100">
-                    {(d.document_type || 'doc').replace(/_/g, ' ')}:{' '}
-                  </span>
-                  <a
-                    href={getLaravelStorageFileUrl(d.file_path)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-red-600 hover:underline dark:text-red-400"
-                  >
-                    {d.original_name || 'Open'}
-                  </a>
-                </li>
-              ))}
-            </ul>
           ) : null}
         </div>
       ) : null}

@@ -8,6 +8,7 @@ use App\Models\SupportAiLog;
 use App\Models\SupportAssignment;
 use App\Models\SupportChatFeedback;
 use App\Models\SupportConversation;
+use App\Services\NotificationCenter;
 use App\Support\SupportChatPresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -97,6 +98,27 @@ class SupportChatSyncController extends Controller
         $this->applyConversationPatch($conv, $data['conversation_patch'] ?? null);
         $conv->save();
 
+        if ($msg->is_from_visitor) {
+            app(NotificationCenter::class)->notifyStaff(
+                NotificationCenter::CATEGORY_CRM_INQUIRY,
+                'support_sync_visitor',
+                'Visitor message (sync) — '.mb_substr($body, 0, 72),
+                mb_substr($body, 0, 500),
+                [
+                    'session_id' => $conv->session_id,
+                    'support_conversation_id' => $conv->id,
+                    'chat_message_id' => $msg->id,
+                ],
+                null,
+                [
+                    'module' => NotificationCenter::MODULE_CRM,
+                    'throttle_key' => 'sync-chat:'.$conv->session_id,
+                    'throttle_max' => 12,
+                    'throttle_decay_seconds' => 3600,
+                ],
+            );
+        }
+
         if (! empty($data['ai_log']) && ($msg->sender_type === 'ai')) {
             SupportAiLog::create([
                 'support_conversation_id' => $conv->id,
@@ -150,6 +172,24 @@ class SupportChatSyncController extends Controller
             $conv->rated_at = Carbon::now();
             $conv->save();
         }
+
+        app(NotificationCenter::class)->notifyStaff(
+            NotificationCenter::CATEGORY_FEEDBACK,
+            'support_sync_feedback',
+            'Visitor feedback (sync) — '.((int) $data['rating']).'/5',
+            mb_substr($comment, 0, 500),
+            [
+                'session_id' => trim($data['session_id']),
+                'support_conversation_id' => $conv?->id,
+            ],
+            null,
+            [
+                'module' => NotificationCenter::MODULE_FEEDBACK,
+                'throttle_key' => 'sync-feedback:'.trim($data['session_id']),
+                'throttle_max' => 4,
+                'throttle_decay_seconds' => 7200,
+            ],
+        );
 
         return response()->json(['ok' => true], 201);
     }

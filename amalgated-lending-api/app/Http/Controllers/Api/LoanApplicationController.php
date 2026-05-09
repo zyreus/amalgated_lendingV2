@@ -32,6 +32,8 @@ class LoanApplicationController extends Controller
         $data = $request->validated();
         if (! empty($data['status'])) {
             $q->where('status', $data['status']);
+        } elseif ($this->canViewAll($request)) {
+            $q->where('status', '!=', LoanApplication::STATUS_DRAFT);
         }
         if (! empty($data['loan_product_id'])) {
             $q->where('loan_product_id', (int) $data['loan_product_id']);

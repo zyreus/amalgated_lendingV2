@@ -6,14 +6,17 @@ import { admin } from '../components/AdminUi.jsx'
 import { SkeletonLine } from '../../components/AppSkeletons.jsx'
 
 const emptyForm = {
+  code: '',
   slug: '',
   name: '',
   description: '',
   interest_rate: '',
   rate_type: 'monthly',
   collateral: '',
+  collateral_type: '',
   requirements: '',
   max_term: '',
+  max_amount: '',
   age_limit: '',
   safe_age: '',
   downpayment: '',
@@ -23,6 +26,7 @@ const emptyForm = {
   sample_monthly_pension: '',
   sample_computation_note: '',
   calculator_config_json: '{}',
+  rules_json: '{}',
   sort_order: '0',
 }
 
@@ -71,13 +75,16 @@ export default function AdminLoanProductsPage() {
     setModal('edit')
     setForm({
       slug: row.slug || '',
+      code: row.code || '',
       name: row.name || '',
       description: row.description || '',
       interest_rate: row.interest_rate != null ? String(row.interest_rate) : '',
       rate_type: row.rate_type || 'monthly',
       collateral: row.collateral || '',
+      collateral_type: row.collateral_type || '',
       requirements: row.requirements || '',
       max_term: row.max_term != null ? String(row.max_term) : '',
+      max_amount: row.max_amount != null ? String(row.max_amount) : '',
       age_limit: row.age_limit != null ? String(row.age_limit) : '',
       safe_age: row.safe_age != null ? String(row.safe_age) : '',
       downpayment: row.downpayment || '',
@@ -87,6 +94,7 @@ export default function AdminLoanProductsPage() {
       sample_monthly_pension: row.sample_monthly_pension != null ? String(row.sample_monthly_pension) : '',
       sample_computation_note: row.sample_computation_note || '',
       calculator_config_json: JSON.stringify(row.calculator_config || {}, null, 2),
+      rules_json: JSON.stringify(row.rules || {}, null, 2),
       sort_order: row.sort_order != null ? String(row.sort_order) : '0',
       _id: row.id,
     })
@@ -95,19 +103,27 @@ export default function AdminLoanProductsPage() {
   const save = async (e) => {
     e.preventDefault()
     const cfg = parseConfig(form.calculator_config_json)
+    const rules = parseConfig(form.rules_json)
     if (cfg === null) {
       showToast('Calculator config must be valid JSON.', 'error')
       return
     }
+    if (rules === null) {
+      showToast('Rules must be valid JSON.', 'error')
+      return
+    }
     const payload = {
+      code: form.code.trim() || null,
       slug: form.slug.trim(),
       name: form.name.trim(),
       description: form.description.trim() || null,
       interest_rate: Number(form.interest_rate),
       rate_type: form.rate_type,
       collateral: form.collateral.trim() || null,
+      collateral_type: form.collateral_type.trim() || null,
       requirements: form.requirements.trim() || null,
       max_term: form.max_term === '' ? null : Number(form.max_term),
+      max_amount: form.max_amount === '' ? null : Number(form.max_amount),
       age_limit: form.age_limit === '' ? null : Number(form.age_limit),
       safe_age: form.safe_age === '' ? null : Number(form.safe_age),
       downpayment: form.downpayment.trim() || null,
@@ -117,6 +133,7 @@ export default function AdminLoanProductsPage() {
       sample_monthly_pension: form.sample_monthly_pension === '' ? null : Number(form.sample_monthly_pension),
       sample_computation_note: form.sample_computation_note.trim() || null,
       calculator_config: Object.keys(cfg).length ? cfg : null,
+      rules: Object.keys(rules).length ? rules : null,
       sort_order: Number(form.sort_order) || 0,
     }
     if (!payload.slug || !payload.name) {
@@ -296,10 +313,14 @@ export default function AdminLoanProductsPage() {
             <form onSubmit={save} className="mt-4 space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
+                  <label className={`text-xs ${admin.textMuted}`}>Product code</label>
+                  <input className={`mt-1 w-full ${admin.input}`} value={form.code} onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))} />
+                </div>
+                <div>
                   <label className={`text-xs ${admin.textMuted}`}>Slug</label>
                   <input className={`mt-1 w-full ${admin.input}`} value={form.slug} onChange={(e) => setForm((s) => ({ ...s, slug: e.target.value }))} required />
                 </div>
-                <div>
+                <div className="sm:col-span-2">
                   <label className={`text-xs ${admin.textMuted}`}>Sort order</label>
                   <input className={`mt-1 w-full ${admin.input}`} value={form.sort_order} onChange={(e) => setForm((s) => ({ ...s, sort_order: e.target.value }))} />
                 </div>
@@ -322,12 +343,17 @@ export default function AdminLoanProductsPage() {
                   <select className={`mt-1 w-full ${admin.input}`} value={form.rate_type} onChange={(e) => setForm((s) => ({ ...s, rate_type: e.target.value }))}>
                     <option value="monthly">monthly</option>
                     <option value="fixed">fixed</option>
+                    <option value="annual">annual</option>
                   </select>
                 </div>
               </div>
               <div>
                 <label className={`text-xs ${admin.textMuted}`}>Collateral</label>
                 <input className={`mt-1 w-full ${admin.input}`} value={form.collateral} onChange={(e) => setForm((s) => ({ ...s, collateral: e.target.value }))} />
+              </div>
+              <div>
+                <label className={`text-xs ${admin.textMuted}`}>Collateral type</label>
+                <input className={`mt-1 w-full ${admin.input}`} value={form.collateral_type} onChange={(e) => setForm((s) => ({ ...s, collateral_type: e.target.value }))} />
               </div>
               <div>
                 <label className={`text-xs ${admin.textMuted}`}>Requirements</label>
@@ -337,6 +363,10 @@ export default function AdminLoanProductsPage() {
                 <div>
                   <label className={`text-xs ${admin.textMuted}`}>Max term (months)</label>
                   <input className={`mt-1 w-full ${admin.input}`} value={form.max_term} onChange={(e) => setForm((s) => ({ ...s, max_term: e.target.value }))} />
+                </div>
+                <div>
+                  <label className={`text-xs ${admin.textMuted}`}>Max loan amount</label>
+                  <input className={`mt-1 w-full ${admin.input}`} value={form.max_amount} onChange={(e) => setForm((s) => ({ ...s, max_amount: e.target.value }))} />
                 </div>
                 <div>
                   <label className={`text-xs ${admin.textMuted}`}>Age limit</label>
@@ -390,6 +420,16 @@ export default function AdminLoanProductsPage() {
                   value={form.calculator_config_json}
                   onChange={(e) => setForm((s) => ({ ...s, calculator_config_json: e.target.value }))}
                   placeholder='{"pension_multiplier":10,"max_principal":500000}'
+                />
+              </div>
+              <div>
+                <label className={`text-xs ${admin.textMuted}`}>Rules / formula controls (JSON)</label>
+                <textarea
+                  className={`mt-1 w-full font-mono text-xs ${admin.input}`}
+                  rows={6}
+                  value={form.rules_json}
+                  onChange={(e) => setForm((s) => ({ ...s, rules_json: e.target.value }))}
+                  placeholder='{"service_charge_rate":0.035,"doc_stamp_per_200":1.5}'
                 />
               </div>
               <div className="flex flex-wrap gap-2 pt-2">

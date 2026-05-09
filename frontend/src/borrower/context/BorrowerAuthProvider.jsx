@@ -48,6 +48,17 @@ export function BorrowerAuthProvider({ children }) {
     return res
   }, [])
 
+  const register = useCallback(async ({ name, email, phone, password, password_confirmation }) => {
+    const res = await borrowerApi('/borrower/register', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, phone, password, password_confirmation }),
+    })
+    setBorrowerToken(res.token || res.access_token)
+    setBorrowerUser(res.user)
+    setUser(res.user)
+    return res
+  }, [])
+
   const logout = useCallback(async () => {
     try {
       await borrowerApi('/borrower/logout', { method: 'POST', body: '{}' })
@@ -60,8 +71,8 @@ export function BorrowerAuthProvider({ children }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user, booting, authed: !!user, login, logout, loadMe }),
-    [user, booting, login, logout, loadMe],
+    () => ({ user, booting, authed: !!user, login, register, logout, loadMe }),
+    [user, booting, login, register, logout, loadMe],
   )
 
   return <BorrowerAuthContext.Provider value={value}>{children}</BorrowerAuthContext.Provider>

@@ -474,7 +474,7 @@ export default function DocumentLoanApplyPage() {
                       </label>
                       {application.signed_form_url ? (
                         <a
-                          href={application.signed_form_url}
+                          href={getLaravelStorageFileUrl(application.signed_form_url)}
                           target="_blank"
                           rel="noreferrer"
                           className="ml-3 text-sm font-semibold text-brand-primary hover:underline"

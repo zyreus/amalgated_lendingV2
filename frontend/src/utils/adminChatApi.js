@@ -47,6 +47,11 @@ function getLendingSecretForChat() {
   }
 }
 
+/** Backward-compatible named export used by admin shell socket join payload. */
+export function getLendingChatSecret() {
+  return getLendingSecretForChat()
+}
+
 /** Default Node chat/Socket.IO origin in dev (see chat-server `PORT`, usually 8010). */
 const DEFAULT_CHAT_DEV_ORIGIN = 'http://127.0.0.1:8010'
 const DEFAULT_CHAT_DEV_FALLBACK_ORIGIN = 'http://127.0.0.1:8011'
@@ -375,11 +380,6 @@ export function getChatAuthHeaders() {
 /** True when env or session has the Node shared secret (required for Chat & CRM REST). */
 export function hasChatServerAuth() {
   return Boolean(getLendingSecretForChat())
-}
-
-/** Node LENDING_ADMIN_API_SECRET — used for Socket.IO admin:join authentication. */
-export function getLendingChatSecret() {
-  return getLendingSecretForChat()
 }
 
 /**

@@ -34,8 +34,8 @@
     $p = $t['personal'] ?? [];
     $sp = $t['spouse'] ?? [];
     $w = $t['work'] ?? [];
-    $docUrl = fn ($path) => $path ? url('storage/'.ltrim($path, '/')) : null;
-    $sigUrl = fn ($path) => $path ? url('storage/'.ltrim($path, '/')) : null;
+    $docUrl = fn ($path) => $path ? \App\Support\PublicStorageUrl::absoluteUrl($path) : null;
+    $sigUrl = fn ($path) => $path ? \App\Support\PublicStorageUrl::absoluteUrl($path) : null;
     $docStatus = $docStatus ?? [];
 @endphp
 <div class="sheet">

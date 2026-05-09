@@ -46,6 +46,14 @@ export default function BorrowerLoginPage() {
           <p className="mt-2 text-sm text-gray-500 transition-colors duration-300 dark:text-gray-400">
             Use your borrower account credentials.
           </p>
+          <div className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 dark:border-red-500/20 dark:bg-red-500/10">
+            <p className="text-sm text-red-800 dark:text-red-300">
+              New borrower?{' '}
+              <Link to="/borrower/register" className="font-semibold underline underline-offset-2 hover:text-red-900 dark:hover:text-red-200">
+                Create account
+              </Link>
+            </p>
+          </div>
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <input
               value={username}

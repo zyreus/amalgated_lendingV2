@@ -7,15 +7,24 @@ use App\Http\Resources\PaymentListResource;
 use App\Jobs\SendPaymentReceiptJob;
 use App\Models\Loan;
 use App\Models\Payment;
+use App\Models\PaymentAdjustmentAudit;
 use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\CreditScoreService;
+use App\Services\FinalPaymentAdjustmentService;
+use App\Services\LoanPaymentBalanceService;
+use App\Services\NotificationCenter;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class PaymentController extends Controller
 {
+    public function __construct(
+        private LoanPaymentBalanceService $loanPaymentBalances,
+        private FinalPaymentAdjustmentService $finalPaymentAdjustments,
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
         $q = Payment::query()->with('loan.borrower');
@@ -65,6 +74,22 @@ class PaymentController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        $ext = isset($data['external_ref']) ? trim((string) $data['external_ref']) : '';
+        if ($ext !== '') {
+            $dup = Payment::query()
+                ->where('loan_id', $payment->loan_id)
+                ->whereKeyNot($payment->id)
+                ->where('external_ref', $ext)
+                ->where('status', Payment::STATUS_PAID)
+                ->exists();
+            if ($dup) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'This external reference is already recorded as paid on another installment for this loan.',
+                ], 422);
+            }
+        }
+
         $previousStatus = $payment->status;
 
         $payment->amount_paid = $data['amount_paid'];
@@ -87,9 +112,13 @@ class PaymentController extends Controller
             $payment->status = Payment::STATUS_OVERDUE;
         }
 
+        if ($this->paymentJustBecamePaid($previousStatus, $payment->status) && empty($payment->official_receipt_number)) {
+            $payment->official_receipt_number = $this->mintOfficialReceiptNumber($payment);
+        }
+
         $payment->save();
 
-        $this->refreshLoanBalance($payment->loan_id);
+        $this->loanPaymentBalances->refreshLoanAfterPaymentChange($payment->loan_id);
 
         $loan = $payment->loan()->with('borrower')->first();
         if ($loan?->borrower) {
@@ -102,6 +131,22 @@ class PaymentController extends Controller
         if ($this->paymentJustBecamePaid($previousStatus, $payment->status)) {
             SendPaymentReceiptJob::dispatch($payment->id);
             $receiptEmail = ['sent' => true, 'note' => 'queued'];
+            if ($loan?->borrower) {
+                $remaining = (float) (Payment::query()
+                    ->where('loan_id', $payment->loan_id)
+                    ->selectRaw('COALESCE(SUM(GREATEST(amount_due - amount_paid, 0)), 0) AS r')
+                    ->value('r') ?? 0);
+                $remainingTxt = number_format($remaining, 2);
+                app(NotificationCenter::class)->notifyBorrower(
+                    $loan->borrower,
+                    NotificationCenter::CATEGORY_PAYMENT_RECEIVED,
+                    'payment_received',
+                    'Payment recorded',
+                    'Installment #'.($payment->installment_no ?? '—').' is marked paid. Remaining balance (scheduled): ₱'.$remainingTxt.'. Thank you.',
+                    ['payment_id' => $payment->id, 'loan_id' => $payment->loan_id, 'remaining_balance' => $remaining],
+                    ['dedupe_key' => 'payment_paid:'.$payment->id, 'module' => NotificationCenter::MODULE_PAYMENTS],
+                );
+            }
         }
 
         return response()->json([
@@ -131,8 +176,12 @@ class PaymentController extends Controller
             $payment->paid_at = null;
         }
 
+        if ($this->paymentJustBecamePaid($previousStatus, $payment->status) && empty($payment->official_receipt_number)) {
+            $payment->official_receipt_number = $this->mintOfficialReceiptNumber($payment);
+        }
+
         $payment->save();
-        $this->refreshLoanBalance($payment->loan_id);
+        $this->loanPaymentBalances->refreshLoanAfterPaymentChange($payment->loan_id);
 
         $loan = $payment->loan()->with('borrower')->first();
         if ($loan?->borrower) {
@@ -145,6 +194,22 @@ class PaymentController extends Controller
         if ($data['status'] === Payment::STATUS_PAID && $this->paymentJustBecamePaid($previousStatus, $payment->status)) {
             SendPaymentReceiptJob::dispatch($payment->id);
             $receiptEmail = ['sent' => true, 'note' => 'queued'];
+            if ($loan?->borrower) {
+                $remaining = (float) (Payment::query()
+                    ->where('loan_id', $payment->loan_id)
+                    ->selectRaw('COALESCE(SUM(GREATEST(amount_due - amount_paid, 0)), 0) AS r')
+                    ->value('r') ?? 0);
+                $remainingTxt = number_format($remaining, 2);
+                app(NotificationCenter::class)->notifyBorrower(
+                    $loan->borrower,
+                    NotificationCenter::CATEGORY_PAYMENT_RECEIVED,
+                    'payment_received',
+                    'Payment recorded',
+                    'Installment #'.($payment->installment_no ?? '—').' is marked paid. Remaining balance (scheduled): ₱'.$remainingTxt.'. Thank you.',
+                    ['payment_id' => $payment->id, 'loan_id' => $payment->loan_id, 'remaining_balance' => $remaining],
+                    ['dedupe_key' => 'payment_paid:'.$payment->id, 'module' => NotificationCenter::MODULE_PAYMENTS],
+                );
+            }
         }
 
         return response()->json([
@@ -155,12 +220,89 @@ class PaymentController extends Controller
         ]);
     }
 
+    /**
+     * Adjust scheduled amount for the final installment only (penalties/discounts/settlement corrections).
+     */
+    public function adjustFinal(Request $request, Payment $payment, ActivityLogger $logger, CreditScoreService $creditScore): JsonResponse
+    {
+        $data = $request->validate([
+            'amount_due' => 'required|numeric|min:0',
+            'adjustment_reason' => 'required|string|min:8|max:2000',
+        ]);
+
+        $result = $this->finalPaymentAdjustments->adjustFinalInstallmentDue(
+            $payment,
+            $request->user(),
+            (float) $data['amount_due'],
+            (string) $data['adjustment_reason'],
+        );
+
+        $fresh = $result['payment'];
+        $loan = $fresh->loan()->with('borrower')->first();
+        if ($loan?->borrower) {
+            $creditScore->recalculateForUser($loan->borrower);
+        }
+
+        $logger->log($request->user(), 'payments.adjust_final', $fresh, [
+            'payment_id' => $fresh->id,
+            'loan_id' => $fresh->loan_id,
+            'audit_id' => $result['audit']->id,
+        ]);
+
+        if ($loan?->borrower) {
+            app(NotificationCenter::class)->notifyBorrower(
+                $loan->borrower,
+                NotificationCenter::CATEGORY_LOAN_PAYMENT_ADJUSTED,
+                'final_payment_adjusted',
+                'Installment schedule updated',
+                'Your final installment amount was updated by our team. Please review your borrower portal for the revised due amount.',
+                [
+                    'payment_id' => $fresh->id,
+                    'loan_id' => $fresh->loan_id,
+                    'new_amount_due' => (float) $fresh->amount_due,
+                ],
+                ['dedupe_key' => 'final_pay_adj:'.$result['audit']->id, 'module' => NotificationCenter::MODULE_PAYMENTS],
+            );
+        }
+
+        return response()->json([
+            'ok' => true,
+            'payment' => $fresh->fresh(['loan.borrower', 'adjustmentAudits.adminUser']),
+        ]);
+    }
+
+    public function adjustmentAudits(Request $request, Payment $payment): JsonResponse
+    {
+        $rows = PaymentAdjustmentAudit::query()
+            ->where('payment_id', $payment->id)
+            ->with('adminUser:id,name,email')
+            ->orderByDesc('id')
+            ->get();
+
+        return response()->json(['ok' => true, 'data' => $rows]);
+    }
+
     private function paymentJustBecamePaid(string $previousStatus, string $currentStatus): bool
     {
         $prev = strtolower(trim($previousStatus));
         $cur = strtolower(trim($currentStatus));
 
         return $cur === Payment::STATUS_PAID && $prev !== Payment::STATUS_PAID;
+    }
+
+    private function mintOfficialReceiptNumber(Payment $payment): string
+    {
+        $seq = sprintf('%06d', (int) $payment->id);
+        $loan = sprintf('%04d', (int) $payment->loan_id);
+        $base = 'OR'.now()->format('Ymd').'-L'.$loan.'-'.$seq;
+        $out = $base;
+        $n = 0;
+        while (Payment::query()->where('official_receipt_number', $out)->exists()) {
+            $n++;
+            $out = $base.'-'.$n;
+        }
+
+        return $out;
     }
 
     /**
@@ -180,50 +322,5 @@ class PaymentController extends Controller
         }
 
         return null;
-    }
-
-    private function refreshLoanBalance(int $loanId): void
-    {
-        $loan = Loan::find($loanId);
-        if (! $loan) {
-            return;
-        }
-
-        $summary = Payment::query()
-            ->where('loan_id', $loanId)
-            ->selectRaw('COALESCE(SUM(GREATEST(amount_due - amount_paid, 0)), 0) AS remaining_balance')
-            ->selectRaw('SUM(CASE WHEN status != ? THEN 1 ELSE 0 END) AS unpaid_count', [Payment::STATUS_PAID])
-            ->first();
-
-        $loan->outstanding_balance = round((float) ($summary?->remaining_balance ?? 0), 2);
-        $unpaid = (int) ($summary?->unpaid_count ?? 0);
-        if ($unpaid === 0 && $loan->status === Loan::STATUS_ONGOING) {
-            $loan->status = Loan::STATUS_COMPLETED;
-            $loan->completed_at = now();
-        }
-        $loan->save();
-
-        if ($loan->status === Loan::STATUS_COMPLETED && $loan->borrower_id) {
-            $this->archiveBorrowerWhenNoActiveLoans((int) $loan->borrower_id);
-        }
-    }
-
-    private function archiveBorrowerWhenNoActiveLoans(int $borrowerId): void
-    {
-        $borrower = User::find($borrowerId);
-        if (! $borrower || ! $borrower->is_active) {
-            return;
-        }
-
-        $hasActiveLoans = Loan::where('borrower_id', $borrowerId)
-            ->whereIn('status', [Loan::STATUS_PENDING, Loan::STATUS_APPROVED, Loan::STATUS_ONGOING])
-            ->exists();
-
-        if ($hasActiveLoans) {
-            return;
-        }
-
-        $borrower->is_active = false;
-        $borrower->save();
     }
 }

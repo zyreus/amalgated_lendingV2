@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\EmailVerificationLog;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ActivityLogger;
@@ -13,6 +14,8 @@ use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
+    private const EXPORT_COLUMNS = ['ID', 'Name', 'Username', 'Email', 'Phone', 'Roles', 'Loans', 'Status', 'Created At'];
+
     public function index(Request $request): JsonResponse
     {
         $q = User::query()
@@ -31,8 +34,14 @@ class UserController extends Controller
         if ($request->filled('is_active')) {
             $q->where('is_active', filter_var($request->query('is_active'), FILTER_VALIDATE_BOOLEAN));
         }
+        if ($request->filled('role_slug')) {
+            $roleSlug = trim((string) $request->query('role_slug'));
+            if ($roleSlug !== '') {
+                $q->whereHas('roles', fn ($w) => $w->where('slug', $roleSlug));
+            }
+        }
 
-        $users = $q->orderByDesc('id')->paginate((int) $request->query('per_page', 15));
+        $users = $q->orderByDesc('id')->paginate(max(5, min(100, (int) $request->query('per_page', 15))));
 
         return response()->json(['ok' => true, 'data' => $users]);
     }
@@ -41,6 +50,7 @@ class UserController extends Controller
     {
         $data = $request->validate([
             'name' => 'required|string|max:255',
+            'username' => 'required|string|max:80|alpha_dash|unique:users,username',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:8',
             'phone' => 'nullable|string|max:32',
@@ -54,6 +64,7 @@ class UserController extends Controller
 
         $user = User::create([
             'name' => $data['name'],
+            'username' => $data['username'],
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
             'phone' => $data['phone'] ?? null,
@@ -84,6 +95,7 @@ class UserController extends Controller
     {
         $data = $request->validate([
             'name' => 'sometimes|string|max:255',
+            'username' => ['sometimes', 'string', 'max:80', 'alpha_dash', Rule::unique('users', 'username')->ignore($user->id)],
             'email' => ['sometimes', 'email', Rule::unique('users', 'email')->ignore($user->id)],
             'password' => 'nullable|string|min:8',
             'phone' => 'nullable|string|max:32',
@@ -96,8 +108,15 @@ class UserController extends Controller
         if (isset($data['name'])) {
             $user->name = $data['name'];
         }
+        if (isset($data['username'])) {
+            $user->username = trim((string) $data['username']) !== '' ? trim((string) $data['username']) : null;
+        }
         if (isset($data['email'])) {
-            $user->email = $data['email'];
+            $newEmail = trim((string) $data['email']);
+            if ($newEmail !== '' && strcasecmp($newEmail, (string) ($user->email ?? '')) !== 0) {
+                $user->email = $newEmail;
+                $user->email_verified_at = null;
+            }
         }
         if (! empty($data['password'])) {
             $user->password = Hash::make($data['password']);
@@ -131,6 +150,38 @@ class UserController extends Controller
         return response()->json(['ok' => true, 'user' => $user->fresh()->load('roles')]);
     }
 
+    public function verifyBorrowerEmail(Request $request, User $user, ActivityLogger $logger): JsonResponse
+    {
+        if (($user->role ?? '') !== 'borrower') {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Only borrower accounts can be marked as email-verified from this action.',
+            ], 422);
+        }
+
+        if (! $user->hasVerifiedEmail()) {
+            $user->markEmailAsVerified();
+        }
+
+        try {
+            EmailVerificationLog::query()->create([
+                'user_id' => $user->id,
+                'event' => 'admin_override',
+                'ip_address' => $request->ip(),
+                'detail' => 'Admin user '.$request->user()?->id,
+            ]);
+        } catch (\Throwable) {
+            /* ignore */
+        }
+
+        $logger->log($request->user(), 'users.verify_email_override', $user);
+
+        return response()->json([
+            'ok' => true,
+            'user' => $user->fresh()->load('roles'),
+        ]);
+    }
+
     public function destroy(Request $request, User $user, ActivityLogger $logger): JsonResponse
     {
         if ($user->id === $request->user()->id) {
@@ -140,6 +191,60 @@ class UserController extends Controller
         $user->delete();
 
         return response()->json(['ok' => true]);
+    }
+
+    public function export(Request $request)
+    {
+        $format = strtolower((string) $request->query('format', 'csv'));
+        if (! in_array($format, ['csv', 'pdf'], true)) {
+            return response()->json(['ok' => false, 'message' => 'Unsupported export format.'], 422);
+        }
+        if ($format === 'pdf') {
+            return response()->json(['ok' => false, 'message' => 'PDF export is not yet enabled for users. Use CSV for now.'], 422);
+        }
+
+        $query = User::query()->with('roles')->withCount('loans')->orderByDesc('id');
+        if ($search = trim((string) $request->query('search', ''))) {
+            $s = '%'.$search.'%';
+            $query->where(function ($w) use ($s) {
+                $w->where('name', 'like', $s)
+                    ->orWhere('email', 'like', $s)
+                    ->orWhere('phone', 'like', $s)
+                    ->orWhere('username', 'like', $s);
+            });
+        }
+        if ($request->filled('is_active')) {
+            $query->where('is_active', filter_var($request->query('is_active'), FILTER_VALIDATE_BOOLEAN));
+        }
+        if ($request->filled('role_slug')) {
+            $roleSlug = trim((string) $request->query('role_slug'));
+            if ($roleSlug !== '') {
+                $query->whereHas('roles', fn ($w) => $w->where('slug', $roleSlug));
+            }
+        }
+
+        $file = 'users-export-'.now()->format('Ymd-His').'.csv';
+
+        return response()->streamDownload(function () use ($query) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, self::EXPORT_COLUMNS);
+            $query->chunk(250, function ($rows) use ($out) {
+                foreach ($rows as $u) {
+                    fputcsv($out, [
+                        $u->id,
+                        $u->name,
+                        $u->username,
+                        $u->email,
+                        $u->phone,
+                        ($u->roles ?? collect())->pluck('name')->implode(', '),
+                        $u->loans_count ?? 0,
+                        $u->is_active ? 'Active' : 'Inactive',
+                        optional($u->created_at)?->format('Y-m-d H:i:s'),
+                    ]);
+                }
+            });
+            fclose($out);
+        }, $file, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     private function deriveRoleFromRoleIds(array $roleIds): ?string

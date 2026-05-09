@@ -1,22 +1,25 @@
 import AdminChatDashboard from '../../pages/AdminChatDashboard.jsx'
 import { useAdminApiAuth } from '../context/useAdminApiAuth.js'
 
-/** Amalgated Lending — restrained neutrals; accent for primary actions only. */
+/** Official Amalgated Lending — red & white enterprise CRM. */
 const CRM_THEME = {
-  '--admin-bg': '#f1f5f9',
-  '--admin-sidebar': '#f8fafc',
+  '--admin-bg': '#fafafa',
+  '--admin-sidebar': '#ffffff',
   '--admin-surface': '#ffffff',
-  '--admin-surface-2': '#f1f5f9',
-  '--admin-border': '#e2e8f0',
-  '--admin-text': '#0f172a',
-  '--admin-muted': '#475569',
-  '--admin-muted-2': '#64748b',
+  '--admin-surface-2': '#f4f4f5',
+  '--admin-border': '#e4e4e7',
+  '--admin-text': '#18181b',
+  '--admin-muted': '#52525b',
+  '--admin-muted-2': '#71717a',
   '--admin-warn-text': '#b45309',
   '--admin-success-text': '#047857',
   '--admin-danger-text': '#be123c',
-  '--admin-neutral-text': '#475569',
-  '--admin-accent': '#b91c1c',
-  '--admin-accent-2': '#991b1b',
+  '--admin-neutral-text': '#52525b',
+  '--admin-accent': '#DC2626',
+  '--admin-accent-2': '#b91c1c',
+  '--admin-ai-bg': '#fef2f2',
+  '--admin-ai-text': '#7f1d1d',
+  '--admin-ai-border': '#fecaca',
 }
 
 /**
@@ -24,7 +27,7 @@ const CRM_THEME = {
  * Requires Node chat API + Socket.IO (see VITE_CHAT_SERVER_URL).
  */
 export default function AdminChatCRM() {
-  const { logout, can } = useAdminApiAuth()
+  const { can } = useAdminApiAuth()
 
   return (
     <div
@@ -33,11 +36,10 @@ export default function AdminChatCRM() {
     >
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-[var(--admin-surface)] transition-colors duration-300">
         <AdminChatDashboard
-          onLogout={logout}
           canViewAnalytics
           canManageLoans={can('loans.view')}
           canViewBorrowers={can('borrowers.view')}
-          canAssignStaff={can('users.view')}
+          canAssignStaff={false}
         />
       </div>
     </div>

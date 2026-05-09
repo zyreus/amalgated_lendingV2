@@ -3,6 +3,7 @@ import {
   patchDocumentLoanWizard,
   uploadEmbeddedDocument,
 } from '../utils/documentLoanApi.js'
+import { getLaravelStorageFileUrl } from '../utils/lendingLaravelApi.js'
 
 const inputClass =
   'mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white'
@@ -454,7 +455,7 @@ export default function DocumentLoanWizardSection({ application, product, onAppl
               <label className="mt-3 inline-flex cursor-pointer rounded-lg bg-brand-primary px-3 py-2 text-xs font-semibold text-white">
                 <input
                   type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp"
                   className="sr-only"
                   disabled={busy}
                   onChange={(e) => {
@@ -466,7 +467,7 @@ export default function DocumentLoanWizardSection({ application, product, onAppl
                 {emb.valid_id_url ? 'Replace file' : 'Upload'}
               </label>
               {emb.valid_id_url ? (
-                <a href={emb.valid_id_url} target="_blank" rel="noreferrer" className="ml-3 text-xs font-semibold text-brand-primary hover:underline">
+                <a href={getLaravelStorageFileUrl(emb.valid_id_url)} target="_blank" rel="noreferrer" className="ml-3 text-xs font-semibold text-brand-primary hover:underline">
                   Open / preview
                 </a>
               ) : null}
@@ -477,7 +478,7 @@ export default function DocumentLoanWizardSection({ application, product, onAppl
               <label className="mt-3 inline-flex cursor-pointer rounded-lg bg-brand-primary px-3 py-2 text-xs font-semibold text-white">
                 <input
                   type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp"
                   className="sr-only"
                   disabled={busy}
                   onChange={(e) => {
@@ -489,7 +490,7 @@ export default function DocumentLoanWizardSection({ application, product, onAppl
                 {emb.proof_income_url ? 'Replace file' : 'Upload'}
               </label>
               {emb.proof_income_url ? (
-                <a href={emb.proof_income_url} target="_blank" rel="noreferrer" className="ml-3 text-xs font-semibold text-brand-primary hover:underline">
+                <a href={getLaravelStorageFileUrl(emb.proof_income_url)} target="_blank" rel="noreferrer" className="ml-3 text-xs font-semibold text-brand-primary hover:underline">
                   Open / preview
                 </a>
               ) : null}
@@ -502,7 +503,7 @@ export default function DocumentLoanWizardSection({ application, product, onAppl
             <label className="mt-3 inline-flex cursor-pointer rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold dark:border-slate-600">
               <input
                 type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
+                accept=".pdf,.jpg,.jpeg,.png,.webp"
                 className="sr-only"
                 disabled={busy}
                 onChange={(e) => {
@@ -516,14 +517,14 @@ export default function DocumentLoanWizardSection({ application, product, onAppl
             <ul className="mt-3 space-y-2 text-sm">
               {(emb.additional_urls || []).map((url, idx) => (
                 <li key={url} className="flex flex-wrap items-center gap-2">
-                  <a href={url} target="_blank" rel="noreferrer" className="font-semibold text-brand-primary hover:underline">
+                  <a href={getLaravelStorageFileUrl(url)} target="_blank" rel="noreferrer" className="font-semibold text-brand-primary hover:underline">
                     File {idx + 1}
                   </a>
                   <label className="cursor-pointer text-xs text-slate-600 underline dark:text-slate-300">
                     Replace
                     <input
                       type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp"
                       className="sr-only"
                       disabled={busy}
                       onChange={(e) => {

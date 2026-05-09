@@ -22,6 +22,8 @@ class AdminNavigationSeeder extends Seeder
             ['path' => '/admin/payments', 'label' => 'Payments', 'icon_key' => 'pay', 'sort_order' => 60, 'permission_slug' => 'payments.manage', 'match_end' => false],
             ['path' => '/admin/reports', 'label' => 'Reports', 'icon_key' => 'report', 'sort_order' => 70, 'permission_slug' => 'reports.view', 'match_end' => false],
             ['path' => '/admin/cms', 'label' => 'CMS', 'icon_key' => 'cms', 'sort_order' => 80, 'permission_slug' => 'cms.manage', 'match_end' => false],
+            ['path' => '/admin/newsletter', 'label' => 'News & announcements', 'icon_key' => 'bell', 'sort_order' => 87, 'permission_slug' => 'cms.manage', 'match_end' => false],
+            ['path' => '/admin/printable-forms', 'label' => 'Printable PDF forms', 'icon_key' => 'forms', 'sort_order' => 88, 'permission_slug' => 'forms.printable.manage', 'match_end' => false],
             ['path' => '/admin/settings', 'label' => 'Settings', 'icon_key' => 'settings', 'sort_order' => 90, 'permission_slug' => 'settings.manage', 'match_end' => false],
             ['path' => '/admin/activity', 'label' => 'Activity Logs', 'icon_key' => 'activity', 'sort_order' => 100, 'permission_slug' => 'activity.view', 'match_end' => false],
             ['path' => '/admin/notifications', 'label' => 'Notifications', 'icon_key' => 'bell', 'sort_order' => 110, 'permission_slug' => 'notifications.view', 'match_end' => false],

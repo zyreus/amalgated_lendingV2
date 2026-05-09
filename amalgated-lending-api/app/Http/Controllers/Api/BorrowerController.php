@@ -411,9 +411,10 @@ class BorrowerController extends Controller
             ], 422);
         }
 
-        $hasSubmittedLoanHistory = Schema::connection($connectionName)->hasColumn('loan_applications', 'submitted_at')
-            ? LoanApplication::on($connectionName)->where('user_id', $borrower->id)->whereNotNull('submitted_at')->exists()
-            : LoanApplication::on($connectionName)->where('user_id', $borrower->id)->exists();
+        $hasSubmittedLoanHistory = LoanApplication::on($connectionName)
+            ->where('user_id', $borrower->id)
+            ->officiallySubmitted()
+            ->exists();
 
         if ($hasSubmittedLoanHistory) {
             return response()->json([

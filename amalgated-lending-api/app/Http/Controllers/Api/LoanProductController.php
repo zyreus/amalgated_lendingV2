@@ -229,14 +229,17 @@ class LoanProductController extends Controller
         }
 
         return $request->validate([
+            'code' => 'nullable|string|max:40',
             'slug' => ['required', 'string', 'max:80', $slugUnique],
             'name' => 'required|string|max:255',
             'description' => 'nullable|string|max:20000',
             'interest_rate' => 'required|numeric|min:0|max:100',
-            'rate_type' => ['required', Rule::in(['monthly', 'fixed'])],
+            'rate_type' => ['required', Rule::in(['monthly', 'fixed', 'annual'])],
             'collateral' => 'nullable|string|max:5000',
+            'collateral_type' => 'nullable|string|max:120',
             'requirements' => 'nullable|string|max:5000',
             'max_term' => 'nullable|integer|min:0|max:600',
+            'max_amount' => 'nullable|numeric|min:0|max:999999999999.99',
             'age_limit' => 'nullable|integer|min:0|max:120',
             'safe_age' => 'nullable|integer|min:0|max:120',
             'downpayment' => 'nullable|string|max:120',
@@ -246,6 +249,7 @@ class LoanProductController extends Controller
             'sample_monthly_pension' => 'nullable|numeric|min:0',
             'sample_computation_note' => 'nullable|string|max:5000',
             'calculator_config' => 'nullable|array',
+            'rules' => 'nullable|array',
             'sort_order' => 'nullable|integer|min:0|max:999999',
         ]);
     }
