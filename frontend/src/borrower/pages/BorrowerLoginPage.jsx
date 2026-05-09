@@ -14,6 +14,9 @@ export default function BorrowerLoginPage() {
   const [errorMsg, setErrorMsg] = useState('')
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [privacyModalOpen, setPrivacyModalOpen] = useState(false)
+  const verifiedFlag = searchParams.get('verified') === '1'
+  const verifyStatus = (searchParams.get('verification_status') || '').toLowerCase()
+  const verifyMessage = searchParams.get('verification_message') || ''
 
   const onSubmit = async (e) => {
     e.preventDefault()
@@ -46,6 +49,24 @@ export default function BorrowerLoginPage() {
           <p className="mt-2 text-sm text-gray-500 transition-colors duration-300 dark:text-gray-400">
             Use your borrower account credentials.
           </p>
+          {verifiedFlag || verifyStatus ? (
+            <div
+              className={`mt-4 rounded-xl px-4 py-3 text-sm ${
+                verifiedFlag || verifyStatus === 'success' || verifyStatus === 'already_verified'
+                  ? 'border border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-700/50 dark:bg-emerald-700/15 dark:text-emerald-200'
+                  : 'border border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-700/50 dark:bg-amber-700/15 dark:text-amber-200'
+              }`}
+            >
+              {verifyMessage ||
+                (verifiedFlag || verifyStatus === 'success'
+                  ? 'Email verified successfully. You can now sign in.'
+                  : verifyStatus === 'already_verified'
+                    ? 'This email is already verified. You can sign in normally.'
+                    : verifyStatus === 'expired'
+                      ? 'Verification link expired. Sign in and tap resend verification email.'
+                      : 'Verification link is invalid. Sign in and request a new verification email.')}
+            </div>
+          ) : null}
           <div className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 dark:border-red-500/20 dark:bg-red-500/10">
             <p className="text-sm text-red-800 dark:text-red-300">
               New borrower?{' '}

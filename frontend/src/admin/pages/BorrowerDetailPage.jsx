@@ -55,6 +55,7 @@ export default function BorrowerDetailPage() {
   const [borrower, setBorrower] = useState(null)
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
+  const [resendBusy, setResendBusy] = useState(false)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [passwordForm, setPasswordForm] = useState({ password: '', confirmPassword: '' })
   const [passwordSubmitting, setPasswordSubmitting] = useState(false)
@@ -146,6 +147,19 @@ export default function BorrowerDetailPage() {
       showToast(e.message || 'Delete failed.', 'error')
     } finally {
       setDeleting(false)
+    }
+  }
+
+  const handleResendVerification = async () => {
+    if (!borrower?.id || resendBusy || borrower.email_verified_at) return
+    setResendBusy(true)
+    try {
+      const res = await api(`/users/${borrower.id}/resend-verification`, { method: 'POST', body: '{}' })
+      showToast(res.message || 'Verification email queued for borrower.', 'success')
+    } catch (e) {
+      showToast(e.message || 'Could not send verification email.', 'error')
+    } finally {
+      setResendBusy(false)
     }
   }
 
@@ -265,8 +279,26 @@ export default function BorrowerDetailPage() {
           <div>
             <dt className={`text-xs font-medium uppercase tracking-wider ${admin.textMuted}`}>Email verified</dt>
             <dd className="mt-1 text-gray-900 dark:text-gray-100">
-              {borrower.email_verified_at ? formatDateTime(borrower.email_verified_at) : 'Not verified'}
+              {borrower.email_verified_at ? (
+                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
+                  Verified {formatDateTime(borrower.email_verified_at)}
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
+                  Pending
+                </span>
+              )}
             </dd>
+            {!borrower.email_verified_at && can('users.manage') ? (
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={resendBusy}
+                className="mt-2 text-xs font-semibold text-red-600 hover:underline disabled:opacity-50 dark:text-red-400"
+              >
+                {resendBusy ? 'Sending...' : 'Resend verification email'}
+              </button>
+            ) : null}
           </div>
           <div className="sm:col-span-2">
             <dt className={`text-xs font-medium uppercase tracking-wider ${admin.textMuted}`}>RBAC roles</dt>

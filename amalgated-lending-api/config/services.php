@@ -82,6 +82,12 @@ return [
         'expires_hours' => max(1, min(720, (int) env('BORROWER_VERIFY_EXPIRES_HOURS', 168))),
         'resend_cooldown_seconds' => max(30, min(3600, (int) env('BORROWER_VERIFY_RESEND_COOLDOWN', 120))),
         'send_on_register' => filter_var(env('BORROWER_VERIFY_SEND_ON_REGISTER', true), FILTER_VALIDATE_BOOL),
+        // Public API origin used in borrower verification emails (falls back to APP_URL).
+        'base_url' => env('BORROWER_VERIFY_URL_BASE', env('APP_URL')),
+        // Frontend login path where users land after verify/failure.
+        'login_path' => env('BORROWER_VERIFY_LOGIN_PATH', '/borrower/login'),
+        // Optional absolute logo URL used by email templates.
+        'logo_url' => env('MAIL_LOGO_URL'),
     ],
 
 ];

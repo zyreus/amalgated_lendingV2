@@ -1,6 +1,10 @@
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:24px 0;background-color:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;">
 @php
-  $__mailLogoUrl = isset($logoUrl) && $logoUrl !== '' ? $logoUrl : rtrim((string) config('app.url'), '/').'/amalgated-lending-logo.svg';
+  $__mailLogoUrl = isset($logoUrl) && $logoUrl !== ''
+    ? $logoUrl
+    : ((string) config('services.borrower_verify.logo_url') !== ''
+      ? (string) config('services.borrower_verify.logo_url')
+      : rtrim((string) config('app.url'), '/').'/amalgated-lending-logo.svg');
 @endphp
   <tr>
     <td align="center">

@@ -70,7 +70,7 @@ Route::prefix('v1')->group(function () {
 
     /** Signed inbox link — redirects to SPA after marking email_verified_at. */
     Route::get('/borrower/email/verify', [BorrowerEmailVerificationController::class, 'verify'])
-        ->middleware(['signed', 'throttle:72,1'])
+        ->middleware(['throttle:72,1'])
         ->name('api.borrower.email.verify');
 
     Route::post('/liveness/verify', [LivenessController::class, 'verify'])
@@ -148,6 +148,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/users', [UserController::class, 'store']);
             Route::put('/users/{user}', [UserController::class, 'update']);
             Route::post('/users/{user}/verify-email', [UserController::class, 'verifyBorrowerEmail']);
+            Route::post('/users/{user}/resend-verification', [UserController::class, 'resendBorrowerEmailVerification']);
             Route::delete('/users/{user}', [UserController::class, 'destroy']);
         });
 

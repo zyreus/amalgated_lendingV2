@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SendBorrowerEmailVerificationJob;
 use App\Models\EmailVerificationLog;
 use App\Models\Role;
 use App\Models\User;
@@ -179,6 +180,37 @@ class UserController extends Controller
         return response()->json([
             'ok' => true,
             'user' => $user->fresh()->load('roles'),
+        ]);
+    }
+
+    public function resendBorrowerEmailVerification(Request $request, User $user, ActivityLogger $logger): JsonResponse
+    {
+        if (! $user->canUseBorrowerPortal()) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Only borrower accounts can receive verification emails.',
+            ], 422);
+        }
+
+        if ($user->hasVerifiedEmail()) {
+            return response()->json([
+                'ok' => true,
+                'message' => 'Borrower email is already verified.',
+            ]);
+        }
+
+        SendBorrowerEmailVerificationJob::dispatch((int) $user->id);
+        EmailVerificationLog::query()->create([
+            'user_id' => $user->id,
+            'event' => 'resent_admin',
+            'ip_address' => $request->ip(),
+            'detail' => 'Admin user '.$request->user()?->id,
+        ]);
+        $logger->log($request->user(), 'users.resend_email_verification', $user);
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Verification email queued for borrower.',
         ]);
     }
 

@@ -222,6 +222,9 @@ export default function BorrowersPage() {
               <p className={`text-xs ${admin.textMuted}`}>
                 Identity checks: {Number(b.liveness_verifications_count ?? 0) + Number(b.face_verifications_count ?? 0)}
               </p>
+              <p className={`text-xs ${admin.textMuted}`}>
+                Email: {b.email_verified_at ? 'Verified' : 'Pending'}
+              </p>
               <div className="flex flex-wrap gap-3">
                 <Link
                   to={`/admin/borrowers/${b.id}`}
@@ -280,15 +283,16 @@ export default function BorrowersPage() {
               <th className={admin.tableCell}>Credit</th>
               <th className={admin.tableCell}>Risk</th>
               <th className={admin.tableCell}>Loans</th>
+              <th className={admin.tableCell}>Email status</th>
               <th className={admin.tableCell}>Identity</th>
               <th className={admin.tableCell}> </th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <TableSkeletonRows cols={7} rows={6} />
+              <TableSkeletonRows cols={8} rows={6} />
             ) : rows.length === 0 ? (
-              <EmptyTableRow colSpan={7} message="No borrowers found." />
+              <EmptyTableRow colSpan={8} message="No borrowers found." />
             ) : (
               rows.map((b) => (
                 <tr key={b.id} className={admin.tbodyRow}>
@@ -328,6 +332,17 @@ export default function BorrowersPage() {
                     )}
                   </td>
                   <td className={`${admin.tableCell} tabular-nums`}>{b.loans_count ?? '—'}</td>
+                  <td className={admin.tableCell}>
+                    {b.email_verified_at ? (
+                      <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
+                        Verified
+                      </span>
+                    ) : (
+                      <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
+                        Pending
+                      </span>
+                    )}
+                  </td>
                   <td className={`${admin.tableCell} tabular-nums`}>
                     {Number(b.liveness_verifications_count ?? 0) + Number(b.face_verifications_count ?? 0)}
                   </td>

@@ -3,6 +3,7 @@
 namespace App\Exceptions;
 
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Routing\Exceptions\InvalidSignatureException;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -45,6 +46,32 @@ class Handler extends ExceptionHandler
     {
         $this->reportable(function (Throwable $e) {
             //
+        });
+
+        $this->renderable(function (InvalidSignatureException $e, $request) {
+            if (! $request->is('api/v1/borrower/email/verify')) {
+                return null;
+            }
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Verification link is invalid or expired.',
+                ], 403);
+            }
+
+            $frontend = rtrim((string) config('app.frontend_url'), '/');
+            $path = '/'.ltrim((string) config('services.borrower_verify.login_path', '/borrower/login'), '/');
+            $isExpired = is_numeric($request->query('expires'))
+                && (int) $request->query('expires') < now()->getTimestamp();
+            $query = http_build_query([
+                'verification_status' => $isExpired ? 'expired' : 'invalid',
+                'verification_message' => $isExpired
+                    ? 'This verification link expired. Please request a new email.'
+                    : 'This verification link is invalid.',
+            ]);
+
+            return redirect()->away("{$frontend}{$path}?{$query}");
         });
     }
 }
