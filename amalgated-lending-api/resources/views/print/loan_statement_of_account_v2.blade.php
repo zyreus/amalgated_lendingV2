@@ -68,6 +68,9 @@
     $monthlyPrincipal = (float) ($breakdown['monthly_principal'] ?? ($scheduleRows[0]['principal'] ?? 0));
     $monthlyInterest = (float) ($breakdown['monthly_interest'] ?? ($scheduleRows[0]['interest'] ?? 0));
     $monthlyAmortization = (float) ($breakdown['monthly_amortization'] ?? ($scheduleRows[0]['amortization'] ?? 0));
+    $semiMonthlyPayment = (float) ($breakdown['semi_monthly_payment'] ?? ($monthlyAmortization / 2));
+    $remainingPension = array_key_exists('remaining_pension', $breakdown) ? (float) $breakdown['remaining_pension'] : null;
+    $pensionRetentionThreshold = array_key_exists('pension_retention_threshold', $breakdown) ? (float) $breakdown['pension_retention_threshold'] : null;
 
     $serviceCharge = (float) ($breakdown['service_charge'] ?? 0);
     $insurance = (float) ($breakdown['insurance'] ?? 0);
@@ -139,6 +142,10 @@
             <dt>Monthly Amortization</dt>
             <dd>{{ $money($monthlyAmortization) }}</dd>
         </div>
+        <div>
+            <dt>Semi-monthly Payment</dt>
+            <dd>{{ $money($semiMonthlyPayment) }}</dd>
+        </div>
 
         <div>
             <dt>Service Charge</dt>
@@ -175,6 +182,18 @@
             <dt>Net Loan Proceeds</dt>
             <dd>{{ $money($netProceeds) }}</dd>
         </div>
+        @if ($remainingPension !== null)
+        <div>
+            <dt>Remaining Pension</dt>
+            <dd>{{ $money($remainingPension) }}</dd>
+        </div>
+        @endif
+        @if ($pensionRetentionThreshold !== null)
+        <div>
+            <dt>Pension Retention Threshold</dt>
+            <dd>{{ $money($pensionRetentionThreshold) }}</dd>
+        </div>
+        @endif
     </dl>
 
     <p class="small" style="margin: 0 0 10px;">

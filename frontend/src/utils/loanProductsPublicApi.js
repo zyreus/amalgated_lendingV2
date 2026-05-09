@@ -31,6 +31,12 @@ export async function postLoanCalculator(payload) {
   if (payload.monthly_pension != null && payload.monthly_pension !== '') {
     body.monthly_pension = Number(payload.monthly_pension)
   }
+  if (payload.pension_type != null && payload.pension_type !== '') {
+    body.pension_type = String(payload.pension_type)
+  }
+  if (payload.application_nature != null && payload.application_nature !== '') {
+    body.application_nature = String(payload.application_nature)
+  }
   if (payload.principal != null && payload.principal !== '') {
     body.principal = Number(payload.principal)
   }

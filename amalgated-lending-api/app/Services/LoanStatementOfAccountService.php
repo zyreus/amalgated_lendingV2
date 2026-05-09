@@ -156,6 +156,10 @@ class LoanStatementOfAccountService
         if ($monthlyPension === null && $application) {
             $monthlyPension = $application->monthly_pension;
         }
+        $pensionType = Arr::get($payload, 'pension_type');
+        if (($pensionType === null || $pensionType === '') && $application) {
+            $pensionType = $application->pension_type;
+        }
 
         $compute = $this->calculator->compute([
             'product_slug' => (string) $productSlug,
@@ -164,6 +168,7 @@ class LoanStatementOfAccountService
             'application_nature' => $applicationNature,
             'age' => $age !== null && $age !== '' ? (int) $age : null,
             'monthly_pension' => $monthlyPension !== null && $monthlyPension !== '' ? (float) $monthlyPension : null,
+            'pension_type' => $pensionType !== null && $pensionType !== '' ? (string) $pensionType : null,
         ]);
 
         DB::transaction(function () use ($loan, $payload, $compute) {

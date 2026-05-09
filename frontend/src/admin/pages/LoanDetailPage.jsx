@@ -369,6 +369,23 @@ export default function LoanDetailPage() {
               Est. monthly payment: ₱{Number(loan.monthly_payment).toLocaleString()}
             </p>
           )}
+          {loan.monthly_payment != null && Number(loan.monthly_payment) > 0 && (
+            <p className={`mt-1 ${admin.textMuted}`}>
+              Est. semi-monthly payment: ₱{(Number(loan.monthly_payment) / 2).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          )}
+          {loan.total_deductions != null && (
+            <p className={`mt-1 ${admin.textMuted}`}>
+              Deductions: ₱{Number(loan.total_deductions).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Net proceeds: ₱
+              {Number(loan.net_proceeds || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          )}
+          {loan?.application_payload?.monthly_pension != null && loan.monthly_payment != null && (
+            <p className={`mt-1 ${admin.textMuted}`}>
+              Remaining pension after deduction: ₱
+              {(Number(loan.application_payload.monthly_pension) - Number(loan.monthly_payment)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          )}
           {loan.outstanding_balance != null && (
             <p className={`mt-1 ${admin.textMuted}`}>
               Outstanding: ₱{Number(loan.outstanding_balance).toLocaleString()}

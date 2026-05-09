@@ -773,6 +773,29 @@ th{background:#f9fafb}
             />
             <Row label="Monthly payment" value={formatPeso(loan?.monthly_payment)} />
             <Row
+              label="Semi-monthly payment"
+              value={formatPeso(
+                loan?.monthly_payment != null ? Number(loan.monthly_payment) / 2 : null,
+              )}
+            />
+            <Row label="Monthly principal" value={formatPeso(loan?.monthly_principal)} />
+            <Row label="Monthly interest" value={formatPeso(loan?.monthly_interest)} />
+            <Row label="Service charge" value={formatPeso(loan?.service_charge)} />
+            <Row label="Insurance / MRI" value={formatPeso(loan?.mri_fee)} />
+            <Row label="Doc stamp" value={formatPeso(loan?.doc_stamp)} />
+            <Row label="Notarial fee" value={formatPeso(loan?.notarial_fee)} />
+            <Row label="Total deductions" value={formatPeso(loan?.total_deductions)} />
+            <Row label="Net proceeds" value={formatPeso(loan?.net_proceeds)} />
+            <Row
+              label="Remaining pension"
+              value={formatPeso(
+                loan?.loan_computation_snapshot?.breakdown?.remaining_pension ??
+                  (loan?.application_payload?.monthly_pension != null && loan?.monthly_payment != null
+                    ? Number(loan.application_payload.monthly_pension) - Number(loan.monthly_payment)
+                    : null),
+              )}
+            />
+            <Row
               label="Final installment (scheduled)"
               value={formatPeso(
                 (() => {

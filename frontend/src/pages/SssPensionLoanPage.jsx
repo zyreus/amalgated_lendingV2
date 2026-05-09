@@ -19,7 +19,7 @@ import { postSssPensionLoanApplication } from '../utils/lendingApi.js'
 import { openModal } from '../utils/systemModal.js'
 import { buildMissingFieldsSummary, collectMissingFields, focusFirstInvalidField } from '../utils/applicationFormValidation.js'
 import { isFullApplicationPrintable } from '../components/loan/amalgatedApplicationCompleteness.js'
-import { getLoanProducts } from '../utils/loanProductsPublicApi.js'
+import { getLoanProducts, postLoanCalculator } from '../utils/loanProductsPublicApi.js'
 
 const MAX_AGE = 70
 const TERM_OPTIONS = [6, 12, 18, 24, 30, 36]
@@ -49,6 +49,8 @@ export default function SssPensionLoanPage() {
     docGovernmentIds: [],
   })
   const [rateLabel, setRateLabel] = useState('2.24% per month')
+  const [liveQuote, setLiveQuote] = useState(null)
+  const [quoteError, setQuoteError] = useState('')
 
   useEffect(() => {
     if (errorMsg) {
@@ -74,6 +76,45 @@ export default function SssPensionLoanPage() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    const principal = Number(extendedApplication?.loan_principal_php || 0)
+    const term = Number(extendedApplication?.loan_term_months || 0)
+    const px = extendedApplication?.product_extra || {}
+    const monthlyPension = Number(px?.monthly_pension || 0)
+    const pensionType = String(px?.pension_type || 'SSS').toUpperCase()
+    const applicationNature = String(extendedApplication?.application_nature || 'new').toLowerCase() === 'reloan' ? 'reloan' : 'new'
+    if (!(principal > 0 && term > 0 && monthlyPension > 0)) {
+      setLiveQuote(null)
+      setQuoteError('')
+      return
+    }
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      try {
+        const res = await postLoanCalculator({
+          slug: 'sss-pension-loan',
+          term_months: term,
+          principal,
+          monthly_pension: monthlyPension,
+          pension_type: pensionType,
+          application_nature: applicationNature,
+          include_fees: true,
+        })
+        if (cancelled) return
+        setLiveQuote(res)
+        setQuoteError('')
+      } catch (e) {
+        if (cancelled) return
+        setLiveQuote(null)
+        setQuoteError(e?.message || 'Could not compute pension quote.')
+      }
+    }, 350)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [extendedApplication])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -282,6 +323,28 @@ export default function SssPensionLoanPage() {
               Complete the official Amalgated application and co-maker statement. For pension loans, co-maker is optional. Use the section below to set
               your borrower portal password.
             </p>
+            {liveQuote?.fee_breakdown ? (
+              <div className="mt-4 rounded-xl border border-brand-primary/20 bg-brand-primary/5 p-4 text-sm dark:border-brand-primary/30 dark:bg-brand-primary/10">
+                <p className="font-semibold text-brand-text dark:text-white">Live pension computation preview</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <p>Monthly principal: <strong>₱{Number(liveQuote.fee_breakdown.monthly_principal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                  <p>Monthly interest: <strong>₱{Number(liveQuote.fee_breakdown.monthly_interest_on_full_principal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                  <p>Monthly amortization: <strong>₱{Number(liveQuote.monthly_amortization || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                  <p>Semi-monthly: <strong>₱{Number(liveQuote.fee_breakdown.semi_monthly_payment || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                  <p>Total deductions: <strong>₱{Number(liveQuote.fee_breakdown.total_miscellaneous || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                  <p>Net proceeds: <strong>₱{Number(liveQuote.fee_breakdown.net_proceeds_after_misc || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                  <p className="sm:col-span-2">
+                    Remaining pension: <strong>₱{Number(liveQuote.fee_breakdown.remaining_pension || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                    {' '} (minimum retention ₱{Number(liveQuote.fee_breakdown.pension_retention_threshold || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            {quoteError ? (
+              <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                {quoteError}
+              </p>
+            ) : null}
 
             {status === 'success' ? (
               <p className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" role="status">

@@ -10,6 +10,7 @@ use App\Models\LoanDocument;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\BrevoMailService;
+use App\Services\LoanCalculationEngine;
 use App\Services\LoanProductRateResolver;
 use App\Services\NotificationCenter;
 use Illuminate\Http\JsonResponse;
@@ -19,6 +20,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class SssPensionLoanController extends Controller
 {
@@ -31,6 +33,7 @@ class SssPensionLoanController extends Controller
     public function __construct(
         private BrevoMailService $brevo,
         private LoanProductRateResolver $loanProductRates,
+        private LoanCalculationEngine $loanEngine,
     ) {}
 
     public function apply(Request $request): JsonResponse
@@ -84,6 +87,25 @@ class SssPensionLoanController extends Controller
         $payload['monthly_pension'] = (float) $data['monthly_pension'];
         $payload['age'] = $age;
         $payload['bank_statement_months_required'] = self::BANK_STATEMENT_MONTHS_REQUIRED;
+
+        // Enforce pension retention threshold and official product formula at intake.
+        try {
+            $this->loanEngine->compute([
+                'product_slug' => 'sss-pension-loan',
+                'loan_amount' => (float) $data['principal'],
+                'term_months' => (int) $data['term_months'],
+                'application_nature' => (string) ($payload['application_nature'] ?? 'new'),
+                'monthly_pension' => (float) $data['monthly_pension'],
+                'pension_type' => (string) $data['pension_type'],
+                'age' => $age,
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'ok' => false,
+                'message' => collect($e->errors())->flatten()->first() ?? 'Pension computation validation failed.',
+                'errors' => $e->errors(),
+            ], 422);
+        }
 
         $applicantEmail = mb_strtolower(trim($data['email']));
 

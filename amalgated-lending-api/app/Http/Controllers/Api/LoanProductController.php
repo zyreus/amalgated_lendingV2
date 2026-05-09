@@ -82,6 +82,7 @@ class LoanProductController extends Controller
             'term_months' => 'required|integer|min:1|max:600',
             'include_fees' => 'sometimes|boolean',
             'application_nature' => 'sometimes|string|in:new,reloan',
+            'pension_type' => 'sometimes|string|in:SSS,GSIS,sss,gsis',
             'srp' => 'sometimes|numeric|min:0',
             'purchase_channel' => 'sometimes|string|in:outside_office,in_office',
         ]);
@@ -161,6 +162,7 @@ class LoanProductController extends Controller
             'term_months' => $term,
             'application_nature' => $applicationNature,
             'monthly_pension' => $pensionMode ? (float) $request->input('monthly_pension') : null,
+            'pension_type' => $pensionMode ? (string) $request->input('pension_type', 'SSS') : null,
         ];
         if ($product->slug === 'appliance' && $request->filled('srp')) {
             $engineInput['srp'] = (float) $request->input('srp');
@@ -190,6 +192,7 @@ class LoanProductController extends Controller
             : ($compStyleUsed === 'amortized' ? 'amortized_reducing_balance' : 'straight_line');
 
         $monthly = (float) ($breakdown['monthly_amortization'] ?? 0);
+        $semiMonthly = (float) ($breakdown['semi_monthly_payment'] ?? ($monthly / 2));
         $principalPart = (float) ($breakdown['monthly_principal'] ?? 0);
         $interestPart = (float) ($breakdown['monthly_interest'] ?? 0);
 
@@ -207,6 +210,7 @@ class LoanProductController extends Controller
             'computation_style' => $compLabel,
             'estimated_loanable_amount' => round($principal, 2),
             'monthly_amortization' => round($monthly, 2),
+            'semi_monthly_payment' => round($semiMonthly, 2),
             'term_months' => $term,
             'interest_rate_monthly_percent' => round($monthlyRatePercent, 4),
         ];

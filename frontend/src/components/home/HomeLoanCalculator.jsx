@@ -16,6 +16,10 @@ function isPensionProduct(product) {
   return product?.slug === 'sss-pension-loan'
 }
 
+function isSalaryProduct(product) {
+  return product?.slug === 'salary-loan'
+}
+
 export default function HomeLoanCalculator() {
   const reduceMotion = useReducedMotion()
   const [products, setProducts] = useState([])
@@ -25,6 +29,7 @@ export default function HomeLoanCalculator() {
   const [nature, setNature] = useState('new')
   const [age, setAge] = useState('')
   const [monthlyPension, setMonthlyPension] = useState('')
+  const [pensionType, setPensionType] = useState('SSS')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -49,6 +54,7 @@ export default function HomeLoanCalculator() {
   const selected = useMemo(() => products.find((p) => String(p.id) === String(productId)) || null, [productId, products])
   const travelMode = isTravelProduct(selected)
   const pensionMode = isPensionProduct(selected)
+  const salaryMode = isSalaryProduct(selected)
   const maxTerm = selected?.max_term || 360
   const effectiveTerm = travelMode ? 1 : Number(termMonths || 0)
 
@@ -66,6 +72,7 @@ export default function HomeLoanCalculator() {
           term_months: effectiveTerm,
           application_nature: nature,
           ...(pensionMode && monthlyPension ? { monthly_pension: Number(monthlyPension || 0) } : {}),
+          ...(pensionMode && pensionType ? { pension_type: pensionType } : {}),
           ...(pensionMode && age ? { age: Number(age || 0) } : {}),
         }),
       })
@@ -150,6 +157,14 @@ export default function HomeLoanCalculator() {
               onChange={(e) => setMonthlyPension(e.target.value)}
               placeholder="Monthly pension"
             />
+            <select
+              className="rounded-xl border border-black/15 px-4 py-3 text-sm"
+              value={pensionType}
+              onChange={(e) => setPensionType(e.target.value)}
+            >
+              <option value="SSS">SSS</option>
+              <option value="GSIS">GSIS</option>
+            </select>
             <input
               className="rounded-xl border border-black/15 px-4 py-3 text-sm"
               type="number"
@@ -194,6 +209,50 @@ export default function HomeLoanCalculator() {
               PHP {peso(data.breakdown.monthly_amortization)}
             </dd>
           </div>
+          {salaryMode ? (
+            <>
+              <div className="mt-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <dt className="text-brand-text/70">Semi-monthly payment</dt>
+                <dd className="text-base font-semibold tabular-nums text-brand-text">
+                  PHP {peso(data.breakdown.semi_monthly_payment)}
+                </dd>
+              </div>
+              <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <dt className="text-brand-text/70">Total deductions</dt>
+                <dd className="text-base font-semibold tabular-nums text-brand-text">
+                  PHP {peso(data.breakdown.total_deductions)}
+                </dd>
+              </div>
+              <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <dt className="text-brand-text/70">Net proceeds</dt>
+                <dd className="text-base font-semibold tabular-nums text-brand-text">
+                  PHP {peso(data.breakdown.net_proceeds)}
+                </dd>
+              </div>
+            </>
+          ) : null}
+          {pensionMode ? (
+            <>
+              <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <dt className="text-brand-text/70">Monthly principal</dt>
+                <dd className="text-base font-semibold tabular-nums text-brand-text">PHP {peso(data.breakdown.monthly_principal)}</dd>
+              </div>
+              <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <dt className="text-brand-text/70">Monthly interest</dt>
+                <dd className="text-base font-semibold tabular-nums text-brand-text">PHP {peso(data.breakdown.monthly_interest)}</dd>
+              </div>
+              <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <dt className="text-brand-text/70">Net proceeds</dt>
+                <dd className="text-base font-semibold tabular-nums text-brand-text">PHP {peso(data.breakdown.net_proceeds)}</dd>
+              </div>
+              <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <dt className="text-brand-text/70">Remaining pension</dt>
+                <dd className="text-base font-semibold tabular-nums text-brand-text">
+                  PHP {peso(data.breakdown.remaining_pension)} (min {peso(data.breakdown.pension_retention_threshold)})
+                </dd>
+              </div>
+            </>
+          ) : null}
         </dl>
       ) : null}
     </motion.section>

@@ -634,6 +634,9 @@ class BorrowerLoanApplicationWizardController extends Controller
             'monthly_pension' => isset($form['monthly_pension']) && $form['monthly_pension'] !== ''
                 ? (float) $form['monthly_pension']
                 : null,
+            'pension_type' => isset($form['pension_type']) && $form['pension_type'] !== ''
+                ? (string) $form['pension_type']
+                : null,
         ];
 
         try {

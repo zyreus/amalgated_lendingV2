@@ -148,8 +148,9 @@ class LoanController extends Controller
         $applicationNature = (string) ($payload['application_nature'] ?? 'new');
         $age = $payload['age'] ?? null;
         $monthlyPension = $payload['monthly_pension'] ?? null;
+        $pensionType = $payload['pension_type'] ?? null;
 
-        $result = DB::transaction(function () use ($request, $loan, $logger, $productSlug, $applicationNature, $age, $monthlyPension) {
+        $result = DB::transaction(function () use ($request, $loan, $logger, $productSlug, $applicationNature, $age, $monthlyPension, $pensionType) {
             $principal = (float) $loan->principal;
             if ($request->filled('approved_principal')) {
                 $principal = round((float) $request->input('approved_principal'), 2);
@@ -191,6 +192,7 @@ class LoanController extends Controller
                 'application_nature' => $applicationNature,
                 'age' => $age !== null && $age !== '' ? (int) $age : null,
                 'monthly_pension' => $monthlyPension !== null && $monthlyPension !== '' ? (float) $monthlyPension : null,
+                'pension_type' => $pensionType !== null && $pensionType !== '' ? (string) $pensionType : null,
                 'monthly_rate_percent_override' => $rateOverride,
             ]);
 

@@ -20,6 +20,8 @@ class LoanCalculator
         $amount = (float) ($input['loan_amount'] ?? 0);
         $term = max(1, (int) ($input['term_months'] ?? 0));
         $applicationNature = (string) ($input['application_nature'] ?? 'new');
+        $normalizedNature = strtolower(trim($applicationNature));
+        $normalizedNature = in_array($normalizedNature, ['reloan', 'rl'], true) ? 'reloan' : 'new';
 
         $product = $this->resolveProduct($input);
         if (! $product) {
@@ -103,25 +105,34 @@ class LoanCalculator
         $svcMode = (string) ($rules['service_charge_mode'] ?? 'percent');
         $insurancePerThousand = (float) ($rules['insurance_per_1000'] ?? $cfg['insurance_per_1000'] ?? 35.0);
         $insuranceFixed = (float) ($rules['insurance_fixed'] ?? 2000.0);
+        $insuranceRate = (float) ($rules['insurance_rate'] ?? 0.0);
+        $insuranceMode = (string) ($rules['insurance_mode'] ?? ($insuranceRate > 0 ? 'percent' : 'per_1000_plus_fixed'));
         $isMortgageProduct = in_array($product->slug, ['real-estate-mortgage', 'chattel-mortgage'], true);
         $mortgageRate = (float) ($rules['mortgage_fee_rate'] ?? ($isMortgageProduct ? 0.02 : 0.0));
         $mortgageThreshold = (float) ($rules['mortgage_fee_threshold'] ?? 0);
         $notarialNew = (float) ($rules['notarial_fee_new'] ?? $cfg['notarial_new_loan'] ?? 1500.0);
         $notarialReloan = (float) ($rules['notarial_fee_reloan'] ?? $cfg['notarial_reloan'] ?? $notarialNew);
         if ($product->slug === 'salary-loan') {
-            $notarialNew = (float) ($rules['notarial_fee_new'] ?? 350.0);
+            $notarialNew = (float) ($rules['notarial_fee_new'] ?? 175.0);
             $notarialReloan = (float) ($rules['notarial_fee_reloan'] ?? $notarialNew);
         } elseif ($isMortgageProduct) {
             $notarialNew = (float) ($rules['notarial_fee_new'] ?? 1500.0);
             $notarialReloan = (float) ($rules['notarial_fee_reloan'] ?? 175.0);
         }
 
-        $serviceCharge = $this->computeServiceCharge($amount, $applicationNature, $serviceChargeRate, $svcMode, $rules, $cfg);
+        $pensionSystem = $this->resolvePensionSystem($input, $rules);
+        if ($product->slug === 'sss-pension-loan') {
+            $svcMode = 'fixed';
+            $serviceCharge = $this->resolvePensionPolicyAmount($rules, 'service_charge_fixed', $normalizedNature, $pensionSystem, $amount * $serviceChargeRate);
+            $notarialFee = $this->resolvePensionPolicyAmount($rules, 'notarial_fee', $normalizedNature, $pensionSystem, $normalizedNature === 'reloan' ? $notarialReloan : $notarialNew);
+        } else {
+            $serviceCharge = $this->computeServiceCharge($amount, $applicationNature, $serviceChargeRate, $svcMode, $rules, $cfg);
+            $notarialFee = $this->money($applicationNature === 'reloan' ? $notarialReloan : $notarialNew);
+        }
         $insurance = $feeProfile === 'travel'
             ? 0.0
-            : $this->money(($amount / 1000.0) * $insurancePerThousand + $insuranceFixed);
+            : $this->computeInsurance($amount, $insuranceMode, $insuranceRate, $insurancePerThousand, $insuranceFixed);
         $docStamp = $this->computeDocStamp($amount, $rules);
-        $notarialFee = $this->money($applicationNature === 'reloan' ? $notarialReloan : $notarialNew);
 
         $mortgageFee = $this->money(
             $isMortgageProduct && $amount >= $mortgageThreshold ? $amount * $mortgageRate : 0.0
@@ -133,6 +144,10 @@ class LoanCalculator
         }
 
         $compStyle = (string) ($cfg['computation_style'] ?? 'straight_line');
+        if ($product->slug === 'salary-loan') {
+            // Salary policy uses straight-line principal/interest computations for full transparency.
+            $compStyle = 'straight_line';
+        }
         $useAmortized = $compStyle === 'amortized'
             && $product->slug !== 'travel-assistance-loan'
             && $feeProfile !== 'travel';
@@ -162,8 +177,24 @@ class LoanCalculator
             $wholeTermInterestPercent = $this->money($monthlyRatePercent * $term, 4);
         }
 
+        $monthlyPensionInput = isset($input['monthly_pension']) && $input['monthly_pension'] !== ''
+            ? $this->money((float) $input['monthly_pension'])
+            : null;
+        $pensionRetentionThreshold = null;
+        $remainingPension = null;
+        if ($product->slug === 'sss-pension-loan' && $monthlyPensionInput !== null) {
+            $pensionRetentionThreshold = $this->resolvePensionPolicyAmount($rules, 'pension_retention_threshold', $normalizedNature, $pensionSystem, 1000.0);
+            $remainingPension = $this->money($monthlyPensionInput - $monthlyAmortization);
+            if ($remainingPension < $pensionRetentionThreshold) {
+                throw ValidationException::withMessages([
+                    'monthly_pension' => ['Remaining pension (₱'.number_format($remainingPension, 2).') is below retention threshold of ₱'.number_format($pensionRetentionThreshold, 2).'.'],
+                ]);
+            }
+        }
+
         $totalMiscFees = $this->money($serviceCharge + $insurance + $docStamp + $notarialFee + $mortgageFee + $reLoanFee);
         $netProceeds = $miscDeductedFromProceeds ? $this->money($amount - $totalMiscFees) : $this->money($amount);
+        $semiMonthlyPayment = $this->money($monthlyAmortization / 2.0);
 
         $openingAccountFee = ($product->slug === 'travel-assistance-loan')
             ? (float) ($rules['opening_account_fee'] ?? $cfg['opening_account_fee'] ?? 10000)
@@ -196,6 +227,7 @@ class LoanCalculator
                 'application_nature' => $applicationNature,
                 'age' => $age,
                 'monthly_pension' => isset($input['monthly_pension']) ? $this->money((float) $input['monthly_pension']) : null,
+                'pension_system' => $product->slug === 'sss-pension-loan' ? strtoupper($pensionSystem) : null,
                 'computation_style_used' => $useAmortized ? 'amortized' : 'straight_line',
                 'appliance' => $applianceMeta,
             ], fn ($v) => $v !== null),
@@ -214,6 +246,10 @@ class LoanCalculator
                 'monthly_principal' => $monthlyPrincipal,
                 'monthly_interest' => $monthlyInterest,
                 'monthly_amortization' => $monthlyAmortization,
+                'semi_monthly_payment' => $semiMonthlyPayment,
+                'remaining_pension' => $remainingPension,
+                'pension_retention_threshold' => $pensionRetentionThreshold,
+                'pension_compliance_ok' => $remainingPension !== null && $pensionRetentionThreshold !== null ? $remainingPension >= $pensionRetentionThreshold : null,
                 'whole_term_interest_percent' => $wholeTermInterestPercent,
                 'total_add_on_interest' => $totalAddOnInterest,
                 'total_interest' => $totalAddOnInterest,
@@ -224,6 +260,12 @@ class LoanCalculator
                 'total_deductions' => $totalMiscFees,
                 'mri_fee' => $insurance,
                 'net_proceeds' => $netProceeds,
+                'salary_deduction_breakdown' => $product->slug === 'salary-loan' ? [
+                    'insurance' => $insurance,
+                    'doc_stamp' => $docStamp,
+                    'service_charge' => $serviceCharge,
+                    'notarial_fee' => $notarialFee,
+                ] : null,
                 'adjusted_monthly_rate_percent' => $adjustedRate,
             ], fn ($v) => $v !== null),
             'summary' => [
@@ -239,12 +281,18 @@ class LoanCalculator
                 'total_charges' => $totalMiscFees,
                 'total_deductions' => $totalMiscFees,
                 'net_proceeds' => $netProceeds,
+                'semi_monthly_payment' => $semiMonthlyPayment,
+                'remaining_pension' => $remainingPension,
+                'pension_retention_threshold' => $pensionRetentionThreshold,
             ],
             'schedule' => $schedule,
             'notes' => array_values(array_filter([
                 $product->slug === 'travel-assistance-loan' ? 'Travel assistance: monthly renewal (default one-month billing cycle); miscellaneous fees shown for quotation reference and are not deducted from disbursement; Landbank opening account fee is billed separately.' : null,
-                $product->slug === 'salary-loan' ? 'Salary loans are commonly settled through salary deduction arrangements.' : null,
+                $product->slug === 'salary-loan' ? 'Salary loan formula: monthly principal = amount ÷ term; monthly interest = amount × monthly rate; semi-monthly payment = monthly amortization ÷ 2.' : null,
                 $product->slug === 'sss-pension-loan' ? 'Pensioner loan uses pension multiplier and age policy checks.' : null,
+                $product->slug === 'sss-pension-loan' && $remainingPension !== null && $pensionRetentionThreshold !== null
+                    ? 'Remaining pension after monthly amortization: ₱'.number_format($remainingPension, 2).' (minimum retention: ₱'.number_format($pensionRetentionThreshold, 2).').'
+                    : null,
                 $age !== null && $product->safe_age !== null && $age > (int) $product->safe_age && $product->slug === 'sss-pension-loan'
                     ? 'Borrower exceeds the conservative safe age threshold ('.$product->safe_age.'). Obtain compliance / branch approval.'
                     : null,
@@ -256,8 +304,12 @@ class LoanCalculator
                 'service_charge_rate' => $serviceChargeRate,
                 'insurance_per_1000' => $insurancePerThousand,
                 'insurance_fixed' => $insuranceFixed,
+                'insurance_mode' => $insuranceMode,
+                'insurance_rate' => $insuranceRate,
                 'mortgage_fee_rate' => $mortgageRate,
                 'mortgage_fee_threshold' => $mortgageThreshold,
+                'pension_system' => $product->slug === 'sss-pension-loan' ? strtoupper($pensionSystem) : null,
+                'application_nature_normalized' => $normalizedNature,
             ],
         ];
     }
@@ -327,7 +379,26 @@ class LoanCalculator
                 'monthly_principal' => (float) ($b['monthly_principal'] ?? 0),
                 'monthly_interest_on_full_principal' => (float) ($b['monthly_interest'] ?? 0),
                 'monthly_amortization' => (float) ($b['monthly_amortization'] ?? 0),
+                'semi_monthly_payment' => (float) ($b['semi_monthly_payment'] ?? 0),
                 'total_miscellaneous' => (float) ($b['total_miscellaneous_fees'] ?? 0),
+                'net_proceeds_after_misc' => (float) ($b['net_proceeds'] ?? 0),
+                'remaining_pension' => (float) ($b['remaining_pension'] ?? 0),
+                'pension_retention_threshold' => (float) ($b['pension_retention_threshold'] ?? 0),
+                'pension_compliance_ok' => (bool) ($b['pension_compliance_ok'] ?? false),
+            ];
+        }
+
+        if ($slug === 'salary-loan') {
+            return [
+                'service_charge' => (float) ($b['service_charge'] ?? 0),
+                'insurance' => (float) ($b['insurance'] ?? 0),
+                'doc_stamp' => (float) ($b['doc_stamp'] ?? $b['documentary_stamp'] ?? 0),
+                'notarial_fee' => (float) ($b['notarial_fee'] ?? 0),
+                'monthly_principal' => (float) ($b['monthly_principal'] ?? 0),
+                'monthly_interest_on_full_principal' => (float) ($b['monthly_interest'] ?? 0),
+                'monthly_amortization_straight_line' => (float) ($b['monthly_amortization'] ?? 0),
+                'semi_monthly_payment' => (float) ($b['semi_monthly_payment'] ?? 0),
+                'total_deductions' => (float) ($b['total_deductions'] ?? $b['total_miscellaneous_fees'] ?? 0),
                 'net_proceeds_after_misc' => (float) ($b['net_proceeds'] ?? 0),
             ];
         }
@@ -385,6 +456,62 @@ class LoanCalculator
         }
 
         return $this->money($amount * $serviceChargeRate);
+    }
+
+    private function computeInsurance(
+        float $amount,
+        string $mode,
+        float $insuranceRate,
+        float $insurancePerThousand,
+        float $insuranceFixed
+    ): float {
+        $m = strtolower(trim($mode));
+        if ($m === 'fixed') {
+            return $this->money(max(0.0, $insuranceFixed));
+        }
+        if ($m === 'percent') {
+            return $this->money(max(0.0, $amount * $insuranceRate));
+        }
+
+        return $this->money(($amount / 1000.0) * $insurancePerThousand + $insuranceFixed);
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     * @param  array<string, mixed>  $rules
+     */
+    private function resolvePensionSystem(array $input, array $rules): string
+    {
+        $raw = (string) ($input['pension_system'] ?? $input['pension_type'] ?? $rules['default_pension_system'] ?? 'sss');
+        $normalized = strtolower(trim($raw));
+
+        return $normalized === 'gsis' ? 'gsis' : 'sss';
+    }
+
+    /**
+     * Supports keys like:
+     * - base_nw_sss, base_nw, base_rl_gsis, base_reloan, base_new, base
+     *
+     * @param  array<string, mixed>  $rules
+     */
+    private function resolvePensionPolicyAmount(array $rules, string $base, string $nature, string $system, float $fallback): float
+    {
+        $natureAliases = $nature === 'reloan' ? ['rl', 'reloan'] : ['nw', 'new'];
+        $candidates = [];
+        foreach ($natureAliases as $n) {
+            $candidates[] = "{$base}_{$n}_{$system}";
+            $candidates[] = "{$base}_{$n}";
+        }
+        $candidates[] = "{$base}_{$system}";
+        $candidates[] = $base;
+
+        foreach ($candidates as $key) {
+            if (array_key_exists($key, $rules) && $rules[$key] !== null && $rules[$key] !== '') {
+                return $this->money((float) $rules[$key]);
+            }
+        }
+
+        return $this->money($fallback);
     }
 
     /**

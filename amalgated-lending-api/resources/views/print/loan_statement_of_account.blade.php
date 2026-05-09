@@ -95,6 +95,10 @@
             <dd>{{ $loan->monthly_payment !== null ? $money($loan->monthly_payment) : '—' }}</dd>
         </div>
         <div>
+            <dt>Semi-monthly payment</dt>
+            <dd>{{ $loan->monthly_payment !== null ? $money(((float) $loan->monthly_payment) / 2) : '—' }}</dd>
+        </div>
+        <div>
             <dt>Outstanding balance (system)</dt>
             <dd>{{ $loan->outstanding_balance !== null ? $money($loan->outstanding_balance) : '—' }}</dd>
         </div>
