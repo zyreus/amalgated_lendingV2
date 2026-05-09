@@ -15,6 +15,7 @@ const QUICK_OPTIONS = [
 const CHAT_TIME_ZONE = 'Asia/Manila'
 /** HTTP fallback when Socket.IO is down; keep conservative to avoid hammering Laravel. */
 const CHAT_SYNC_POLL_MS = 8000
+const CHAT_SYNC_POLL_WHEN_CONNECTED_MS = 4000
 
 function detectLang() {
   const nav = typeof navigator !== 'undefined' ? navigator.language : ''
@@ -390,14 +391,16 @@ export default function LendingChatWidget() {
     loadPersistedMessages(convoId.current, { afterId: 0 })
   }, [loadPersistedMessages])
 
-  // Keep chatbot <-> CRM in sync even if a socket event is dropped.
+  // Keep chatbot <-> CRM in sync even if a socket event is dropped or relay env is misconfigured.
   useEffect(() => {
-    if (socketConnected) return undefined
     const tick = () => {
       if (typeof document !== 'undefined' && document.hidden) return
       loadPersistedMessages(convoId.current, { afterId: lastPersistedMessageIdRef.current })
     }
-    const id = setInterval(tick, CHAT_SYNC_POLL_MS)
+    const id = setInterval(
+      tick,
+      socketConnected ? CHAT_SYNC_POLL_WHEN_CONNECTED_MS : CHAT_SYNC_POLL_MS,
+    )
     const onVis = () => {
       if (typeof document !== 'undefined' && !document.hidden) tick()
     }

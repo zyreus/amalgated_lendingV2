@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { io } from 'socket.io-client'
-import { adminSocketUrls, chatFetch, chatJson, hasChatServerAuth } from '../utils/adminChatApi.js'
+import { adminSocketUrls, chatFetch, chatJson, getLendingChatSecret, hasChatServerAuth } from '../utils/adminChatApi.js'
 import { api as adminApi, getToken as getAdminToken } from '../admin/api/client.js'
 import { downloadCsv } from '../admin/utils/export.js'
 
@@ -867,6 +867,10 @@ export default function AdminChatDashboard({
         )
       })
       socket.on('disconnect', () => setSocketConnected(false))
+      socket.on('chat:error', (payload) => {
+        const msg = String(payload?.message || '').trim()
+        if (msg) setSocketConnectError(msg)
+      })
     }
 
     const connectWithFallback = (index) => {
@@ -883,7 +887,10 @@ export default function AdminChatDashboard({
         if (disposed) return
         setSocketConnected(true)
         setSocketConnectError(null)
-        socket.emit('admin:join', { token: getAdminToken() || '' })
+        socket.emit('admin:join', {
+          token: getAdminToken() || '',
+          secret: getLendingChatSecret() || '',
+        })
         queueMicrotask(() => {
           fetchConversationsRef.current?.().catch(() => {})
           const v = viewRef.current
