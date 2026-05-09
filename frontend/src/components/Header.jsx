@@ -52,6 +52,7 @@ export default function Header() {
         </button>
 
         <nav className="hidden items-center gap-5 xl:gap-6 text-sm font-medium text-brand-text lg:flex">
+          <span className="text-brand-text">Hi</span>
           <button type="button" onClick={goHome} className="nav-link">Home</button>
           <button type="button" onClick={() => goToSection('trust')} className="nav-link">Trust</button>
           <button type="button" onClick={() => goToSection('calculator')} className="nav-link">Calculator</button>
@@ -96,7 +97,10 @@ export default function Header() {
           exit={reduceMotion ? {} : { opacity: 0, y: -8 }}
           transition={{ duration: 0.2 }}
         >
-          <button type="button" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => { goHome(); setMobileOpen(false) }}>Home</button>
+          <div className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary">
+            <span className="shrink-0 text-sm font-medium">Hi</span>
+            <button type="button" className="flex-1 text-left text-sm font-medium" onClick={() => { goHome(); setMobileOpen(false) }}>Home</button>
+          </div>
           <button type="button" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => { goToSection('trust'); setMobileOpen(false) }}>Trust &amp; Security</button>
           <button type="button" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => { goToSection('calculator'); setMobileOpen(false) }}>Loan Calculator</button>
           <button type="button" className="block w-full rounded-lg px-3 py-2.5 text-left text-brand-text hover:bg-brand-primary/10 hover:text-brand-primary" onClick={() => { goToSection('newsletter'); setMobileOpen(false) }}>News &amp; Announcements</button>
