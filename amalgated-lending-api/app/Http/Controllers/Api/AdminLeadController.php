@@ -25,7 +25,8 @@ class AdminLeadController extends Controller
             $q->where(function ($w) use ($search) {
                 $w->where('name', 'like', '%'.$search.'%')
                     ->orWhere('email', 'like', '%'.$search.'%')
-                    ->orWhere('organization', 'like', '%'.$search.'%');
+                    ->orWhere('organization', 'like', '%'.$search.'%')
+                    ->orWhere('phone', 'like', '%'.$search.'%');
             });
         }
         if ($request->filled('loan_type')) {

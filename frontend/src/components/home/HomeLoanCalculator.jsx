@@ -107,7 +107,7 @@ export default function HomeLoanCalculator() {
     >
       <h3 className="text-lg font-semibold text-brand-text">Loan Calculator</h3>
       <p className="mt-1 text-sm text-brand-text/70">
-        Estimate monthly amortization and net proceeds using official product-specific rules.
+        Estimate indicative monthly amortization. Final terms and deductions are confirmed during application.
       </p>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -186,27 +186,14 @@ export default function HomeLoanCalculator() {
         </p>
       ) : null}
 
-      {data?.breakdown ? (
-        <dl className="mt-5 grid gap-2 rounded-xl border border-black/10 bg-white p-4 text-sm">
-          <div className="flex justify-between"><dt>Monthly amortization</dt><dd className="font-semibold">PHP {peso(data.breakdown.monthly_amortization)}</dd></div>
-          <div className="flex justify-between"><dt>Monthly principal</dt><dd>PHP {peso(data.breakdown.monthly_principal)}</dd></div>
-          <div className="flex justify-between"><dt>Monthly interest</dt><dd>PHP {peso(data.breakdown.monthly_interest)}</dd></div>
-          <div className="flex justify-between"><dt>Service charge</dt><dd>PHP {peso(data.breakdown.service_charge)}</dd></div>
-          <div className="flex justify-between"><dt>Insurance</dt><dd>PHP {peso(data.breakdown.insurance)}</dd></div>
-          <div className="flex justify-between"><dt>Documentary stamp</dt><dd>PHP {peso(data.breakdown.documentary_stamp)}</dd></div>
-          <div className="flex justify-between"><dt>Notarial fee</dt><dd>PHP {peso(data.breakdown.notarial_fee)}</dd></div>
-          <div className="flex justify-between"><dt>Mortgage fee</dt><dd>PHP {peso(data.breakdown.mortgage_fee)}</dd></div>
-          {Number(data.breakdown.opening_account_fee || 0) > 0 ? (
-            <div className="flex justify-between"><dt>Opening account fee (separate)</dt><dd>PHP {peso(data.breakdown.opening_account_fee)}</dd></div>
-          ) : null}
-          <div className="flex justify-between"><dt>Total miscellaneous fees</dt><dd>PHP {peso(data.breakdown.total_miscellaneous_fees)}</dd></div>
-          <div className="flex justify-between"><dt>Net proceeds</dt><dd className="font-semibold text-brand-primary">PHP {peso(data.breakdown.net_proceeds)}</dd></div>
-          <div className="flex justify-between"><dt>Interest rate</dt><dd>{Number(data.product?.monthly_rate_percent_effective || 0).toFixed(2)}% per month</dd></div>
-          {data.breakdown.miscellaneous_deducted_from_proceeds === false ? (
-            <div className="text-xs text-brand-text/70">
-              Miscellaneous fees are shown for quotation but are not deducted from disbursement for this product.
-            </div>
-          ) : null}
+      {data?.breakdown?.monthly_amortization != null ? (
+        <dl className="mt-5 rounded-xl border border-black/10 bg-white p-4 text-sm">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <dt className="text-brand-text/70">Monthly amortization</dt>
+            <dd className="text-xl font-semibold tabular-nums text-brand-text">
+              PHP {peso(data.breakdown.monthly_amortization)}
+            </dd>
+          </div>
         </dl>
       ) : null}
     </motion.section>

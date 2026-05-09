@@ -105,7 +105,7 @@ export default function LoanProductsCalculator({ products = [] }) {
       const payload = {
         slug: product.slug,
         term_months: t,
-        include_fees: true,
+        include_fees: false,
       }
       if (pensionMode) {
         payload.monthly_pension = Number(pension)
@@ -121,7 +121,6 @@ export default function LoanProductsCalculator({ products = [] }) {
     }
   }
 
-  const loanable = server?.estimated_loanable_amount ?? localEst.principal
   const amort = server?.monthly_amortization ?? localEst.monthly
 
   if (!products.length || !product) {
@@ -229,64 +228,17 @@ export default function LoanProductsCalculator({ products = [] }) {
       >
         {loading ? 'Calculating…' : 'Calculate (confirm with server)'}
       </button>
-      <dl className="mt-8 grid gap-4 border-t border-emerald-200/60 pt-6 sm:grid-cols-2 dark:border-emerald-800/50">
-        <div className="rounded-xl bg-white/80 p-4 dark:bg-slate-900/60">
+      <dl className="mt-8 border-t border-emerald-200/60 pt-6 dark:border-emerald-800/50">
+        <div className="rounded-xl bg-white/80 p-5 dark:bg-slate-900/60">
           <dt className="text-xs font-medium uppercase tracking-wide text-emerald-800/70 dark:text-emerald-300/80">
-            {pensionMode ? 'Estimated loanable amount' : 'Loan principal'}
+            {travelMode ? 'Monthly payment (renewal)' : 'Monthly amortization'}
           </dt>
-          <dd className="mt-1 text-2xl font-bold tabular-nums text-emerald-900 dark:text-emerald-100">
-            PHP{' '}
-            {Number(loanable || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </dd>
-        </div>
-        <div className="rounded-xl bg-white/80 p-4 dark:bg-slate-900/60">
-          <dt className="text-xs font-medium uppercase tracking-wide text-emerald-800/70 dark:text-emerald-300/80">
-            {travelMode ? 'Monthly interest (renewal)' : 'Monthly amortization'}
-          </dt>
-          <dd className="mt-1 text-2xl font-bold tabular-nums text-emerald-900 dark:text-emerald-100">
+          <dd className="mt-2 text-3xl font-bold tabular-nums text-emerald-900 dark:text-emerald-100">
             PHP{' '}
             {Number(amort || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </dd>
         </div>
       </dl>
-      {server?.fee_breakdown && typeof server.fee_breakdown === 'object' ? (
-        <div className="mt-6 rounded-xl border border-emerald-200/70 bg-white/90 p-4 text-sm dark:border-emerald-800/60 dark:bg-slate-900/50">
-          <h4 className="font-semibold text-emerald-900 dark:text-emerald-100">Sample fees &amp; breakdown</h4>
-          <ul className="mt-3 space-y-1.5 text-emerald-900/90 dark:text-emerald-100/90">
-            {Object.entries(server.fee_breakdown).map(([k, v]) => {
-              if (v == null || k === 'disclaimer' || k === 'reminders' || k === 'deposit_note' || k === 'mortgage_fee_note') return null
-              if (typeof v === 'object') return null
-              const label = k.replace(/_/g, ' ')
-              const val =
-                typeof v === 'number'
-                  ? `PHP ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : String(v)
-              return (
-                <li key={k} className="flex justify-between gap-4 border-b border-emerald-100/80 pb-1 last:border-0 dark:border-emerald-900/40">
-                  <span className="capitalize text-emerald-800/80 dark:text-emerald-200/80">{label}</span>
-                  <span className="shrink-0 font-medium tabular-nums">{val}</span>
-                </li>
-              )
-            })}
-          </ul>
-          {server.fee_breakdown.disclaimer ? (
-            <p className="mt-3 text-xs text-emerald-800/75 dark:text-emerald-200/70">{server.fee_breakdown.disclaimer}</p>
-          ) : null}
-          {Array.isArray(server.fee_breakdown.reminders) && server.fee_breakdown.reminders.length > 0 ? (
-            <ul className="mt-2 list-inside list-disc text-xs text-emerald-800/80 dark:text-emerald-200/70">
-              {server.fee_breakdown.reminders.map((r) => (
-                <li key={r}>{r}</li>
-              ))}
-            </ul>
-          ) : null}
-          {server.fee_breakdown.deposit_note ? (
-            <p className="mt-2 text-xs text-emerald-800/75 dark:text-emerald-200/70">{server.fee_breakdown.deposit_note}</p>
-          ) : null}
-          {server.fee_breakdown.mortgage_fee_note ? (
-            <p className="mt-2 text-xs text-emerald-800/75 dark:text-emerald-200/70">{server.fee_breakdown.mortgage_fee_note}</p>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   )
 }

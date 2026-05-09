@@ -149,5 +149,6 @@ class DatabaseSeeder extends Seeder
         $this->call(AdminNavigationSeeder::class);
         $this->call(LoanProductSeeder::class);
         $this->call(PrintableFormSeeder::class);
+        $this->call(CmsLandingNewsletterSeeder::class);
     }
 }

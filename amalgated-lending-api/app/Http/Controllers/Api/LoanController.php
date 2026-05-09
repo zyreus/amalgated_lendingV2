@@ -43,6 +43,18 @@ class LoanController extends Controller
                 'requested_principal',
                 'term_months',
                 'annual_interest_rate',
+                'adjusted_monthly_rate_percent',
+                'whole_term_interest_percent',
+                'monthly_principal',
+                'monthly_interest',
+                'service_charge',
+                'mri_fee',
+                'doc_stamp',
+                'notarial_fee',
+                'mortgage_fee',
+                'total_deductions',
+                'net_proceeds',
+                'total_payment',
                 'application_payload',
                 'monthly_payment',
                 'total_interest',
@@ -103,7 +115,12 @@ class LoanController extends Controller
 
     public function approve(Request $request, Loan $loan, ActivityLogger $logger): JsonResponse
     {
-        $request->validate(['admin_notes' => 'nullable|string']);
+        $request->validate([
+            'admin_notes' => 'nullable|string',
+            'approved_principal' => 'sometimes|numeric|min:0.01',
+            'term_months' => 'sometimes|integer|min:1|max:600',
+            'monthly_rate_percent' => 'sometimes|numeric|min:0|max:100',
+        ]);
 
         if ($loan->status !== Loan::STATUS_PENDING) {
             return response()->json(['ok' => false, 'message' => 'Only pending loans can be approved.'], 422);
@@ -133,6 +150,17 @@ class LoanController extends Controller
         $monthlyPension = $payload['monthly_pension'] ?? null;
 
         $result = DB::transaction(function () use ($request, $loan, $logger, $productSlug, $applicationNature, $age, $monthlyPension) {
+            $principal = (float) $loan->principal;
+            if ($request->filled('approved_principal')) {
+                $principal = round((float) $request->input('approved_principal'), 2);
+                $loan->principal = $principal;
+            }
+            $termUse = (int) $loan->term_months;
+            if ($request->filled('term_months')) {
+                $termUse = (int) $request->input('term_months');
+                $loan->term_months = $termUse;
+            }
+            $rateOverride = $request->filled('monthly_rate_percent') ? (float) $request->input('monthly_rate_percent') : null;
             if (! is_string($productSlug) || trim($productSlug) === '') {
                 // Legacy continuity: admin-created loans might not have product slug persisted yet.
                 // Infer from configured monthly interest rate (official product rates are controlled).
@@ -158,11 +186,12 @@ class LoanController extends Controller
 
             $compute = $this->calculator->compute([
                 'product_slug' => (string) $productSlug,
-                'loan_amount' => (float) $loan->principal,
-                'term_months' => (int) $loan->term_months,
+                'loan_amount' => $principal,
+                'term_months' => $termUse,
                 'application_nature' => $applicationNature,
                 'age' => $age !== null && $age !== '' ? (int) $age : null,
                 'monthly_pension' => $monthlyPension !== null && $monthlyPension !== '' ? (float) $monthlyPension : null,
+                'monthly_rate_percent_override' => $rateOverride,
             ]);
 
             $product = is_array($compute['product'] ?? null) ? $compute['product'] : [];
@@ -173,6 +202,18 @@ class LoanController extends Controller
             if ($monthlyRate !== null) {
                 $loan->annual_interest_rate = round($monthlyRate * 12.0, 4);
             }
+            $loan->adjusted_monthly_rate_percent = $rateOverride !== null ? round((float) $rateOverride, 4) : ($monthlyRate !== null ? round($monthlyRate, 4) : null);
+            $loan->whole_term_interest_percent = isset($breakdown['whole_term_interest_percent']) ? (float) $breakdown['whole_term_interest_percent'] : null;
+            $loan->monthly_principal = isset($breakdown['monthly_principal']) ? round((float) $breakdown['monthly_principal'], 2) : null;
+            $loan->monthly_interest = isset($breakdown['monthly_interest']) ? round((float) $breakdown['monthly_interest'], 2) : null;
+            $loan->service_charge = isset($breakdown['service_charge']) ? round((float) $breakdown['service_charge'], 2) : null;
+            $loan->mri_fee = isset($breakdown['mri_fee']) ? round((float) $breakdown['mri_fee'], 2) : (isset($breakdown['insurance']) ? round((float) $breakdown['insurance'], 2) : null);
+            $loan->doc_stamp = isset($breakdown['doc_stamp']) ? round((float) $breakdown['doc_stamp'], 2) : null;
+            $loan->notarial_fee = isset($breakdown['notarial_fee']) ? round((float) $breakdown['notarial_fee'], 2) : null;
+            $loan->mortgage_fee = isset($breakdown['mortgage_fee']) ? round((float) $breakdown['mortgage_fee'], 2) : null;
+            $loan->total_deductions = isset($breakdown['total_deductions']) ? round((float) $breakdown['total_deductions'], 2) : null;
+            $loan->net_proceeds = isset($breakdown['net_proceeds']) ? round((float) $breakdown['net_proceeds'], 2) : null;
+            $loan->total_payment = isset($breakdown['total_payment']) ? round((float) $breakdown['total_payment'], 2) : null;
             $loan->status = Loan::STATUS_ONGOING;
             $loan->approved_by = $request->user()->id;
             $loan->approved_at = now();
@@ -189,6 +230,28 @@ class LoanController extends Controller
             } elseif ($loan->requested_principal === null) {
                 $loan->requested_principal = round((float) $loan->principal, 2);
             }
+
+            $overrideLogs = is_array($loan->admin_override_logs) ? $loan->admin_override_logs : [];
+            $overrideLogs[] = [
+                'event' => 'approve_recompute',
+                'at' => now()->toIso8601String(),
+                'admin_user_id' => $request->user()->id,
+                'principal' => $principal,
+                'term_months' => $termUse,
+                'monthly_rate_percent_override' => $rateOverride,
+                'product_slug' => (string) $productSlug,
+            ];
+            $loan->admin_override_logs = $overrideLogs;
+
+            $loan->loan_computation_snapshot = [
+                'engine' => 'LoanCalculator/v2',
+                'product' => is_array($compute['product'] ?? null) ? $compute['product'] : [],
+                'inputs' => is_array($compute['inputs'] ?? null) ? $compute['inputs'] : [],
+                'breakdown' => is_array($compute['breakdown'] ?? null) ? $compute['breakdown'] : [],
+                'summary' => is_array($compute['summary'] ?? null) ? $compute['summary'] : [],
+                'schedule' => is_array($compute['schedule'] ?? null) ? $compute['schedule'] : [],
+                'generated_at' => now()->toIso8601String(),
+            ];
 
             $loan->save();
 

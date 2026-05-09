@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\PrintableFormAdminController;
 use App\Http\Controllers\Api\PrintableFormBorrowerController;
 use App\Http\Controllers\Api\PublicChatController;
 use App\Http\Controllers\Api\PublicFileController;
+use App\Http\Controllers\Api\PublicInquiryController;
 use App\Http\Controllers\Api\PublicLeadController;
 use App\Http\Controllers\Api\RealEstateMortgageController;
 use App\Http\Controllers\Api\ReportController;
@@ -107,6 +108,7 @@ Route::prefix('v1')->group(function () {
     Route::post('/loan/apply', [TravelLoanWizardController::class, 'apply']);
     Route::post('/public/sss-pension-loan/apply', [SssPensionLoanController::class, 'apply']);
     Route::post('/public/leads', [PublicLeadController::class, 'store']);
+    Route::post('/public/inquiry', [PublicInquiryController::class, 'store'])->middleware('throttle:20,1');
     Route::get('/public/leads/{lead}/messages', [PublicLeadController::class, 'messages']);
     Route::post('/public/leads/{lead}/messages', [PublicLeadController::class, 'sendMessage']);
     Route::post('/public/chat/messages', [PublicChatController::class, 'storeMessage']);
@@ -369,3 +371,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/printable-forms/download-log', [PrintableFormBorrowerController::class, 'recordDownload']);
     });
 });
+
+/** Short path for public SPA / legacy clients (same handler as `/api/v1/public/inquiry`). */
+Route::post('/inquiry', [PublicInquiryController::class, 'store'])
+    ->middleware('throttle:20,1')
+    ->name('inquiry.submit');

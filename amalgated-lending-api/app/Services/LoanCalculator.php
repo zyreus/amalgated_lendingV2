@@ -7,6 +7,10 @@ use Illuminate\Validation\ValidationException;
 
 class LoanCalculator
 {
+    public function __construct(
+        private readonly LoanAmortizationService $amortization,
+    ) {}
+
     /**
      * @param  array<string, mixed>  $input
      * @return array<string, mixed>
@@ -22,6 +26,28 @@ class LoanCalculator
             throw ValidationException::withMessages([
                 'product' => ['Loan product was not found.'],
             ]);
+        }
+
+        $cfg = is_array($product->calculator_config) ? $product->calculator_config : [];
+        $rules = is_array($product->rules) ? $product->rules : [];
+
+        $applianceMeta = null;
+        if ($product->slug === 'appliance') {
+            $srp = isset($input['srp']) ? (float) $input['srp'] : null;
+            if ($srp !== null && $srp > 0) {
+                $channel = (string) ($input['purchase_channel'] ?? $rules['default_purchase_channel'] ?? 'outside_office');
+                $dpRate = $channel === 'outside_office'
+                    ? (float) ($rules['outside_office_downpayment_rate'] ?? 0.15)
+                    : (float) ($rules['in_office_downpayment_rate'] ?? 0);
+                $dp = $this->money($srp * $dpRate);
+                $amount = $this->money($srp - $dp);
+                $applianceMeta = [
+                    'srp' => $this->money($srp),
+                    'purchase_channel' => $channel,
+                    'downpayment_rate' => $dpRate,
+                    'downpayment_amount' => $dp,
+                ];
+            }
         }
 
         if ($amount <= 0) {
@@ -42,12 +68,11 @@ class LoanCalculator
             ]);
         }
 
-        $cfg = is_array($product->calculator_config) ? $product->calculator_config : [];
-        $rules = is_array($product->rules) ? $product->rules : [];
-
         $term = $this->resolveEffectiveTermMonths($product, $cfg, $term);
 
-        $monthlyRatePercent = $this->resolveMonthlyRatePercent($product, $term);
+        $monthlyRatePercent = isset($input['monthly_rate_percent_override']) && (float) $input['monthly_rate_percent_override'] > 0
+            ? $this->money((float) $input['monthly_rate_percent_override'], 4)
+            : $this->resolveMonthlyRatePercent($product, $term);
 
         $age = isset($input['age']) ? (int) $input['age'] : null;
         if ($age !== null && $product->age_limit !== null && $age > (int) $product->age_limit) {
@@ -57,9 +82,6 @@ class LoanCalculator
         }
 
         if ($product->slug === 'sss-pension-loan') {
-            // SOA computation depends on loan amount + term.
-            // "Pension verification required" is a qualification gate; do not hard-require monthly_pension here.
-            // If monthly_pension is provided, optionally apply configured cap logic.
             if (array_key_exists('monthly_pension', $input)) {
                 $monthlyPension = (float) ($input['monthly_pension'] ?? 0);
                 if ($monthlyPension > 0) {
@@ -81,10 +103,18 @@ class LoanCalculator
         $svcMode = (string) ($rules['service_charge_mode'] ?? 'percent');
         $insurancePerThousand = (float) ($rules['insurance_per_1000'] ?? $cfg['insurance_per_1000'] ?? 35.0);
         $insuranceFixed = (float) ($rules['insurance_fixed'] ?? 2000.0);
-        $mortgageRate = (float) ($rules['mortgage_fee_rate'] ?? 0.025);
+        $isMortgageProduct = in_array($product->slug, ['real-estate-mortgage', 'chattel-mortgage'], true);
+        $mortgageRate = (float) ($rules['mortgage_fee_rate'] ?? ($isMortgageProduct ? 0.02 : 0.0));
         $mortgageThreshold = (float) ($rules['mortgage_fee_threshold'] ?? 0);
         $notarialNew = (float) ($rules['notarial_fee_new'] ?? $cfg['notarial_new_loan'] ?? 1500.0);
         $notarialReloan = (float) ($rules['notarial_fee_reloan'] ?? $cfg['notarial_reloan'] ?? $notarialNew);
+        if ($product->slug === 'salary-loan') {
+            $notarialNew = (float) ($rules['notarial_fee_new'] ?? 350.0);
+            $notarialReloan = (float) ($rules['notarial_fee_reloan'] ?? $notarialNew);
+        } elseif ($isMortgageProduct) {
+            $notarialNew = (float) ($rules['notarial_fee_new'] ?? 1500.0);
+            $notarialReloan = (float) ($rules['notarial_fee_reloan'] ?? 175.0);
+        }
 
         $serviceCharge = $this->computeServiceCharge($amount, $applicationNature, $serviceChargeRate, $svcMode, $rules, $cfg);
         $insurance = $feeProfile === 'travel'
@@ -93,24 +123,62 @@ class LoanCalculator
         $docStamp = $this->computeDocStamp($amount, $rules);
         $notarialFee = $this->money($applicationNature === 'reloan' ? $notarialReloan : $notarialNew);
 
-        $isMortgageProduct = in_array($product->slug, ['real-estate-mortgage', 'chattel-mortgage'], true);
         $mortgageFee = $this->money(
             $isMortgageProduct && $amount >= $mortgageThreshold ? $amount * $mortgageRate : 0.0
         );
 
-        $monthlyPrincipal = $this->money($amount / max(1, $term));
-        $monthlyInterest = $this->money($amount * ($monthlyRatePercent / 100.0));
-        $monthlyAmortization = $this->money($monthlyPrincipal + $monthlyInterest);
-        $totalMiscFees = $this->money($serviceCharge + $insurance + $docStamp + $notarialFee + $mortgageFee);
-        $netProceeds = $miscDeductedFromProceeds ? $this->money($amount - $totalMiscFees) : $this->money($amount);
-        $totalAddOnInterest = $this->money($monthlyInterest * $term);
-        $totalPayable = $this->money($monthlyAmortization * $term);
+        $reLoanFee = 0.0;
+        if ($isMortgageProduct && $applicationNature === 'reloan') {
+            $reLoanFee = $this->money(max(0.0, (float) ($rules['re_loan_fee'] ?? 0)));
+        }
 
-        $schedule = $this->buildStraightLineSchedule($amount, $term, $monthlyPrincipal, $monthlyInterest, $monthlyAmortization);
+        $compStyle = (string) ($cfg['computation_style'] ?? 'straight_line');
+        $useAmortized = $compStyle === 'amortized'
+            && $product->slug !== 'travel-assistance-loan'
+            && $feeProfile !== 'travel';
+
+        if ($useAmortized) {
+            $annualRatePercent = $this->money($monthlyRatePercent * 12.0, 6);
+            $built = $this->amortization->buildSchedule($amount, $annualRatePercent, $term);
+            $schedule = $this->mapAmortizedSchedule($amount, $built['rows'] ?? []);
+            $monthlyAmortization = $this->money((float) ($built['monthly_payment'] ?? 0));
+            $totalAddOnInterest = $this->money((float) ($built['total_interest'] ?? 0));
+            $totalPayable = $this->money(array_sum(array_map(fn ($r) => (float) ($r['payment'] ?? 0), $schedule)));
+            $first = $schedule[0] ?? null;
+            $monthlyPrincipal = $first ? $this->money((float) ($first['principal'] ?? 0)) : $this->money($amount / max(1, $term));
+            $monthlyInterest = $first ? $this->money((float) ($first['interest'] ?? 0)) : 0.0;
+        } else {
+            $monthlyPrincipal = $this->money($amount / max(1, $term));
+            $monthlyInterest = $this->money($amount * ($monthlyRatePercent / 100.0));
+            $monthlyAmortization = $this->money($monthlyPrincipal + $monthlyInterest);
+            $totalAddOnInterest = $this->money($monthlyInterest * $term);
+            $totalPayable = $this->money($monthlyAmortization * $term);
+            $schedule = $this->buildStraightLineSchedule($amount, $term, $monthlyPrincipal, $monthlyInterest, $monthlyAmortization);
+        }
+
+        if ($useAmortized && $amount > 0.00001) {
+            $wholeTermInterestPercent = $this->money(($totalAddOnInterest / $amount) * 100, 4);
+        } else {
+            $wholeTermInterestPercent = $this->money($monthlyRatePercent * $term, 4);
+        }
+
+        $totalMiscFees = $this->money($serviceCharge + $insurance + $docStamp + $notarialFee + $mortgageFee + $reLoanFee);
+        $netProceeds = $miscDeductedFromProceeds ? $this->money($amount - $totalMiscFees) : $this->money($amount);
 
         $openingAccountFee = ($product->slug === 'travel-assistance-loan')
             ? (float) ($rules['opening_account_fee'] ?? $cfg['opening_account_fee'] ?? 10000)
             : 0.0;
+
+        $travelMiscSubtotal = 0.0;
+        $clientCashRequirement = 0.0;
+        if ($product->slug === 'travel-assistance-loan') {
+            $travelMiscSubtotal = $this->money($serviceCharge + $docStamp + $monthlyInterest);
+            $clientCashRequirement = $this->money($openingAccountFee + $travelMiscSubtotal);
+        }
+
+        $adjustedRate = isset($input['monthly_rate_percent_override']) && (float) $input['monthly_rate_percent_override'] > 0
+            ? $this->money((float) $input['monthly_rate_percent_override'], 4)
+            : null;
 
         return [
             'product' => [
@@ -122,36 +190,54 @@ class LoanCalculator
                 'interest_rate' => (float) $product->interest_rate,
                 'monthly_rate_percent_effective' => $this->money($monthlyRatePercent, 4),
             ],
-            'inputs' => [
+            'inputs' => array_filter([
                 'loan_amount' => $this->money($amount),
                 'term_months' => $term,
                 'application_nature' => $applicationNature,
                 'age' => $age,
                 'monthly_pension' => isset($input['monthly_pension']) ? $this->money((float) $input['monthly_pension']) : null,
-            ],
-            'breakdown' => [
+                'computation_style_used' => $useAmortized ? 'amortized' : 'straight_line',
+                'appliance' => $applianceMeta,
+            ], fn ($v) => $v !== null),
+            'breakdown' => array_filter([
                 'service_charge' => $serviceCharge,
                 'insurance' => $insurance,
                 'documentary_stamp' => $docStamp,
+                'doc_stamp' => $docStamp,
                 'notarial_fee' => $notarialFee,
                 'mortgage_fee' => $mortgageFee,
-                'opening_account_fee' => $openingAccountFee > 0 ? $this->money($openingAccountFee) : 0.0,
+                're_loan_fee' => $reLoanFee > 0 ? $reLoanFee : null,
+                'opening_account_fee' => $openingAccountFee > 0 ? $this->money($openingAccountFee) : null,
+                'travel_miscellaneous_subtotal' => $product->slug === 'travel-assistance-loan' ? $travelMiscSubtotal : null,
+                'estimated_client_cash_requirement' => $product->slug === 'travel-assistance-loan' ? $clientCashRequirement : null,
                 'miscellaneous_deducted_from_proceeds' => $miscDeductedFromProceeds,
                 'monthly_principal' => $monthlyPrincipal,
                 'monthly_interest' => $monthlyInterest,
                 'monthly_amortization' => $monthlyAmortization,
+                'whole_term_interest_percent' => $wholeTermInterestPercent,
                 'total_add_on_interest' => $totalAddOnInterest,
+                'total_interest' => $totalAddOnInterest,
                 'total_payable' => $totalPayable,
+                'total_payment' => $totalPayable,
                 'total_miscellaneous_fees' => $totalMiscFees,
+                'total_charges' => $totalMiscFees,
+                'total_deductions' => $totalMiscFees,
+                'mri_fee' => $insurance,
                 'net_proceeds' => $netProceeds,
-            ],
+                'adjusted_monthly_rate_percent' => $adjustedRate,
+            ], fn ($v) => $v !== null),
             'summary' => [
                 'loan_amount' => $this->money($amount),
                 'term_months' => $term,
                 'monthly_rate_percent_effective' => $this->money($monthlyRatePercent, 4),
+                'whole_term_interest_percent' => $wholeTermInterestPercent,
                 'total_add_on_interest' => $totalAddOnInterest,
+                'total_interest' => $totalAddOnInterest,
                 'total_payable' => $totalPayable,
+                'total_payment' => $totalPayable,
                 'total_miscellaneous_fees' => $totalMiscFees,
+                'total_charges' => $totalMiscFees,
+                'total_deductions' => $totalMiscFees,
                 'net_proceeds' => $netProceeds,
             ],
             'schedule' => $schedule,
@@ -162,6 +248,7 @@ class LoanCalculator
                 $age !== null && $product->safe_age !== null && $age > (int) $product->safe_age && $product->slug === 'sss-pension-loan'
                     ? 'Borrower exceeds the conservative safe age threshold ('.$product->safe_age.'). Obtain compliance / branch approval.'
                     : null,
+                $useAmortized ? 'Amortization uses standard monthly reducing balance on the approved principal.' : null,
             ])),
             'raw_rules' => [
                 'fee_profile' => $feeProfile,
@@ -172,6 +259,90 @@ class LoanCalculator
                 'mortgage_fee_rate' => $mortgageRate,
                 'mortgage_fee_threshold' => $mortgageThreshold,
             ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $compute
+     * @return array<string, mixed>
+     */
+    public function toLegacyPublicFeeBreakdown(array $compute): array
+    {
+        $slug = (string) (($compute['product'] ?? [])['slug'] ?? '');
+        $b = is_array($compute['breakdown'] ?? null) ? $compute['breakdown'] : [];
+
+        if ($slug === 'travel-assistance-loan') {
+            $misc = (float) ($b['travel_miscellaneous_subtotal'] ?? 0);
+            $opening = (float) ($b['opening_account_fee'] ?? 10000);
+
+            return [
+                'service_charge' => (float) ($b['service_charge'] ?? 0),
+                'doc_stamp' => (float) ($b['doc_stamp'] ?? $b['documentary_stamp'] ?? 0),
+                'monthly_interest_component' => (float) ($b['monthly_interest'] ?? 0),
+                'total_miscellaneous_one_time' => $this->money($misc),
+                'opening_account_landbank' => $opening,
+                'estimated_client_cash_requirement' => (float) ($b['estimated_client_cash_requirement'] ?? $this->money($opening + $misc)),
+                'disclaimer' => 'Miscellaneous fees are intended as one-time charges (not deducted from loan); opening a Landbank account (≈₱10,000) is shouldered by the client. Confirm with the branch.',
+            ];
+        }
+
+        if (in_array($slug, ['real-estate-mortgage', 'chattel-mortgage'], true)) {
+            $reloan = (float) ($b['re_loan_fee'] ?? 0);
+            $raw = is_array($compute['raw_rules'] ?? null) ? $compute['raw_rules'] : [];
+            $mfRate = (float) ($raw['mortgage_fee_rate'] ?? 0.02);
+            $mfPct = $this->money($mfRate * 100, 2);
+
+            return [
+                'service_charge' => (float) ($b['service_charge'] ?? 0),
+                'insurance' => (float) ($b['insurance'] ?? 0),
+                'mri_fee' => (float) ($b['mri_fee'] ?? $b['insurance'] ?? 0),
+                'doc_stamp' => (float) ($b['doc_stamp'] ?? $b['documentary_stamp'] ?? 0),
+                'notarial_fee' => (float) ($b['notarial_fee'] ?? 0),
+                're_loan_fee' => $reloan > 0 ? $reloan : null,
+                'mortgage_fee' => (float) ($b['mortgage_fee'] ?? 0),
+                'mortgage_fee_note' => 'Mortgage fee is '.$mfPct.'% of loan amount per policy.',
+                'whole_term_interest_percent' => (float) ($b['whole_term_interest_percent'] ?? 0),
+                'monthly_principal' => (float) ($b['monthly_principal'] ?? 0),
+                'monthly_interest_on_full_principal' => (float) ($b['monthly_interest'] ?? 0),
+                'monthly_amortization_straight_line' => (float) ($b['monthly_amortization'] ?? 0),
+                'total_interest' => (float) ($b['total_interest'] ?? $b['total_add_on_interest'] ?? 0),
+                'total_payment' => (float) ($b['total_payment'] ?? $b['total_payable'] ?? 0),
+                'total_miscellaneous' => (float) ($b['total_miscellaneous_fees'] ?? 0),
+                'total_deductions' => (float) ($b['total_deductions'] ?? $b['total_miscellaneous_fees'] ?? 0),
+                'net_proceeds_after_misc' => (float) ($b['net_proceeds'] ?? 0),
+                'reminders' => [
+                    'Clean title; prefer no annotation.',
+                    'Disclose existing loans with other banks/lenders.',
+                    'Avoid extrajudicial / heir disputes where possible.',
+                ],
+            ];
+        }
+
+        if ($slug === 'sss-pension-loan') {
+            return [
+                'service_charge_new_loan' => (float) ($b['service_charge'] ?? 0),
+                'insurance' => (float) ($b['insurance'] ?? 0),
+                'notarial_fee' => (float) ($b['notarial_fee'] ?? 0),
+                'doc_stamp' => (float) ($b['doc_stamp'] ?? $b['documentary_stamp'] ?? 0),
+                'monthly_principal' => (float) ($b['monthly_principal'] ?? 0),
+                'monthly_interest_on_full_principal' => (float) ($b['monthly_interest'] ?? 0),
+                'monthly_amortization' => (float) ($b['monthly_amortization'] ?? 0),
+                'total_miscellaneous' => (float) ($b['total_miscellaneous_fees'] ?? 0),
+                'net_proceeds_after_misc' => (float) ($b['net_proceeds'] ?? 0),
+            ];
+        }
+
+        return [
+            'service_charge' => (float) ($b['service_charge'] ?? 0),
+            'insurance' => (float) ($b['insurance'] ?? 0),
+            'doc_stamp' => (float) ($b['doc_stamp'] ?? $b['documentary_stamp'] ?? 0),
+            'notarial_fee' => (float) ($b['notarial_fee'] ?? 0),
+            'mortgage_fee' => (float) ($b['mortgage_fee'] ?? 0),
+            'monthly_principal' => (float) ($b['monthly_principal'] ?? 0),
+            'monthly_interest_on_full_principal' => (float) ($b['monthly_interest'] ?? 0),
+            'monthly_amortization_straight_line' => (float) ($b['monthly_amortization'] ?? 0),
+            'total_miscellaneous' => (float) ($b['total_miscellaneous_fees'] ?? 0),
+            'net_proceeds_after_misc' => (float) ($b['net_proceeds'] ?? 0),
         ];
     }
 
@@ -292,7 +463,41 @@ class LoanCalculator
     }
 
     /**
-     * @return array<int, array<string, float|int>>
+     * @param  array<int, array<string, float|int|string>>  $rows
+     * @return array<int, array<string, float|int|string>>
+     */
+    private function mapAmortizedSchedule(float $initialPrincipal, array $rows): array
+    {
+        $balance = $this->money($initialPrincipal);
+        $out = [];
+
+        foreach ($rows as $r) {
+            $beginning = $balance;
+            $p = (float) ($r['principal'] ?? 0);
+            $int = (float) ($r['interest'] ?? 0);
+            $pay = (float) ($r['payment'] ?? 0);
+            $end = (float) ($r['balance'] ?? 0);
+
+            $out[] = [
+                'installment_no' => (int) ($r['installment_no'] ?? count($out) + 1),
+                'due_date' => (string) ($r['due_date'] ?? ''),
+                'beginning_balance' => $this->money($beginning),
+                'principal' => $p,
+                'interest' => $int,
+                'amortization' => $pay,
+                'payment' => $pay,
+                'balance' => $end,
+                'ending_balance' => $end,
+            ];
+
+            $balance = $end;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<int, array<string, float|int|string>>
      */
     private function buildStraightLineSchedule(
         float $amount,
@@ -320,7 +525,6 @@ class LoanCalculator
                 'principal' => $principal,
                 'interest' => $interest,
                 'amortization' => $amortization,
-                // Compatibility with the legacy SOA generator + payment ledger.
                 'payment' => $amortization,
                 'balance' => $endingBalance,
                 'ending_balance' => $endingBalance,
@@ -329,7 +533,6 @@ class LoanCalculator
             $balance = $endingBalance;
         }
 
-        // Keep headline monthly amortization aligned with row values.
         if ($rows !== []) {
             $rows[0]['amortization'] = $monthlyAmortization;
         }

@@ -49,8 +49,12 @@ function emptyDraft() {
 }
 
 function findExactSection(response, sectionKey) {
-  const rows = response?.data?.data || []
-  const list = Array.isArray(rows) ? rows : []
+  const payload = response?.data
+  const list = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.data)
+      ? payload.data
+      : []
   return list.find((row) => row?.section_key === sectionKey) || list[0] || null
 }
 

@@ -37,7 +37,7 @@ function App() {
         addressLocality: 'Davao City',
         addressCountry: 'PH',
       },
-      telephone: '+63-917-700-0000',
+      telephone: '+63-919-067-5095',
       serviceType: ['Personal Loan', 'Business Loan', 'Salary Loan', 'Travel Assistance Loan'],
     },
     {

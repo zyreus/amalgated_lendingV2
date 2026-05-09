@@ -4,13 +4,17 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\LoanProduct;
-use App\Services\LoanProductFeeCalculator;
+use App\Services\LoanCalculationEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class LoanProductController extends Controller
 {
+    public function __construct(
+        private readonly LoanCalculationEngine $loanEngine,
+    ) {}
+
     /** Public: active products only */
     public function publicIndex(): JsonResponse
     {
@@ -77,6 +81,9 @@ class LoanProductController extends Controller
             'slug' => 'required|string|max:80',
             'term_months' => 'required|integer|min:1|max:600',
             'include_fees' => 'sometimes|boolean',
+            'application_nature' => 'sometimes|string|in:new,reloan',
+            'srp' => 'sometimes|numeric|min:0',
+            'purchase_channel' => 'sometimes|string|in:outside_office,in_office',
         ]);
 
         $product = LoanProduct::query()->active()->where('slug', $request->string('slug'))->first();
@@ -145,60 +152,77 @@ class LoanProductController extends Controller
             ]);
         }
 
-        $monthlyRatePercent = (float) $product->interest_rate;
         $feeProfile = $cfg['fee_profile'] ?? null;
-        $compStyle = $cfg['computation_style'] ?? 'amortized';
+        $applicationNature = (string) $request->input('application_nature', 'new');
+
+        $engineInput = [
+            'product_slug' => $product->slug,
+            'loan_amount' => $principal,
+            'term_months' => $term,
+            'application_nature' => $applicationNature,
+            'monthly_pension' => $pensionMode ? (float) $request->input('monthly_pension') : null,
+        ];
+        if ($product->slug === 'appliance' && $request->filled('srp')) {
+            $engineInput['srp'] = (float) $request->input('srp');
+            if ($request->filled('purchase_channel')) {
+                $engineInput['purchase_channel'] = (string) $request->input('purchase_channel');
+            }
+        }
+
+        try {
+            $compute = $this->loanEngine->compute($engineInput);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'ok' => false,
+                'message' => collect($e->errors())->flatten()->first() ?? 'Validation failed.',
+                'errors' => $e->errors(),
+            ], 422);
+        }
+
+        $prodOut = is_array($compute['product'] ?? null) ? $compute['product'] : [];
+        $breakdown = is_array($compute['breakdown'] ?? null) ? $compute['breakdown'] : [];
+        $inputsOut = is_array($compute['inputs'] ?? null) ? $compute['inputs'] : [];
+
+        $monthlyRatePercent = (float) ($prodOut['monthly_rate_percent_effective'] ?? $product->interest_rate);
+        $compStyleUsed = (string) ($inputsOut['computation_style_used'] ?? 'straight_line');
+        $compLabel = $feeProfile === 'travel'
+            ? 'travel_monthly_renewal_interest'
+            : ($compStyleUsed === 'amortized' ? 'amortized_reducing_balance' : 'straight_line');
+
+        $monthly = (float) ($breakdown['monthly_amortization'] ?? 0);
+        $principalPart = (float) ($breakdown['monthly_principal'] ?? 0);
+        $interestPart = (float) ($breakdown['monthly_interest'] ?? 0);
 
         if ($feeProfile === 'travel') {
-            $monthlyInterest = round($principal * ($monthlyRatePercent / 100), 2);
-            $monthly = $monthlyInterest;
-            $compLabel = 'travel_monthly_renewal_interest';
-            $principalPart = 0.0;
-        } elseif ($compStyle === 'straight_line') {
-            $principalPart = round($principal / max(1, $term), 2);
-            $interestPart = round($principal * ($monthlyRatePercent / 100), 2);
-            $monthly = round($principalPart + $interestPart, 2);
-            $compLabel = 'straight_line';
-        } else {
-            $rate = $monthlyRatePercent / 100;
-            if ($product->rate_type === 'fixed') {
-                $rate = $rate / max(1, $term);
-            }
-            $monthly = round($this->amortizationPayment($principal, $rate, $term), 2);
-            $compLabel = 'amortized';
-            $principalPart = null;
-            $interestPart = null;
+            // Public quote: monthly renewal charge is interest on full principal (principal follows contract).
+            $monthly = $interestPart;
         }
 
         $includeFees = filter_var($request->input('include_fees'), FILTER_VALIDATE_BOOLEAN);
-        $feeBreakdown = null;
-        if ($includeFees && is_string($feeProfile)) {
-            $feeBreakdown = match ($feeProfile) {
-                'travel' => LoanProductFeeCalculator::travel($principal),
-                'mortgage' => LoanProductFeeCalculator::mortgage($principal, $term, $monthlyRatePercent),
-                'pension' => LoanProductFeeCalculator::pension($principal, $term, $monthlyRatePercent, $cfg),
-                default => null,
-            };
-        }
+        $feeBreakdown = $includeFees ? $this->loanEngine->toPublicFeeBreakdown($compute) : null;
 
         $payload = [
             'ok' => true,
             'calculator_mode' => $mode,
             'computation_style' => $compLabel,
             'estimated_loanable_amount' => round($principal, 2),
-            'monthly_amortization' => $monthly,
+            'monthly_amortization' => round($monthly, 2),
             'term_months' => $term,
             'interest_rate_monthly_percent' => round($monthlyRatePercent, 4),
         ];
 
         if ($feeProfile === 'travel') {
-            $payload['monthly_interest_component'] = $monthlyInterest;
+            $payload['monthly_interest_component'] = round($interestPart, 2);
             $payload['monthly_principal_component'] = 0.0;
             $payload['note'] = 'Travel assistance: monthly figure is 3.5% of principal per renewal period (illustrative).';
-        } elseif ($compStyle === 'straight_line') {
-            $payload['monthly_principal_component'] = $principalPart;
-            $payload['monthly_interest_component'] = $interestPart;
+        } elseif ($compStyleUsed === 'straight_line') {
+            $payload['monthly_principal_component'] = round($principalPart, 2);
+            $payload['monthly_interest_component'] = round($interestPart, 2);
             $payload['note'] = 'Straight-line: monthly principal = loan ÷ term; monthly interest = loan × monthly rate (on full principal).';
+        } else {
+            $payload['monthly_principal_component'] = round($principalPart, 2);
+            $payload['monthly_interest_component'] = round($interestPart, 2);
+            $payload['note'] = 'Reducing-balance amortization on approved principal (standard monthly payment).';
         }
 
         if ($feeBreakdown !== null) {
@@ -206,19 +230,6 @@ class LoanProductController extends Controller
         }
 
         return response()->json($payload);
-    }
-
-    private function amortizationPayment(float $principal, float $monthlyRate, int $months): float
-    {
-        if ($months < 1) {
-            return 0;
-        }
-        if ($monthlyRate <= 0) {
-            return $principal / $months;
-        }
-        $pow = pow(1 + $monthlyRate, $months);
-
-        return $principal * ($monthlyRate * $pow) / ($pow - 1);
     }
 
     private function validated(Request $request, ?int $ignoreId = null): array

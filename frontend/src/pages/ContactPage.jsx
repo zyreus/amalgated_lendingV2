@@ -20,6 +20,7 @@ export default function ContactPage() {
     email: '',
     preferredLoanType: '',
     estimatedLoanAmount: '',
+    website: '',
   })
   const [status, setStatus] = useState('idle')
   const [errorMsg, setErrorMsg] = useState('')
@@ -46,6 +47,7 @@ export default function ContactPage() {
         email: '',
         preferredLoanType: '',
         estimatedLoanAmount: '',
+        website: '',
       })
     } catch (err) {
       setStatus('error')
@@ -117,7 +119,21 @@ export default function ContactPage() {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="contact-col mt-10 lg:mt-0">
+          <form onSubmit={handleSubmit} className="contact-col mt-10 lg:mt-0" noValidate>
+            <label className="sr-only" htmlFor="contact-website-hp">
+              Leave empty
+            </label>
+            <input
+              id="contact-website-hp"
+              type="text"
+              name="website"
+              value={formData.website}
+              onChange={handleChange}
+              tabIndex={-1}
+              autoComplete="off"
+              className="pointer-events-none absolute left-[-10000px] h-px w-px opacity-0"
+              aria-hidden="true"
+            />
             <div className="grid gap-5 sm:grid-cols-2">
               <label className="block sm:col-span-1">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-black/60">Name</span>

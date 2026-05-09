@@ -89,9 +89,19 @@ export default defineConfig(({ mode }) => {
   const portMatch = proxyTarget.match(/:(\d+)/)
   const apiPort = portMatch ? portMatch[1] : '8001'
 
-  /** Node chat server (REST fallbacks + same-origin Socket.IO tooling). */
-  const chatPort = readChatActivePort() || env.CHAT_PORT || env.PORT || '8010'
+  /** Node chat server (REST fallbacks + optional same-origin Socket.IO proxy). */
+  const chatPortFromFile = readChatActivePort()
+  const chatPort =
+    chatPortFromFile || env.CHAT_PORT || env.PORT || '8010'
   const chatTarget = (env.VITE_CHAT_PROXY_TARGET || `http://127.0.0.1:${chatPort}`).replace(/\/$/, '')
+  /**
+   * Only proxy `/socket.io` + `/uploads` when chat is actually running (port file from `serve:chat`)
+   * or when `VITE_CHAT_PROXY_TARGET` is set. Otherwise Vite spams `ECONNREFUSED 127.0.0.1:8010` when
+   * the browser falls back to same-origin Socket.IO while Laravel-only dev (`npm run dev:vite`) is used.
+   */
+  const enableChatProxy = Boolean(
+    chatPortFromFile || String(env.VITE_CHAT_PROXY_TARGET || '').trim(),
+  )
 
   const proxy = {
     '/api': {
@@ -111,13 +121,16 @@ export default defineConfig(({ mode }) => {
       changeOrigin: true,
     },
     '/health': { target: proxyTarget, changeOrigin: true },
+  }
+
+  if (enableChatProxy) {
     /** Chat server CMS uploads (`/uploads/cms/...`) for LAN dev host. */
-    '/uploads': {
+    proxy['/uploads'] = {
       target: chatTarget,
       changeOrigin: true,
-    },
-    /** Kept for any same-origin tooling; main app uses direct origin for Socket.IO to avoid WS proxy noise. */
-    '/socket.io': { target: chatTarget, changeOrigin: true, ws: true },
+    }
+    /** Same-origin Socket.IO fallback when the SPA probes `window.location.origin`. */
+    proxy['/socket.io'] = { target: chatTarget, changeOrigin: true, ws: true }
   }
 
   return {

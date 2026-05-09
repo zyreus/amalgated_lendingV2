@@ -22,6 +22,9 @@ class ComputeLoanRequest extends FormRequest
             'application_nature' => ['nullable', 'string', 'in:new,reloan'],
             'age' => ['nullable', 'integer', 'min:18', 'max:100'],
             'monthly_pension' => ['nullable', 'numeric', 'min:0'],
+            'monthly_rate_percent_override' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'srp' => ['nullable', 'numeric', 'min:0'],
+            'purchase_channel' => ['nullable', 'string', 'in:outside_office,in_office'],
         ];
     }
 }

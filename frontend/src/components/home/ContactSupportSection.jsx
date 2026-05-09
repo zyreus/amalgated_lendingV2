@@ -4,7 +4,7 @@ const mainOfficeAddress =
 export default function ContactSupportSection() {
   const mapQuery = encodeURIComponent(mainOfficeAddress)
   const messengerLink = 'https://m.me/'
-  const whatsappLink = 'https://wa.me/639177000000'
+  const whatsappLink = 'https://wa.me/639190675095'
 
   return (
     <section id="contact-support" className="app-container py-8 sm:py-12">
@@ -14,7 +14,7 @@ export default function ContactSupportSection() {
           <h2 className="mt-2 text-3xl font-semibold text-brand-text">Need help? Our team is ready to assist.</h2>
           <dl className="mt-5 space-y-3 text-sm text-brand-text/80">
             <div><dt className="font-semibold text-brand-text">Address</dt><dd>{mainOfficeAddress}</dd></div>
-            <div><dt className="font-semibold text-brand-text">Mobile</dt><dd>+63 917 700 0000</dd></div>
+            <div><dt className="font-semibold text-brand-text">Mobile</dt><dd>09190675095</dd></div>
             <div><dt className="font-semibold text-brand-text">Landline</dt><dd>(082) 000 0000</dd></div>
             <div><dt className="font-semibold text-brand-text">Email</dt><dd>support@amalgatedlending.com</dd></div>
             <div><dt className="font-semibold text-brand-text">Operating Hours</dt><dd>Monday to Saturday, 8:30 AM - 5:30 PM</dd></div>

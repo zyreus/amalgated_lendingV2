@@ -1,6 +1,5 @@
-import { laravelRequest, formatLaravelUnreachableError } from './lendingLaravelApi.js'
+import { laravelRequest, formatLaravelUnreachableError, publicLaravelPost } from './lendingLaravelApi.js'
 import { deriveApplicantFromExtended, deriveProductApiFields } from '../components/loan/amalgatedPayloadMerge.js'
-import { publicChatJson } from './adminChatApi.js'
 
 /** Merge `extendedApplication` into flat fields used by public multipart endpoints. */
 function withExtendedApplicationDerived(source) {
@@ -76,28 +75,40 @@ function buildApplicationPayload(source) {
 export async function postPublicInquiry(payload) {
   const source = payload || {}
   const preferredLoanType = String(source.preferredLoanType || source.loanType || '').trim()
-  const estimatedLoanAmount = String(source.estimatedLoanAmount || '').trim()
+  const estimatedRaw = source.estimatedLoanAmount ?? source.estimated_amount
+  const estimatedLoanAmount =
+    estimatedRaw === '' || estimatedRaw == null ? NaN : Number(estimatedRaw)
   const contactNumber = String(source.contactNumber || source.phone || '').trim()
-  const messageParts = ['Website borrower inquiry']
-  if (preferredLoanType) messageParts.push(`Preferred loan type: ${preferredLoanType}`)
-  if (estimatedLoanAmount) messageParts.push(`Estimated amount: PHP ${estimatedLoanAmount}`)
-  if (contactNumber) messageParts.push(`Contact number: ${contactNumber}`)
 
-  const { res, data } = await publicChatJson('/api/inquiry', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({
-      name: String(source.name || '').trim(),
-      email: String(source.email || '').trim(),
-      phone: contactNumber,
-      company: String(source.organization || source.company || '').trim(),
-      message: messageParts.filter(Boolean).join('\n\n'),
-      source_page: '/contact',
-    }),
-  })
-  if (!res) throw new Error('Unable to reach inquiry service. Please try again in a moment.')
-  if (!res.ok) throw new Error(data?.message || `Inquiry submit failed (HTTP ${res.status})`)
-  return data
+  const body = {
+    name: String(source.name || '').trim(),
+    email: String(source.email || '').trim(),
+    contact_number: contactNumber,
+    preferred_loan_type: preferredLoanType,
+    estimated_loan_amount: estimatedLoanAmount,
+    organization: String(source.organization || source.company || '').trim() || undefined,
+    source: 'Public Website',
+    source_page: typeof window !== 'undefined' ? window.location?.pathname || '/contact' : '/contact',
+  }
+  const hp = String(source.website || '').trim()
+  if (hp !== '') {
+    body.website = hp
+  }
+
+  try {
+    return await publicLaravelPost('/public/inquiry', body)
+  } catch (e) {
+    if (e.body && typeof e.body === 'object' && e.body.errors) {
+      const flat = Object.values(e.body.errors).flat().filter(Boolean)
+      if (flat.length) {
+        const err = new Error(flat.join(' '))
+        err.body = e.body
+        err.status = e.status
+        throw err
+      }
+    }
+    throw e
+  }
 }
 
 export async function postAliLaravelApplication(payload) {

@@ -12,8 +12,11 @@ class Lead extends Model
         'user_id',
         'name',
         'email',
+        'phone',
         'organization',
         'loan_type',
+        'estimated_amount',
+        'source',
         'status',
         'initial_message',
         'chat_token',
@@ -21,6 +24,7 @@ class Lead extends Model
     ];
 
     protected $casts = [
+        'estimated_amount' => 'decimal:2',
         'last_message_at' => 'datetime',
     ];
 
