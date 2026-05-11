@@ -907,7 +907,7 @@ When a "Lending assistant" section is included, follow it strictly and never inv
 const WEBSITE_KNOWLEDGE = `
 - Amalgated Lending (Amalgated Lending Inc.) — personal and business loans in Davao & Mindanao.
 - Address: ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000.
-- Mobile: 09190675095.
+- Mobile: 09190675095 (official callback — do not use or repeat any old landline such as (082) 297 8099).
 - Email: support@amalgatedlending.com.
 - Website: https://amalgatedlending.com.
 - Operating hours (typical): Monday–Saturday, 8:30 AM–5:30 PM (confirm by phone if unsure).
