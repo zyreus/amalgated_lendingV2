@@ -63,16 +63,15 @@ class PublicChatController extends Controller
         ]);
 
         if (! empty($data['dedupe_key'])) {
-            if (ChatMessage::query()->where('dedupe_key', $data['dedupe_key'])->exists()) {
-                $existing = ChatMessage::query()
-                    ->where('dedupe_key', $data['dedupe_key'])
-                    ->with('adminUser:id,name')
-                    ->first();
-
+            $existing = ChatMessage::query()
+                ->where('dedupe_key', $data['dedupe_key'])
+                ->with('adminUser:id,name')
+                ->first();
+            if ($existing) {
                 return response()->json([
                     'ok' => true,
                     'duplicate' => true,
-                    'message' => $existing ? SupportChatPresenter::message($existing) : null,
+                    'message' => SupportChatPresenter::message($existing),
                 ], 200);
             }
         }

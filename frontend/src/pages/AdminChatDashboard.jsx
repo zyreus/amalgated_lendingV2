@@ -69,12 +69,11 @@ function CrmNavIcon({ name }) {
   }
 }
 
+/** Matches Laravel `leads.status` (`AdminLeadController::update`). Borrower chat threads use the same column. */
 const LEAD_STATUS = {
   new: 'New',
-  contacted: 'Contacted',
-  qualified: 'Qualified',
-  converted: 'Converted',
-  lost: 'Lost',
+  ongoing: 'Ongoing',
+  closed: 'Closed',
 }
 const TICKET_PRIORITY = {
   low: 'Low',
@@ -211,13 +210,15 @@ function conversationListSubtitle(c) {
 }
 
 function normalizeLead(lead) {
+  const src = [lead.source, lead.source_page].filter((s) => s && String(s).trim())
   return {
     ...lead,
     user_id: lead.user_id ?? null,
     phone: lead.phone || '',
     company: lead.company || lead.organization || '',
     inquiry_message: lead.inquiry_message || lead.initial_message || '',
-    source_page: lead.source_page || 'Contact form',
+    /** CRM “Source” column: channel + page path (Laravel `PublicInquiryController`). */
+    source_page: src.length ? src.join(' · ') : '—',
     status: lead.status || 'new',
   }
 }
@@ -457,15 +458,18 @@ export default function AdminChatDashboard({
 
   const fetchLeads = useCallback(async () => {
     try {
-      const params = new URLSearchParams()
+      const params = new URLSearchParams({
+        per_page: '100',
+        exclude_loan_type: BORROWER_CHAT_LOAN_TYPE,
+      })
       if (leadsFilter) params.set('status', leadsFilter)
       if (leadsSearch) params.set('search', leadsSearch)
-      const { res } = await chatFetch(`/api/admin/leads?${params}`)
-      if (res?.status === 401 || res?.status === 403) return
-      const data = await res?.json?.().catch(() => [])
-      setLeads((Array.isArray(data) ? data : []).map(normalizeLead))
+      const res = await adminApi(`/admin/leads?${params}`)
+      const page = res?.data
+      const rows = Array.isArray(page?.data) ? page.data : Array.isArray(res?.data) ? res.data : []
+      setLeads(rows.map(normalizeLead))
     } catch {
-      /* ignore */
+      setLeads([])
     }
   }, [leadsFilter, leadsSearch])
 
@@ -1324,23 +1328,10 @@ export default function AdminChatDashboard({
 
   const updateLeadStatusById = async (leadId, status) => {
     try {
-      const lead = (leads || []).find((row) => String(row.id) === String(leadId))
-      const { res } = await chatFetch(`/api/admin/leads/${leadId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+      await adminApi(`/admin/leads/${leadId}`, {
+        method: 'PUT',
         body: JSON.stringify({ status }),
       })
-      if (res?.status === 401 || res?.status === 403) return
-
-      if ((status === 'converted' || status === 'qualified') && lead?.conversation_id) {
-        await adminApi(
-          `/admin/chat/conversations/${encodeURIComponent(lead.conversation_id)}/warehouse-status`,
-          {
-            method: 'PATCH',
-            body: JSON.stringify({ status: 'archived' }),
-          },
-        )
-      }
       fetchLeads()
       fetchBorrowerLeads()
       fetchConversations()
@@ -2155,7 +2146,9 @@ export default function AdminChatDashboard({
                             STATUS_BADGE[
                               lead.status === 'new'
                                 ? 'open'
-                                : lead.status === 'contacted' || lead.status === 'qualified'
+                                : lead.status === 'ongoing' ||
+                                    lead.status === 'contacted' ||
+                                    lead.status === 'qualified'
                                   ? 'in_progress'
                                   : 'archived'
                             ]

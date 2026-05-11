@@ -114,6 +114,7 @@ class PublicInquiryController extends Controller
             'loan_type' => $loanType,
             'estimated_amount' => $estimatedAmount,
             'source' => $source,
+            'source_page' => $sourcePage,
             'status' => 'new',
             'initial_message' => $initialMessage,
             'chat_token' => Str::random(40),

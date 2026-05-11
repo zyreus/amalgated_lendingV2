@@ -32,6 +32,7 @@ class PublicInquiryTest extends TestCase
             'email' => 'juan@example.com',
             'loan_type' => 'Salary Loan',
             'source' => 'Public Website',
+            'source_page' => '/contact',
         ]);
     }
 

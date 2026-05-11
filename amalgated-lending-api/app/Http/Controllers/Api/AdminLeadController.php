@@ -32,6 +32,9 @@ class AdminLeadController extends Controller
         if ($request->filled('loan_type')) {
             $q->where('loan_type', $request->query('loan_type'));
         }
+        if ($request->filled('exclude_loan_type')) {
+            $q->where('loan_type', '!=', $request->query('exclude_loan_type'));
+        }
         $rows = $q->orderByDesc('last_message_at')->orderByDesc('id')->paginate((int) $request->query('per_page', 20));
 
         return response()->json(['ok' => true, 'data' => $rows]);

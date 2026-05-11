@@ -17,6 +17,7 @@ class Lead extends Model
         'loan_type',
         'estimated_amount',
         'source',
+        'source_page',
         'status',
         'initial_message',
         'chat_token',

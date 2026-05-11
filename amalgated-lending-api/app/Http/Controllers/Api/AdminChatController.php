@@ -176,31 +176,38 @@ class AdminChatController extends Controller
         $sinceDays = max(1, min((int) $request->query('days', 30), 366));
         $since = now()->subDays($sinceDays);
 
-        $totalMessages = ChatMessage::query()
-            ->where('created_at', '>=', $since)
-            ->where('is_feedback', false)
-            ->count();
+        /** One aggregate scan over `chat_messages` instead of four separate COUNT queries. */
+        $msgAgg = DB::selectOne(
+            'SELECT '
+            .'SUM(CASE WHEN is_feedback = 0 THEN 1 ELSE 0 END) AS total_messages, '
+            .'SUM(CASE WHEN is_feedback = 0 AND (sender_type = ? OR (sender_type IS NULL AND is_from_visitor = 1)) THEN 1 ELSE 0 END) AS visitor_messages, '
+            .'SUM(CASE WHEN sender_type = ? THEN 1 ELSE 0 END) AS ai_messages, '
+            .'SUM(CASE WHEN is_feedback = 0 AND (sender_type = ? OR is_from_admin = 1) THEN 1 ELSE 0 END) AS admin_messages '
+            .'FROM chat_messages WHERE created_at >= ?',
+            ['customer', 'ai', 'admin', $since],
+        );
 
-        $visitorMessages = ChatMessage::query()
-            ->where('created_at', '>=', $since)
-            ->where('is_feedback', false)
-            ->where(function ($q) {
-                $q->where('sender_type', 'customer')->orWhere(function ($qq) {
-                    $qq->whereNull('sender_type')->where('is_from_visitor', true);
-                });
-            })
-            ->count();
+        $totalMessages = (int) ($msgAgg->total_messages ?? 0);
+        $visitorMessages = (int) ($msgAgg->visitor_messages ?? 0);
+        $aiMessages = (int) ($msgAgg->ai_messages ?? 0);
+        $adminMessages = (int) ($msgAgg->admin_messages ?? 0);
 
-        $aiMessages = ChatMessage::query()->where('created_at', '>=', $since)->where('sender_type', 'ai')->count();
-        $adminMessages = ChatMessage::query()->where('created_at', '>=', $since)->where(function ($q) {
-            $q->where('sender_type', 'admin')->orWhere('is_from_admin', true);
-        })->where('is_feedback', false)->count();
+        $fb = DB::selectOne(
+            'SELECT COUNT(*) AS c, AVG(rating) AS avg_rating FROM support_chat_feedback WHERE created_at >= ?',
+            [$since],
+        );
+        $feedbackCount = (int) ($fb->c ?? 0);
+        $ratingAvg = $fb->avg_rating ?? null;
 
-        $feedbackCount = SupportChatFeedback::query()->where('created_at', '>=', $since)->count();
-        $ratingAvg = SupportChatFeedback::query()->where('created_at', '>=', $since)->avg('rating');
-
-        $resolvedConversations = SupportConversation::query()->where('created_at', '>=', $since)->where('status', 'resolved')->count();
-        $escalations = SupportConversation::query()->where('created_at', '>=', $since)->where(fn ($q) => $q->where('needs_human', true)->orWhereNotNull('escalated_at'))->count();
+        $convAgg = DB::selectOne(
+            'SELECT '
+            .'SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS resolved, '
+            .'SUM(CASE WHEN needs_human = 1 OR escalated_at IS NOT NULL THEN 1 ELSE 0 END) AS escalations '
+            .'FROM support_conversations WHERE created_at >= ?',
+            ['resolved', $since],
+        );
+        $resolvedConversations = (int) ($convAgg->resolved ?? 0);
+        $escalations = (int) ($convAgg->escalations ?? 0);
 
         return response()->json([
             'ok' => true,
