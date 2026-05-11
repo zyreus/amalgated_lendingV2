@@ -7,6 +7,7 @@ use App\Models\LoanProduct;
 use App\Services\LoanCalculationEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 
 class LoanProductController extends Controller
@@ -18,11 +19,13 @@ class LoanProductController extends Controller
     /** Public: active products only */
     public function publicIndex(): JsonResponse
     {
-        $rows = LoanProduct::query()
-            ->active()
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->get();
+        $rows = Cache::remember('loan_products_public_active_v1', 120, function () {
+            return LoanProduct::query()
+                ->active()
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get();
+        });
 
         return response()->json(['ok' => true, 'data' => $rows]);
     }
@@ -42,6 +45,7 @@ class LoanProductController extends Controller
     {
         $data = $this->normalizeProductPayload($this->validated($request));
         $product = LoanProduct::create($data);
+        Cache::forget('loan_products_public_active_v1');
 
         return response()->json(['ok' => true, 'data' => $product], 201);
     }
@@ -50,6 +54,7 @@ class LoanProductController extends Controller
     {
         $data = $this->normalizeProductPayload($this->validated($request, $loanProduct->id));
         $loanProduct->update($data);
+        Cache::forget('loan_products_public_active_v1');
 
         return response()->json(['ok' => true, 'data' => $loanProduct->fresh()]);
     }
@@ -68,6 +73,7 @@ class LoanProductController extends Controller
     public function destroy(LoanProduct $loanProduct): JsonResponse
     {
         $loanProduct->delete();
+        Cache::forget('loan_products_public_active_v1');
 
         return response()->json(['ok' => true]);
     }

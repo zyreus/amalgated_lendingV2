@@ -15,7 +15,6 @@ export default function ContactSupportSection() {
           <dl className="mt-5 space-y-3 text-sm text-brand-text/80">
             <div><dt className="font-semibold text-brand-text">Address</dt><dd>{mainOfficeAddress}</dd></div>
             <div><dt className="font-semibold text-brand-text">Mobile</dt><dd>09190675095</dd></div>
-            <div><dt className="font-semibold text-brand-text">Landline</dt><dd>(082) 000 0000</dd></div>
             <div><dt className="font-semibold text-brand-text">Email</dt><dd>support@amalgatedlending.com</dd></div>
             <div><dt className="font-semibold text-brand-text">Operating Hours</dt><dd>Monday to Saturday, 8:30 AM - 5:30 PM</dd></div>
           </dl>

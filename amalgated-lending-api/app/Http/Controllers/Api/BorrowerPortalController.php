@@ -186,13 +186,20 @@ class BorrowerPortalController extends Controller
                 'created_at',
             ]);
 
-        $loan = $this->selectPrimaryLoan($allLoans);
-        BorrowerNotificationController::syncPaymentRemindersForUser($user, $loan);
-        if ($loan) {
-            $loan->load([
-                'payments' => fn ($q) => $q->orderBy('due_date'),
-                'loanApplication:id,loan_id,loan_amount,approved_amount',
-            ]);
+        $primaryRef = $this->selectPrimaryLoan($allLoans);
+        BorrowerNotificationController::syncPaymentRemindersForUser($user, $primaryRef);
+
+        // Re-fetch the primary loan with all financial columns + relations. The list query above uses a
+        // minimal column set; serializing that model omitted fee/amortization fields the dashboard needs.
+        $loan = null;
+        if ($primaryRef) {
+            $loan = Loan::query()
+                ->whereKey($primaryRef->id)
+                ->with([
+                    'payments' => fn ($q) => $q->orderBy('due_date'),
+                    'loanApplication:id,loan_id,loan_type,loan_amount,approved_amount,monthly_pension',
+                ])
+                ->first();
         }
 
         $loansSummary = $allLoans->map(function (Loan $l) {
@@ -618,7 +625,7 @@ class BorrowerPortalController extends Controller
     }
 
     /**
-     * General + travel applications for the borrower dashboard (document checklist, signatures, print links).
+     * General + travel applications for the borrower dashboard (document checklist, signatures).
      */
     public function lendingApplications(Request $request): JsonResponse
     {
@@ -667,11 +674,6 @@ class BorrowerPortalController extends Controller
                         'spouse' => $a->spouse_signature ? PublicStorageUrl::apiUrl($a->spouse_signature) : null,
                     ],
                     'terms_accepted' => $a->terms_accepted,
-                    'print_url' => SignedPrintUrls::temporaryRoute(
-                        'print.travel-loan',
-                        now()->addMinutes(45),
-                        ['travelApplication' => $a->id]
-                    ),
                     'terms_url' => url('/travel-assistance/terms'),
                 ];
             });
@@ -714,11 +716,6 @@ class BorrowerPortalController extends Controller
                 'spouse' => $a->spouse_signature ? PublicStorageUrl::apiUrl($a->spouse_signature) : null,
                 'comaker' => $a->comaker_signature ? PublicStorageUrl::apiUrl($a->comaker_signature) : null,
             ],
-            'print_url' => SignedPrintUrls::temporaryRoute(
-                'print.general-loan',
-                now()->addMinutes(45),
-                ['loanApplication' => $a->id]
-            ),
         ];
     }
 
