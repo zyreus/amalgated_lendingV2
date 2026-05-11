@@ -100,8 +100,8 @@ export default function CareersPage() {
             </ul>
             <p className="mt-4 text-sm text-brand-text/60">
               Don&apos;t see a fit? Send your CV and cover letter to{' '}
-              <a className="font-semibold text-brand-primary hover:underline" href="mailto:careers@amalgatedlending.com">
-                careers@amalgatedlending.com
+              <a className="font-semibold text-brand-primary hover:underline" href="mailto:support@amalgatedlending.com">
+                support@amalgatedlending.com
               </a>{' '}
               — we keep qualified profiles on file for future openings.
             </p>

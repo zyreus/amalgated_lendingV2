@@ -39,12 +39,24 @@ export default function Footer() {
             </div>
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="text-white/70">Follow us:</span>
-              <a href="#" aria-label="Facebook" className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition hover:border-red-600/60 hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-red-600/30">
+              <a
+                href="https://www.facebook.com/AmalgatedLendingOfficial"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Facebook"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition hover:border-red-600/60 hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-red-600/30"
+              >
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
                   <path d="M13.5 22v-8h2.68l.4-3.12H13.5V8.9c0-.9.25-1.52 1.55-1.52h1.66V4.6c-.29-.04-1.29-.12-2.45-.12-2.42 0-4.08 1.48-4.08 4.2v2.2H7.5V14h2.68v8h3.32Z" />
                 </svg>
               </a>
-              <a href="#" aria-label="Instagram" className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition hover:border-red-600/60 hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-red-600/30">
+              <a
+                href="https://www.instagram.com/amalgated.lending?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw=="
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Instagram"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition hover:border-red-600/60 hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-red-600/30"
+              >
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                   <rect x="7" y="7" width="10" height="10" rx="3" />
                   <circle cx="12" cy="12" r="3" />
