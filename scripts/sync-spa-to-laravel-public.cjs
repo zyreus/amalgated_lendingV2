@@ -34,4 +34,11 @@ for (const name of fs.readdirSync(distDir)) {
   fs.copyFileSync(src, path.join(publicDir, name))
 }
 
+const mailLogoSrc = path.join(root, 'frontend', 'src', 'assets', 'amalgated-lending-logo.png')
+const mailLogoDest = path.join(publicDir, 'amalgated-lending-logo.png')
+if (fs.existsSync(mailLogoSrc)) {
+  fs.mkdirSync(publicDir, { recursive: true })
+  fs.copyFileSync(mailLogoSrc, mailLogoDest)
+}
+
 console.log('[sync-spa] Copied dist/ -> amalgated-lending-api/public/ (assets + index.html)')

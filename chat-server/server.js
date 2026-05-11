@@ -1650,8 +1650,10 @@ app.get('/api/admin/verify', (req, res) => {
 
 // ── Admin: Feedback ──
 
-app.get('/api/admin/feedback', requireAdminOrLendingSecret, requirePermissionAny('manage_tickets', 'view_dashboard'), async (_req, res) => {
-  res.json(await getFeedback());
+app.get('/api/admin/feedback', requireAdminOrLendingSecret, requirePermissionAny('manage_tickets', 'view_dashboard'), async (req, res) => {
+  const limit = Math.min(Math.max(parseInt(String(req.query.limit || '500'), 10) || 500, 1), 500);
+  const offset = Math.max(parseInt(String(req.query.offset || '0'), 10) || 0, 0);
+  res.json(await getFeedback({ limit, offset }));
 });
 
 // ── Admin: Stats ──
@@ -3221,6 +3223,8 @@ io.on('connection', (socket) => {
       const email = emailRaw && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw) ? emailRaw : null;
       const subject = String(payload?.subject || '').trim().slice(0, 191) || null;
       const comment = String(payload?.comment || '').trim();
+      const loanType = String(payload?.loan_type || '').trim().slice(0, 96) || null;
+      const consentPublic = Boolean(payload?.consent_public_display);
 
       if (!Number.isFinite(rating) || rating <= 0 || !comment) {
         ack?.({ ok: false, message: 'Rating and comment are required.' });
@@ -3237,7 +3241,16 @@ io.on('connection', (socket) => {
         comment,
       });
       io.to('admin').emit('feedback:refresh');
-      syncOutboundFeedback({ sessionId: conversationId || '', rating, subject, name, email, comment }).catch(() => {});
+      syncOutboundFeedback({
+        sessionId: conversationId || '',
+        rating,
+        subject,
+        name,
+        email,
+        comment,
+        loan_type: loanType,
+        consent_public_display: consentPublic,
+      }).catch(() => {});
       ack?.({ ok: true });
     } catch (err) {
       console.error('[socket][visitor:feedback]', err?.message || err);

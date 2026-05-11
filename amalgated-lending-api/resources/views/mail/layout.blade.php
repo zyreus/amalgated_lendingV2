@@ -4,7 +4,7 @@
     ? $logoUrl
     : ((string) config('services.borrower_verify.logo_url') !== ''
       ? (string) config('services.borrower_verify.logo_url')
-      : rtrim((string) config('app.url'), '/').'/amalgated-lending-logo.svg');
+      : rtrim((string) config('app.url'), '/').'/amalgated-lending-logo.png');
 @endphp
   <tr>
     <td align="center">

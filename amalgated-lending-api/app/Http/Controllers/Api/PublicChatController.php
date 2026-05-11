@@ -177,6 +177,8 @@ class PublicChatController extends Controller
             'comment' => 'required|string|max:5000',
             'name' => 'nullable|string|max:191',
             'email' => 'nullable|email|max:191',
+            'loan_type' => 'nullable|string|max:96',
+            'consent_public_display' => 'nullable|boolean',
         ]);
 
         $comment = SupportChatPresenter::sanitizeBody($data['comment']);
@@ -207,7 +209,7 @@ class PublicChatController extends Controller
                     ->value('id');
             }
 
-            FeedbackTicket::query()->firstOrCreate(
+            FeedbackTicket::query()->updateOrCreate(
                 ['support_chat_feedback_id' => $supportFeedback->id],
                 [
                     'borrower_id' => $borrowerId,
@@ -215,10 +217,17 @@ class PublicChatController extends Controller
                     'category' => 'General Feedback',
                     'priority' => 'Medium',
                     'status' => 'New',
+                    'publication_status' => 'pending',
+                    'featured' => false,
+                    'source' => 'chatbot',
+                    'consent_public_display' => (bool) ($data['consent_public_display'] ?? false),
+                    'verified_borrower' => (bool) $borrowerId,
+                    'loan_type' => isset($data['loan_type']) ? trim((string) $data['loan_type']) : null,
                     'subject' => isset($data['subject']) ? trim((string) $data['subject']) : null,
                     'message' => $comment,
                     'rating' => (int) $data['rating'],
                     'email' => $data['email'] ?? null,
+                    'website_visible' => false,
                 ],
             );
         }

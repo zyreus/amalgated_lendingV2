@@ -1348,11 +1348,18 @@ export async function createFeedback(data = {}) {
   )
 }
 
-export async function getFeedback() {
+/**
+ * @param {{ limit?: number, offset?: number }} [opts]
+ */
+export async function getFeedback(opts = {}) {
+  const limit = Math.min(Math.max(Number(opts.limit) || 500, 1), 500)
+  const offset = Math.max(Number(opts.offset) || 0, 0)
   return all(
     `SELECT id, conversation_id, rating, name, email, subject, comment, is_read, created_at
      FROM feedback
-     ORDER BY created_at DESC`,
+     ORDER BY created_at DESC
+     LIMIT ? OFFSET ?`,
+    [limit, offset],
   )
 }
 

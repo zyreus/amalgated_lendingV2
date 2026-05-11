@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChatMessage;
+use App\Models\FeedbackTicket;
+use App\Models\User;
 use App\Models\SupportAiLog;
 use App\Models\SupportAssignment;
 use App\Models\SupportChatFeedback;
@@ -13,6 +15,7 @@ use App\Support\SupportChatPresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class SupportChatSyncController extends Controller
 {
@@ -146,6 +149,8 @@ class SupportChatSyncController extends Controller
             'comment' => 'required|string|max:5000',
             'name' => 'sometimes|nullable|string|max:191',
             'email' => 'sometimes|nullable|email|max:191',
+            'loan_type' => 'sometimes|nullable|string|max:96',
+            'consent_public_display' => 'sometimes|nullable|boolean',
         ]);
 
         $comment = SupportChatPresenter::sanitizeBody($data['comment']);
@@ -155,7 +160,7 @@ class SupportChatSyncController extends Controller
 
         $conv = SupportConversation::query()->where('session_id', $data['session_id'])->first();
 
-        SupportChatFeedback::create([
+        $supportFb = SupportChatFeedback::create([
             'support_conversation_id' => $conv?->id,
             'session_id' => trim($data['session_id']),
             'rating' => (int) $data['rating'],
@@ -166,6 +171,36 @@ class SupportChatSyncController extends Controller
             'status' => 'new',
             'is_from_sync' => true,
         ]);
+
+        if (DB::getSchemaBuilder()->hasTable('feedback_tickets')) {
+            $borrowerId = null;
+            if (! empty($data['email'])) {
+                $borrowerId = User::query()
+                    ->where('email', trim((string) $data['email']))
+                    ->value('id');
+            }
+            FeedbackTicket::query()->updateOrCreate(
+                ['support_chat_feedback_id' => $supportFb->id],
+                [
+                    'borrower_id' => $borrowerId,
+                    'support_conversation_id' => $conv?->id,
+                    'category' => 'General Feedback',
+                    'priority' => 'Medium',
+                    'status' => 'New',
+                    'publication_status' => 'pending',
+                    'featured' => false,
+                    'source' => 'chatbot',
+                    'consent_public_display' => (bool) ($data['consent_public_display'] ?? false),
+                    'verified_borrower' => (bool) $borrowerId,
+                    'loan_type' => isset($data['loan_type']) ? trim((string) $data['loan_type']) : null,
+                    'subject' => isset($data['subject']) ? trim((string) $data['subject']) : null,
+                    'message' => $comment,
+                    'rating' => (int) $data['rating'],
+                    'email' => $data['email'] ?? null,
+                    'website_visible' => false,
+                ],
+            );
+        }
 
         if ($conv) {
             $conv->customer_rating = (int) $data['rating'];

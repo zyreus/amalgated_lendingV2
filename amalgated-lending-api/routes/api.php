@@ -39,6 +39,8 @@ use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\PrintableFormAdminController;
 use App\Http\Controllers\Api\PrintableFormBorrowerController;
 use App\Http\Controllers\Api\PublicChatController;
+use App\Http\Controllers\Api\PublicWebsiteTestimonialsController;
+use App\Http\Controllers\Api\ChatbotFeedbackController;
 use App\Http\Controllers\Api\PublicFileController;
 use App\Http\Controllers\Api\PublicInquiryController;
 use App\Http\Controllers\Api\PublicLeadController;
@@ -121,6 +123,10 @@ Route::prefix('v1')->group(function () {
     Route::get('/public/chat/conversation-meta/{sessionId}', [PublicChatController::class, 'conversationMeta']);
     Route::post('/public/chat/feedback', [PublicChatController::class, 'feedbackStore'])->middleware('throttle:45,1');
     Route::post('/public/feedback', [PublicChatController::class, 'feedbackStore'])->middleware('throttle:45,1');
+    Route::get('/public/feedback/testimonials', [PublicWebsiteTestimonialsController::class, 'legacyList'])->middleware('throttle:120,1');
+    Route::get('/public/website/testimonials', [PublicWebsiteTestimonialsController::class, 'website'])->middleware('throttle:120,1');
+    Route::get('/website/testimonials', [PublicWebsiteTestimonialsController::class, 'website'])->middleware('throttle:120,1');
+    Route::post('/chatbot/feedback', [ChatbotFeedbackController::class, 'store'])->middleware('throttle:30,1');
 
     Route::post('/internal/support/sync/message', [SupportChatSyncController::class, 'syncMessage'])
         ->middleware(['support.sync', 'throttle:600,1']);
@@ -249,6 +255,11 @@ Route::prefix('v1')->group(function () {
             Route::get('/feedbacks/{ticket}/replies', [AdminFeedbackController::class, 'replies']);
             Route::post('/feedbacks/{ticket}/replies', [AdminFeedbackController::class, 'addReply']);
             Route::get('/feedbacks/{ticket}/analytics', [AdminFeedbackController::class, 'analytics']);
+            Route::put('/feedbacks/{ticket}/approve', [AdminFeedbackController::class, 'approveForWebsite']);
+            Route::put('/feedbacks/{ticket}/reject', [AdminFeedbackController::class, 'rejectForWebsite']);
+            Route::put('/feedbacks/{ticket}/feature', [AdminFeedbackController::class, 'featureForWebsite']);
+            Route::put('/feedbacks/{ticket}/unfeature', [AdminFeedbackController::class, 'unfeatureForWebsite']);
+            Route::put('/feedbacks/{ticket}/verify-borrower', [AdminFeedbackController::class, 'verifyBorrower']);
         });
 
         Route::middleware('permission:notifications.view')->group(function () {

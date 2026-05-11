@@ -5,7 +5,7 @@
         $logoSrc = 'data:image/png;base64,'.base64_encode(file_get_contents($pngPath));
     } else {
         // Fallback for environments where the frontend PNG isn't available.
-        $logoSrc = asset('amalgated-lending-logo.svg');
+        $logoSrc = asset('amalgated-lending-logo.png');
     }
 @endphp
 

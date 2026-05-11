@@ -148,7 +148,14 @@ export default function LendingChatWidget() {
   const [unread, setUnread] = useState(0)
   const [leadCapture, setLeadCapture] = useState(null)
   const [leadForm, setLeadForm] = useState({ name: '', email: '', phone: '', company: '' })
-  const [feedbackForm, setFeedbackForm] = useState({ rating: 0, name: '', email: '', subject: '', comment: '' })
+  const [feedbackForm, setFeedbackForm] = useState({
+    rating: 0,
+    name: '',
+    email: '',
+    subject: '',
+    comment: '',
+    consent_public_display: false,
+  })
   const [showFeedback, setShowFeedback] = useState(false)
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
   const [feedbackNotice, setFeedbackNotice] = useState('')
@@ -678,6 +685,9 @@ export default function LendingChatWidget() {
       }
       setFeedbackSubmitting(true)
       try {
+        const loanTypeHint = String(sourcePage || '')
+          .trim()
+          .slice(0, 96)
         const payload = {
           conversationId: convoId.current,
           rating: feedbackForm.rating,
@@ -685,6 +695,8 @@ export default function LendingChatWidget() {
           email: feedbackForm.email.trim() || null,
           subject: feedbackForm.subject.trim() || null,
           comment: feedbackForm.comment.trim(),
+          loan_type: loanTypeHint || null,
+          consent_public_display: !!feedbackForm.consent_public_display,
         }
 
         let submitted = false
@@ -728,6 +740,8 @@ export default function LendingChatWidget() {
                 email: feedbackForm.email.trim() || undefined,
                 subject: feedbackForm.subject.trim() || undefined,
                 comment: feedbackForm.comment.trim(),
+                loan_type: loanTypeHint || undefined,
+                consent_public_display: !!feedbackForm.consent_public_display,
               })
               submitted = true
             } catch {
@@ -741,7 +755,14 @@ export default function LendingChatWidget() {
           throw new Error(lastError?.message || 'Unable to submit feedback right now.')
         }
         setFeedbackNotice('Thank you! Your feedback has been submitted.')
-        setFeedbackForm({ rating: 0, name: '', email: '', subject: '', comment: '' })
+        setFeedbackForm({
+          rating: 0,
+          name: '',
+          email: '',
+          subject: '',
+          comment: '',
+          consent_public_display: false,
+        })
         setShowFeedback(false)
       } catch (err) {
         setFeedbackError(err?.message || 'Unable to submit feedback right now.')
@@ -749,7 +770,7 @@ export default function LendingChatWidget() {
         setFeedbackSubmitting(false)
       }
     },
-    [feedbackForm],
+    [feedbackForm, sourcePage],
   )
 
   return (
@@ -1012,6 +1033,18 @@ export default function LendingChatWidget() {
                     onChange={(e) => setFeedbackForm((f) => ({ ...f, comment: e.target.value }))}
                     className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
                   />
+                </label>
+                <label className="flex cursor-pointer items-start gap-2 text-xs leading-snug text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={!!feedbackForm.consent_public_display}
+                    onChange={(e) => setFeedbackForm((f) => ({ ...f, consent_public_display: e.target.checked }))}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-primary focus:ring-brand-primary/30"
+                  />
+                  <span>
+                    If my feedback is approved, I agree it may appear on the public website with my display name
+                    (first name and last initial only).
+                  </span>
                 </label>
                 {feedbackError && (
                   <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{feedbackError}</p>

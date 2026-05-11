@@ -130,7 +130,7 @@ export default function AdminFeedbackPage() {
           quick,
           search,
           ...filters,
-          per_page: 200,
+          per_page: 50,
         })}`,
       )
       const payload = res?.data
@@ -206,6 +206,29 @@ export default function AdminFeedbackPage() {
       }
     },
     [loadTickets, selectedId],
+  )
+
+  const onPublicationAction = useCallback(
+    async (path, body = {}) => {
+      if (!selectedId) return
+      setBusy(true)
+      setError('')
+      try {
+        const res = await api(`/feedbacks/${selectedId}${path}`, {
+          method: 'PUT',
+          body: JSON.stringify(body),
+        })
+        setSelected(res?.data || null)
+        setToast('Publication updated.')
+        await loadTicket(selectedId)
+        await loadTickets()
+      } catch (err) {
+        setError(err?.message || 'Unable to update publication.')
+      } finally {
+        setBusy(false)
+      }
+    },
+    [loadTicket, loadTickets, selectedId],
   )
 
   const onSetStatus = useCallback(
@@ -527,6 +550,20 @@ export default function AdminFeedbackPage() {
                 <p className="text-xs text-gray-500">
                   {customer?.email || 'No email'} • {formatTimestamp(selected.created_at)}
                 </p>
+                <p className="mt-1 text-[11px] text-gray-500">
+                  Source: <span className="font-semibold text-gray-700">{selected.source || '—'}</span>
+                  {' · '}
+                  Website:{' '}
+                  <span className="font-semibold text-gray-700">{selected.publication_status || 'pending'}</span>
+                  {selected.featured ? (
+                    <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
+                      Featured
+                    </span>
+                  ) : null}
+                  {typeof selected.rating === 'number' ? (
+                    <span className="ml-1 text-amber-600">★ {selected.rating}/5</span>
+                  ) : null}
+                </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className={`rounded-full px-3 py-1 text-xs font-semibold ${priorityPill(selected.priority)}`}>{selected.priority}</span>
@@ -538,7 +575,19 @@ export default function AdminFeedbackPage() {
               <div className="space-y-4">
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Customer message</p>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">{selected.message}</p>
+                  <textarea
+                    key={`msg-main-${selectedId}`}
+                    rows={6}
+                    defaultValue={selected.message || ''}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim()
+                      const prev = String(selected.message || '').trim()
+                      if (v === prev) return
+                      onPatchTicket({ message: v })
+                    }}
+                    disabled={busy}
+                    className="w-full resize-y rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm leading-relaxed text-gray-800 outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-60"
+                  />
                 </div>
 
               </div>
@@ -676,6 +725,133 @@ export default function AdminFeedbackPage() {
                       >
                         Delete
                       </button>
+                    </div>
+
+                    <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 p-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Public website testimonials</p>
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        Homepage carousel loads approved + featured + borrower consent + rating ≥ 4 (5-minute file cache; no Redis).
+                      </p>
+                      <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-gray-800">
+                        <input
+                          type="checkbox"
+                          checked={!!selected.consent_public_display}
+                          disabled={busy}
+                          onChange={(e) => onPatchTicket({ consent_public_display: e.target.checked })}
+                          className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                        />
+                        Borrower consented to public display
+                      </label>
+                      <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-gray-800">
+                        <input
+                          type="checkbox"
+                          checked={!!selected.website_visible}
+                          disabled={busy}
+                          onChange={(e) => onPatchTicket({ website_visible: e.target.checked })}
+                          className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                        />
+                        Legacy “show on website” flag
+                      </label>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => onPublicationAction('/approve', {})}
+                          className="rounded-lg bg-emerald-600 px-2 py-2 text-[11px] font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => onPublicationAction('/reject', {})}
+                          className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-2 text-[11px] font-semibold text-rose-800 transition hover:bg-rose-100 disabled:opacity-60"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => onPublicationAction('/feature', {})}
+                          className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-2 text-[11px] font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-60"
+                        >
+                          Feature
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => onPublicationAction('/unfeature', {})}
+                          className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-[11px] font-semibold text-gray-800 transition hover:bg-gray-50 disabled:opacity-60"
+                        >
+                          Unfeature
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={busy || !!selected.verified_borrower}
+                        onClick={() => onPublicationAction('/verify-borrower', {})}
+                        className="mt-2 w-full rounded-lg border border-sky-200 bg-sky-50 px-2 py-2 text-[11px] font-semibold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
+                      >
+                        {selected.verified_borrower ? 'Verified borrower' : 'Mark verified borrower'}
+                      </button>
+                      <label className="mt-2 block">
+                        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                          Display name (optional)
+                        </span>
+                        <input
+                          key={`author-${selectedId}`}
+                          type="text"
+                          maxLength={120}
+                          defaultValue={selected.public_author_label || ''}
+                          onBlur={(e) => {
+                            const v = e.target.value.trim()
+                            const prev = (selected.public_author_label || '').trim()
+                            if (v === prev) return
+                            onPatchTicket({ public_author_label: v || null })
+                          }}
+                          disabled={busy}
+                          placeholder="e.g. Maria L."
+                          className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-60"
+                        />
+                      </label>
+                      <label className="mt-2 block">
+                        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                          Loan type (public)
+                        </span>
+                        <input
+                          key={`loantype-${selectedId}`}
+                          type="text"
+                          maxLength={96}
+                          defaultValue={selected.loan_type || ''}
+                          onBlur={(e) => {
+                            const v = e.target.value.trim()
+                            const prev = (selected.loan_type || '').trim()
+                            if (v === prev) return
+                            onPatchTicket({ loan_type: v || null })
+                          }}
+                          disabled={busy}
+                          placeholder="e.g. Salary loan"
+                          className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-60"
+                        />
+                      </label>
+                      <label className="mt-2 block">
+                        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                          Admin notes
+                        </span>
+                        <textarea
+                          key={`notes-${selectedId}`}
+                          rows={3}
+                          defaultValue={selected.admin_notes || ''}
+                          onBlur={(e) => {
+                            const v = e.target.value.trim()
+                            const prev = String(selected.admin_notes || '').trim()
+                            if (v === prev) return
+                            onPatchTicket({ admin_notes: v || null })
+                          }}
+                          disabled={busy}
+                          className="w-full resize-y rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-60"
+                        />
+                      </label>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">

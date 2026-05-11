@@ -93,7 +93,7 @@ export function syncOutboundChatMessage(payload) {
 
 /** Mirror CRM feedback submissions for analytics parity. */
 export function syncOutboundFeedback(payload) {
-  const { sessionId, rating, subject, comment, name, email } = payload || {}
+  const { sessionId, rating, subject, comment, name, email, loan_type, consent_public_display } = payload || {}
   if (!sessionId || !rating || !comment?.trim()) return Promise.resolve()
 
   return postJson('/internal/support/sync/feedback', {
@@ -103,5 +103,7 @@ export function syncOutboundFeedback(payload) {
     comment: comment.trim(),
     name: name ? String(name).trim() : null,
     email: email ? String(email).trim() : null,
+    loan_type: loan_type ? String(loan_type).trim().slice(0, 96) : null,
+    consent_public_display: Boolean(consent_public_display),
   })
 }

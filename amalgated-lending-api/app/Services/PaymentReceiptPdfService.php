@@ -124,11 +124,25 @@ class PaymentReceiptPdfService
 
     private function logoDataUri(): ?string
     {
-        $p = public_path('amalgated-lending-logo.svg');
-        if (! is_readable($p)) {
+        $pngCandidates = [
+            public_path('amalgated-lending-logo.png'),
+            base_path('../frontend/src/assets/amalgated-lending-logo.png'),
+        ];
+        foreach ($pngCandidates as $p) {
+            if (! is_readable($p)) {
+                continue;
+            }
+            $raw = @file_get_contents($p);
+            if ($raw !== false && $raw !== '') {
+                return 'data:image/png;base64,'.base64_encode($raw);
+            }
+        }
+
+        $svg = public_path('amalgated-lending-logo.svg');
+        if (! is_readable($svg)) {
             return null;
         }
-        $raw = @file_get_contents($p);
+        $raw = @file_get_contents($svg);
         if ($raw === false || $raw === '') {
             return null;
         }

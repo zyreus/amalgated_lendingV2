@@ -8,6 +8,7 @@ use App\Models\FeedbackAuditLog;
 use App\Models\FeedbackReply;
 use App\Models\FeedbackTicket;
 use App\Models\User;
+use App\Support\SupportChatPresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,6 @@ class AdminFeedbackController extends Controller
         $q = FeedbackTicket::query()
             ->with([
                 'borrower:id,name,email,phone,role,risk_level,credit_score,created_at',
-                'borrower.borrowerProfile:id,user_id,first_name,last_name,phone_number,address',
                 'assignedStaff:id,name,email,role',
             ])
             ->withCount('replies');
@@ -78,7 +78,7 @@ class AdminFeedbackController extends Controller
             $q->where('status', ucfirst($quick));
         }
 
-        $perPage = min(max((int) $request->query('per_page', 50), 5), 200);
+        $perPage = min(max((int) $request->query('per_page', 25), 5), 100);
         $rows = $q->orderByDesc('id')->paginate($perPage);
 
         return response()->json([
@@ -156,9 +156,27 @@ class AdminFeedbackController extends Controller
             'sla_minutes' => 'nullable|integer|min:1|max:10080',
             'is_sensitive' => 'nullable|boolean',
             'is_vip' => 'nullable|boolean',
+            'website_visible' => 'nullable|boolean',
+            'public_author_label' => 'nullable|string|max:120',
+            'publication_status' => 'nullable|string|in:pending,approved,rejected',
+            'featured' => 'nullable|boolean',
+            'source' => 'nullable|string|max:32',
+            'consent_public_display' => 'nullable|boolean',
+            'verified_borrower' => 'nullable|boolean',
+            'loan_type' => 'nullable|string|max:96',
+            'message' => 'nullable|string|max:8000',
+            'admin_notes' => 'nullable|string|max:8000',
             'tags' => 'nullable|array',
             'checklist' => 'nullable|array',
         ]);
+
+        if (array_key_exists('message', $data) && $data['message'] !== null) {
+            $clean = SupportChatPresenter::sanitizeBody((string) $data['message']);
+            if ($clean === '') {
+                return response()->json(['ok' => false, 'message' => 'Message cannot be empty.'], 422);
+            }
+            $data['message'] = $clean;
+        }
 
         $before = $ticket->only(array_keys($data));
         foreach ($data as $k => $v) {
@@ -182,6 +200,21 @@ class AdminFeedbackController extends Controller
         $ticket->save();
 
         $this->audit($request, $ticket, 'ticket.update', ['before' => $before, 'after' => $ticket->only(array_keys($data))]);
+
+        $invalidateKeys = [
+            'website_visible', 'public_author_label', 'publication_status', 'featured',
+            'consent_public_display', 'verified_borrower', 'loan_type', 'message', 'rating',
+        ];
+        $invalidatePublic = false;
+        foreach ($invalidateKeys as $k) {
+            if (array_key_exists($k, $data)) {
+                $invalidatePublic = true;
+                break;
+            }
+        }
+        if ($invalidatePublic) {
+            PublicWebsiteTestimonialsController::forgetCaches();
+        }
 
         return response()->json(['ok' => true, 'data' => $this->presentTicket($ticket->fresh([
             'borrower.borrowerProfile',
@@ -276,12 +309,110 @@ class AdminFeedbackController extends Controller
         $this->audit($request, $ticket, 'ticket.delete', ['ticket_id' => $ticketId]);
         $ticket->delete();
 
+        PublicWebsiteTestimonialsController::forgetCaches();
+
         // If this ticket originated from legacy support feedback, remove it too.
         if ($legacyId && DB::getSchemaBuilder()->hasTable('support_chat_feedback')) {
             DB::table('support_chat_feedback')->where('id', $legacyId)->delete();
         }
 
         return response()->json(['ok' => true]);
+    }
+
+    public function approveForWebsite(Request $request, FeedbackTicket $ticket): JsonResponse
+    {
+        $this->ensureTicketsAvailable();
+        $this->authorizeSensitive($request, $ticket);
+
+        $data = $request->validate([
+            'consent_public_display' => 'sometimes|boolean',
+            'featured' => 'sometimes|boolean',
+        ]);
+
+        $ticket->publication_status = 'approved';
+        $ticket->website_visible = true;
+        if (array_key_exists('consent_public_display', $data)) {
+            $ticket->consent_public_display = (bool) $data['consent_public_display'];
+        }
+        if (array_key_exists('featured', $data)) {
+            $ticket->featured = (bool) $data['featured'];
+        }
+        $ticket->save();
+
+        $this->audit($request, $ticket, 'publication.approve', $data);
+        PublicWebsiteTestimonialsController::forgetCaches();
+
+        return response()->json(['ok' => true, 'data' => $this->presentTicket($this->freshTicketForPresentation($ticket))]);
+    }
+
+    public function rejectForWebsite(Request $request, FeedbackTicket $ticket): JsonResponse
+    {
+        $this->ensureTicketsAvailable();
+        $this->authorizeSensitive($request, $ticket);
+
+        $ticket->publication_status = 'rejected';
+        $ticket->website_visible = false;
+        $ticket->featured = false;
+        $ticket->save();
+
+        $this->audit($request, $ticket, 'publication.reject', []);
+        PublicWebsiteTestimonialsController::forgetCaches();
+
+        return response()->json(['ok' => true, 'data' => $this->presentTicket($this->freshTicketForPresentation($ticket))]);
+    }
+
+    public function featureForWebsite(Request $request, FeedbackTicket $ticket): JsonResponse
+    {
+        $this->ensureTicketsAvailable();
+        $this->authorizeSensitive($request, $ticket);
+
+        abort_unless($ticket->publication_status === 'approved', 422, 'Approve the testimonial before featuring.');
+
+        $ticket->featured = true;
+        $ticket->save();
+        $this->audit($request, $ticket, 'publication.feature', []);
+        PublicWebsiteTestimonialsController::forgetCaches();
+
+        return response()->json(['ok' => true, 'data' => $this->presentTicket($this->freshTicketForPresentation($ticket))]);
+    }
+
+    public function unfeatureForWebsite(Request $request, FeedbackTicket $ticket): JsonResponse
+    {
+        $this->ensureTicketsAvailable();
+        $this->authorizeSensitive($request, $ticket);
+
+        $ticket->featured = false;
+        $ticket->save();
+        $this->audit($request, $ticket, 'publication.unfeature', []);
+        PublicWebsiteTestimonialsController::forgetCaches();
+
+        return response()->json(['ok' => true, 'data' => $this->presentTicket($this->freshTicketForPresentation($ticket))]);
+    }
+
+    public function verifyBorrower(Request $request, FeedbackTicket $ticket): JsonResponse
+    {
+        $this->ensureTicketsAvailable();
+        $this->authorizeSensitive($request, $ticket);
+
+        $ticket->verified_borrower = true;
+        $ticket->save();
+        $this->audit($request, $ticket, 'borrower.verified', []);
+        PublicWebsiteTestimonialsController::forgetCaches();
+
+        return response()->json(['ok' => true, 'data' => $this->presentTicket($this->freshTicketForPresentation($ticket))]);
+    }
+
+    private function freshTicketForPresentation(FeedbackTicket $ticket): FeedbackTicket
+    {
+        return $ticket->fresh([
+            'borrower.borrowerProfile',
+            'borrower.loans',
+            'borrower.loanApplications.loanProduct',
+            'assignedStaff',
+            'replies.sender',
+            'analytics',
+            'auditLogs.actor',
+        ]);
     }
 
     public function staffList(Request $request): JsonResponse
@@ -442,6 +573,15 @@ class AdminFeedbackController extends Controller
             'checklist' => $ticket->checklist ?? [],
             'is_sensitive' => (bool) $ticket->is_sensitive,
             'is_vip' => (bool) $ticket->is_vip,
+            'website_visible' => (bool) ($ticket->website_visible ?? false),
+            'public_author_label' => $ticket->public_author_label,
+            'publication_status' => $ticket->publication_status ?? 'pending',
+            'featured' => (bool) ($ticket->featured ?? false),
+            'source' => $ticket->source,
+            'consent_public_display' => (bool) ($ticket->consent_public_display ?? false),
+            'verified_borrower' => (bool) ($ticket->verified_borrower ?? false),
+            'loan_type' => $ticket->loan_type,
+            'admin_notes' => $ticket->admin_notes,
             'subject' => $ticket->subject,
             'message' => $ticket->message,
             'rating' => $ticket->rating,

@@ -40,6 +40,15 @@ class FeedbackTicket extends Model
         'escalation_count',
         'tags',
         'checklist',
+        'website_visible',
+        'public_author_label',
+        'publication_status',
+        'featured',
+        'source',
+        'consent_public_display',
+        'verified_borrower',
+        'loan_type',
+        'admin_notes',
     ];
 
     protected $casts = [
@@ -47,6 +56,10 @@ class FeedbackTicket extends Model
         'sentiment_score' => 'decimal:2',
         'is_sensitive' => 'boolean',
         'is_vip' => 'boolean',
+        'website_visible' => 'boolean',
+        'featured' => 'boolean',
+        'consent_public_display' => 'boolean',
+        'verified_borrower' => 'boolean',
         'first_response_at' => 'datetime',
         'resolved_at' => 'datetime',
         'closed_at' => 'datetime',

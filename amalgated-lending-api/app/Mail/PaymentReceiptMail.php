@@ -32,7 +32,7 @@ class PaymentReceiptMail extends Mailable
         }
 
         $invoiceNumber = 'INV-'.str_pad((string) $this->payment->id, 6, '0', STR_PAD_LEFT);
-        $logoUrl = rtrim((string) config('app.url'), '/').'/amalgated-lending-logo.svg';
+        $logoUrl = rtrim((string) config('app.url'), '/').'/amalgated-lending-logo.png';
 
         $remainingBalance = Payment::query()
             ->where('loan_id', $this->payment->loan_id)
