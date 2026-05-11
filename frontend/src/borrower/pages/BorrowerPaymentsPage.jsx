@@ -141,6 +141,20 @@ function buildInvoiceHtml(payment, user) {
 </html>`
 }
 
+function officialPdfHref(payment) {
+  const u = payment?.official_receipt_pdf_url
+  if (u && String(u).trim()) return String(u).trim()
+  if (payment?.invoice_pdf_path) return getLaravelStorageFileUrl(payment.invoice_pdf_path)
+  return ''
+}
+
+function receiptEmailStatusLabel(status) {
+  if (status == null || status === '') return ''
+  const s = String(status).toLowerCase()
+  const map = { queued: 'Confirmation email queued', sent: 'Confirmation email sent', failed: 'Email failed' }
+  return map[s] || `Email: ${status}`
+}
+
 function downloadInvoiceFile(payment, user) {
   const html = buildInvoiceHtml(payment, user)
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
@@ -313,7 +327,9 @@ export default function BorrowerPaymentsPage() {
                 <th className={`${ui.tableCell} text-left`}>Amount</th>
                 <th className={`${ui.tableCell} text-left`}>Reference</th>
                 <th className={`${ui.tableCell} text-left`}>Proof</th>
-                <th className={`${ui.tableCell} text-left`}>Invoice / Receipt</th>
+                <th className={`${ui.tableCell} text-left`}>Official PDF</th>
+                <th className={`${ui.tableCell} text-left`}>Email status</th>
+                <th className={`${ui.tableCell} text-left`}>Invoice (HTML)</th>
               </tr>
             </thead>
             <tbody>
@@ -337,13 +353,30 @@ export default function BorrowerPaymentsPage() {
                     )}
                   </td>
                   <td className={ui.tableCell}>
+                    {officialPdfHref(p) ? (
+                      <a
+                        href={officialPdfHref(p)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm font-medium text-red-600 underline dark:text-red-400"
+                      >
+                        Download PDF
+                      </a>
+                    ) : (
+                      <span className={`text-xs ${ui.textMuted}`}>—</span>
+                    )}
+                  </td>
+                  <td className={`${ui.tableCell} text-xs ${ui.textMuted}`}>
+                    {receiptEmailStatusLabel(p.receipt_email_status) || '—'}
+                  </td>
+                  <td className={ui.tableCell}>
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => downloadInvoiceFile(p, user)}
                         className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/10"
                       >
-                        Download Invoice
+                        Download HTML
                       </button>
                     </div>
                   </td>
@@ -351,7 +384,7 @@ export default function BorrowerPaymentsPage() {
               ))}
               {!historyRows.length ? (
                 <tr>
-                  <td colSpan={5} className={`${ui.tableCell} py-8 text-center ${ui.textMuted}`}>
+                  <td colSpan={7} className={`${ui.tableCell} py-8 text-center ${ui.textMuted}`}>
                     No completed payments yet.
                   </td>
                 </tr>

@@ -18,9 +18,10 @@ class TransactionalMailSender
 
     /**
      * @param  array<string, mixed>  $failureMeta  Stored when both transports fail (FailedNotification.payload).
+     * @param  array<int, array{name: string, path: string}>  $brevoFileAttachments  Files read and sent as Brevo base64 attachments (not used on Laravel mail fallback).
      * @return array{ok: bool, detail: ?string}
      */
-    public function sendHtmlMailable(Mailable $mailable, string $toEmail, string $toName, string $subject, array $failureMeta = []): array
+    public function sendHtmlMailable(Mailable $mailable, string $toEmail, string $toName, string $subject, array $failureMeta = [], array $brevoFileAttachments = []): array
     {
         $trimmed = trim($toEmail);
         if ($trimmed === '' || ! filter_var($trimmed, FILTER_VALIDATE_EMAIL)) {
@@ -32,7 +33,23 @@ class TransactionalMailSender
         try {
             if ($this->brevo->isConfigured()) {
                 $html = $mailable->render();
-                $this->brevo->sendHtml($trimmed, $toName ?: $trimmed, $subject, $html);
+                $brevoAttachments = [];
+                foreach ($brevoFileAttachments as $row) {
+                    $name = isset($row['name']) ? (string) $row['name'] : 'attachment.bin';
+                    $path = isset($row['path']) ? (string) $row['path'] : '';
+                    if ($path === '' || ! is_readable($path)) {
+                        continue;
+                    }
+                    $raw = @file_get_contents($path);
+                    if ($raw === false || $raw === '') {
+                        continue;
+                    }
+                    $brevoAttachments[] = [
+                        'name' => $name,
+                        'content' => base64_encode($raw),
+                    ];
+                }
+                $this->brevo->sendHtml($trimmed, $toName ?: $trimmed, $subject, $html, $brevoAttachments);
 
                 return ['ok' => true, 'detail' => 'brevo'];
             }

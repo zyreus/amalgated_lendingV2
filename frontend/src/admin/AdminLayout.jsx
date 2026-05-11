@@ -5,6 +5,7 @@ import { adminSocketUrls, getLendingChatSecret } from '../utils/adminChatApi.js'
 import { api, getToken as getAdminToken } from './api/client.js'
 import { useAdminApiAuth } from './context/useAdminApiAuth.js'
 import { admin } from './components/AdminUi.jsx'
+import AdminHeaderClock from './components/AdminHeaderClock.jsx'
 import { ADMIN_NAV_GROUPS } from './adminNavConfig.js'
 import { ADMIN_ROLE_BADGE, ADMIN_ROLE_BADGE_FALLBACK, sortRolesForDisplay } from './utils/roleBadges.js'
 import amalgatedLogo from '../assets/amalgated-lending-logo.png'
@@ -507,51 +508,54 @@ export default function AdminLayout() {
               </p>
             </div>
           </div>
-          {user && can('notifications.view') ? (
-            <div className="relative" ref={notifWrapRef}>
-              <button
-                type="button"
-                onClick={() => setNotifModalOpen((v) => !v)}
-                className="relative rounded-lg border border-gray-200/90 p-2 text-gray-700 transition hover:bg-gray-100 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
-                aria-label="Notifications"
-                aria-expanded={notifModalOpen}
-              >
-                <NavIcon name="bell" className="h-5 w-5" />
-                {notifUnread != null && notifUnread > 0 ? (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
-                    {notifUnread > 99 ? '99+' : notifUnread}
-                  </span>
-                ) : null}
-              </button>
-              <div
-                className={`absolute right-0 top-[calc(100%+10px)] z-[80] w-[min(92vw,30rem)] origin-top-right rounded-2xl border border-gray-200 bg-white shadow-2xl transition-all duration-200 dark:border-[#1F2937] dark:bg-[#111827] ${
-                  notifModalOpen ? 'pointer-events-auto translate-y-0 scale-100 opacity-100' : 'pointer-events-none -translate-y-1 scale-95 opacity-0'
-                }`}
-              >
-                <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-[#1F2937]">
-                  <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Notifications</h2>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/10"
-                    onClick={() => setNotifModalOpen(false)}
-                  >
-                    Close
-                  </button>
-                </div>
-                <div className="max-h-[68vh] overflow-y-auto p-3">
-                  <Suspense
-                    fallback={
-                      <div className="flex items-center justify-center py-10 text-sm text-gray-500 dark:text-gray-400">
-                        Loading notifications…
-                      </div>
-                    }
-                  >
-                    <NotificationsPage embedded onNavigate={() => setNotifModalOpen(false)} />
-                  </Suspense>
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            {user && can('notifications.view') ? (
+              <div className="relative" ref={notifWrapRef}>
+                <button
+                  type="button"
+                  onClick={() => setNotifModalOpen((v) => !v)}
+                  className="relative rounded-lg border border-gray-200/90 p-2 text-gray-700 transition hover:bg-gray-100 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
+                  aria-label="Notifications"
+                  aria-expanded={notifModalOpen}
+                >
+                  <NavIcon name="bell" className="h-5 w-5" />
+                  {notifUnread != null && notifUnread > 0 ? (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
+                      {notifUnread > 99 ? '99+' : notifUnread}
+                    </span>
+                  ) : null}
+                </button>
+                <div
+                  className={`absolute right-0 top-[calc(100%+10px)] z-[80] w-[min(92vw,30rem)] origin-top-right rounded-2xl border border-gray-200 bg-white shadow-2xl transition-all duration-200 dark:border-[#1F2937] dark:bg-[#111827] ${
+                    notifModalOpen ? 'pointer-events-auto translate-y-0 scale-100 opacity-100' : 'pointer-events-none -translate-y-1 scale-95 opacity-0'
+                  }`}
+                >
+                  <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-[#1F2937]">
+                    <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Notifications</h2>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/10"
+                      onClick={() => setNotifModalOpen(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="max-h-[68vh] overflow-y-auto p-3">
+                    <Suspense
+                      fallback={
+                        <div className="flex items-center justify-center py-10 text-sm text-gray-500 dark:text-gray-400">
+                          Loading notifications…
+                        </div>
+                      }
+                    >
+                      <NotificationsPage embedded onNavigate={() => setNotifModalOpen(false)} />
+                    </Suspense>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
+            {user ? <AdminHeaderClock /> : null}
+          </div>
         </header>
 
         <main

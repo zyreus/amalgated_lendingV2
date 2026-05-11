@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\BorrowerNotification;
+use App\Models\EmailLog;
 use App\Models\Lead;
 use App\Models\LeadMessage;
 use App\Models\Loan;
@@ -11,6 +12,7 @@ use App\Models\LoanApplication;
 use App\Models\Payment;
 use App\Models\TravelApplication;
 use App\Services\NotificationCenter;
+use App\Services\PaymentReceiptPdfService;
 use App\Support\LoanApplicationDocumentStatus;
 use App\Support\PublicStorageUrl;
 use App\Support\SignedPrintUrls;
@@ -19,7 +21,9 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class BorrowerPortalController extends Controller
 {
@@ -371,11 +375,77 @@ class BorrowerPortalController extends Controller
         $rows = Payment::query()
             ->whereIn('loan_id', $loanIdSub)
             ->where('status', Payment::STATUS_PAID)
-            ->with('loan')
+            ->with([
+                'loan' => fn ($q) => $q->select(['id', 'borrower_id', 'term_months']),
+            ])
             ->orderByDesc('paid_at')
             ->paginate((int) $request->query('per_page', 15));
 
+        $statusMap = $this->borrowerReceiptEmailStatusMap($rows->getCollection()->pluck('id'));
+        $rows->getCollection()->each(function (Payment $p) use ($statusMap): void {
+            $p->setAttribute('receipt_email_status', $statusMap[(int) $p->getKey()] ?? null);
+            $path = $p->invoice_pdf_path;
+            $p->setAttribute('official_receipt_pdf_url', $path ? PublicStorageUrl::apiUrl((string) $path) : null);
+        });
+
         return response()->json(['ok' => true, 'data' => $rows]);
+    }
+
+    public function downloadOfficialReceipt(Request $request, Payment $payment, PaymentReceiptPdfService $pdfService): BinaryFileResponse|JsonResponse
+    {
+        $user = $request->user();
+        $payment->loadMissing('loan');
+        if (! $payment->loan || (int) $payment->loan->borrower_id !== (int) $user->id) {
+            return response()->json(['ok' => false, 'message' => 'Forbidden'], 403);
+        }
+        if ($payment->status !== Payment::STATUS_PAID) {
+            return response()->json(['ok' => false, 'message' => 'Receipt not available for this installment.'], 422);
+        }
+
+        $path = trim((string) ($payment->invoice_pdf_path ?? ''));
+        if ($path === '' || ! Storage::disk('public')->exists($path)) {
+            $generated = $pdfService->ensureOfficialPdf($payment->fresh(['loan']), null);
+            $path = $generated ? trim((string) $generated) : '';
+        }
+        $payment->refresh();
+        $path = trim((string) ($payment->invoice_pdf_path ?? ''));
+        if ($path === '' || ! Storage::disk('public')->exists($path)) {
+            return response()->json(['ok' => false, 'message' => 'Official PDF could not be generated.'], 404);
+        }
+
+        $or = preg_replace('/\W+/', '_', (string) ($payment->official_receipt_number ?: 'receipt'));
+
+        return response()->download(Storage::disk('public')->path($path), 'Official-Receipt-'.$or.'.pdf', [
+            'Content-Type' => 'application/pdf',
+        ]);
+    }
+
+    /**
+     * @param  Collection<int, mixed>  $paymentIds
+     * @return array<int, string>
+     */
+    private function borrowerReceiptEmailStatusMap(Collection $paymentIds): array
+    {
+        $ids = $paymentIds->filter(fn ($id) => (int) $id > 0)->map(fn ($id) => (int) $id)->unique()->values();
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        $latestIds = EmailLog::query()
+            ->selectRaw('max(id) as agg_id')
+            ->whereIn('payment_id', $ids)
+            ->where('notification_type', EmailLog::NOTIFICATION_PAYMENT_RECEIPT)
+            ->groupBy('payment_id')
+            ->pluck('agg_id');
+        if ($latestIds->isEmpty()) {
+            return [];
+        }
+
+        return EmailLog::query()
+            ->whereIn('id', $latestIds)
+            ->get()
+            ->mapWithKeys(fn (EmailLog $e) => [(int) $e->payment_id => (string) $e->status])
+            ->all();
     }
 
     /**

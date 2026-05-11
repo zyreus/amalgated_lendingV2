@@ -28,7 +28,7 @@ class PaymentReceiptMail extends Mailable
 
         $officialOr = trim((string) ($this->payment->official_receipt_number ?? ''));
         if ($officialOr === '') {
-            $officialOr = 'Assigned on posting';
+            $officialOr = 'Pending';
         }
 
         $invoiceNumber = 'INV-'.str_pad((string) $this->payment->id, 6, '0', STR_PAD_LEFT);
@@ -39,11 +39,22 @@ class PaymentReceiptMail extends Mailable
             ->selectRaw('COALESCE(SUM(GREATEST(amount_due - amount_paid, 0)), 0) AS due_left')
             ->value('due_left');
 
-        $path = $this->payment->receipt_path;
+        $paymentMethodLabel = match (strtolower(trim((string) ($this->payment->payment_method ?? '')))) {
+            'gcash' => 'GCash',
+            'bank' => 'Bank transfer / deposit',
+            'cash' => 'Cash',
+            default => trim((string) ($this->payment->payment_method ?? '')) !== ''
+                ? (string) $this->payment->payment_method
+                : '—',
+        };
+
         $disk = Storage::disk('public');
-        $attachmentNote = ($path && $disk->exists($path))
-            ? 'A copy of your uploaded receipt image/PDF is attached when available.'
-            : 'Your payment confirmation PDF can be regenerated from borrower portal records.';
+        $borrowerProofPath = $this->payment->receipt_path;
+        $officialPdfPath = $this->payment->invoice_pdf_path;
+
+        $attachmentNote = 'Your official PDF receipt is attached when available. You can also download it anytime from Borrower Portal → Payments.';
+
+        $portalBase = rtrim((string) config('app.frontend_url', (string) config('app.url')), '/');
 
         $this->subject('Payment confirmed — '.$invoiceNumber.' ('.$loanNumber.') — '.config('app.name'))
             ->view('mail.payment-receipt', [
@@ -59,13 +70,24 @@ class PaymentReceiptMail extends Mailable
                 'breakdownInterest' => number_format((float) ($this->payment->interest_portion ?? 0), 2),
                 'attachmentNote' => $attachmentNote,
                 'logoUrl' => $logoUrl,
+                'paymentMethodLabel' => $paymentMethodLabel,
+                'referenceNumber' => trim((string) ($this->payment->reference_number ?? '')),
+                'portalPaymentsUrl' => $portalBase.'/borrower/payments',
             ]);
 
-        if ($path && $disk->exists($path)) {
+        if ($borrowerProofPath && $disk->exists($borrowerProofPath)) {
             $this->attachFromStorageDisk(
                 'public',
-                $path,
-                $this->payment->receipt_name ?: basename($path)
+                $borrowerProofPath,
+                $this->payment->receipt_name ?: basename($borrowerProofPath)
+            );
+        }
+
+        if ($officialPdfPath && $disk->exists($officialPdfPath)) {
+            $this->attachFromStorageDisk(
+                'public',
+                $officialPdfPath,
+                'Official-Receipt-'.$officialOr.'.pdf'
             );
         }
 

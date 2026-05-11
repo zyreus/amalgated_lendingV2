@@ -358,6 +358,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/dashboard', [BorrowerPortalController::class, 'dashboard']);
         Route::get('/payments', [BorrowerPortalController::class, 'payments']);
         Route::get('/payments/history', [BorrowerPortalController::class, 'paymentHistory']);
+        Route::get('/payments/{payment}/official-receipt', [BorrowerPortalController::class, 'downloadOfficialReceipt']);
         Route::post('/upload-payment', [BorrowerPortalController::class, 'uploadPayment']);
         Route::get('/notifications/poll', [BorrowerNotificationController::class, 'poll']);
         Route::get('/notifications/unread-count', [BorrowerNotificationController::class, 'unreadCount']);

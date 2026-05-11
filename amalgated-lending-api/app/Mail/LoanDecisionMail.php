@@ -16,6 +16,7 @@ class LoanDecisionMail extends Mailable
         public Loan $loan,
         public string $borrowerName,
         public string $decision,
+        public ?string $adminMessage = null,
     ) {}
 
     public function build(): static
@@ -46,6 +47,13 @@ class LoanDecisionMail extends Mailable
 
         $estimatedCount = ($this->loan->term_months !== null) ? (string) ((int) $this->loan->term_months) : 'Per schedule';
 
+        $nextPaymentDue = '';
+        $nextPaymentAmount = '';
+        if ($previewRows !== []) {
+            $nextPaymentDue = (string) ($previewRows[0]['due'] ?? '');
+            $nextPaymentAmount = (string) ($previewRows[0]['amt'] ?? '');
+        }
+
         return $this->subject($subject)
             ->view('mail.loan-decision', [
                 'borrowerName' => $this->borrowerName,
@@ -60,6 +68,9 @@ class LoanDecisionMail extends Mailable
                 'estimatedTotalPayments' => $estimatedCount,
                 'branchInstruction' => $branchInstruction,
                 'schedulePreview' => $previewRows,
+                'adminMessage' => $this->adminMessage,
+                'nextPaymentDue' => $nextPaymentDue,
+                'nextPaymentAmount' => $nextPaymentAmount,
             ]);
     }
 }

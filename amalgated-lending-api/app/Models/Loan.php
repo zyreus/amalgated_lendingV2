@@ -132,4 +132,9 @@ class Loan extends Model
     {
         return $this->hasMany(LoanReceipt::class);
     }
+
+    public function emailLogs(): HasMany
+    {
+        return $this->hasMany(EmailLog::class);
+    }
 }

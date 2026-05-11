@@ -3,19 +3,21 @@
 namespace App\Jobs;
 
 use App\Mail\PaymentReceiptMail;
+use App\Models\EmailLog;
 use App\Models\Payment;
+use App\Services\PaymentReceiptPdfService;
 use App\Services\TransactionalMailSender;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Throwable;
 
-class SendPaymentReceiptJob implements ShouldQueue
+class SendPaymentReceiptJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -27,56 +29,142 @@ class SendPaymentReceiptJob implements ShouldQueue
     /** @var array<int, int> */
     public array $backoff = [20, 90, 300, 1200];
 
-    public function __construct(public int $paymentId)
-    {
+    public function __construct(
+        public int $paymentId,
+        public string $receiptNumber,
+        public ?int $confirmedByAdminId = null,
+    ) {
         $this->onQueue('notifications');
     }
 
-    public function handle(TransactionalMailSender $sender): void
+    public function uniqueId(): string
     {
-        if (Cache::has('email_sent:payment_receipt:'.$this->paymentId)) {
+        return 'payment_receipt_email:'.$this->paymentId.':'.$this->receiptNumber;
+    }
+
+    public function uniqueFor(): int
+    {
+        return 300;
+    }
+
+    public static function dedupeKey(int $paymentId, string $receiptNumber): string
+    {
+        return 'payment_receipt:'.$paymentId.':'.trim($receiptNumber);
+    }
+
+    public function handle(TransactionalMailSender $sender, PaymentReceiptPdfService $pdfService): void
+    {
+        $dedupeKey = self::dedupeKey($this->paymentId, $this->receiptNumber);
+
+        $payment = Payment::query()
+            ->with(['loan.borrower:id,name,email'])
+            ->find($this->paymentId);
+
+        if (! $payment || $payment->status !== Payment::STATUS_PAID) {
             return;
         }
 
-        $payment = Payment::with('loan.borrower')->find($this->paymentId);
-        if (! $payment) {
+        if (trim((string) ($payment->official_receipt_number ?? '')) !== $this->receiptNumber) {
             return;
         }
 
-        $email = trim((string) ($payment->loan?->borrower?->email ?? ''));
+        $borrower = $payment->loan?->borrower;
+        $email = trim((string) ($borrower?->email ?? ''));
         if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            EmailLog::query()->updateOrCreate(
+                ['dedupe_key' => $dedupeKey],
+                [
+                    'loan_id' => $payment->loan_id,
+                    'payment_id' => $payment->id,
+                    'notification_type' => EmailLog::NOTIFICATION_PAYMENT_RECEIPT,
+                    'mailable_class' => PaymentReceiptMail::class,
+                    'recipient_email' => $email !== '' ? $email : 'invalid@invalid.local',
+                    'recipient_name' => $borrower?->name,
+                    'subject' => null,
+                    'status' => EmailLog::STATUS_FAILED,
+                    'transport_detail' => 'invalid_recipient',
+                    'error_message' => 'Missing or invalid borrower email.',
+                    'meta' => ['job' => static::class],
+                ]
+            );
+
             return;
         }
 
-        $borrowerName = $payment->loan?->borrower?->name ?: $email;
-        $mailable = new PaymentReceiptMail($payment);
+        if (EmailLog::query()->where('dedupe_key', $dedupeKey)->where('status', EmailLog::STATUS_SENT)->exists()) {
+            return;
+        }
 
-        $path = $payment->receipt_path;
-        $hasAttachment = $path && Storage::disk('public')->exists($path);
-
-        if ($hasAttachment) {
-            try {
-                Mail::to($email)->queue($mailable);
-                Cache::put('email_sent:payment_receipt:'.$this->paymentId, true, now()->addDays(14));
-
-                return;
-            } catch (\Throwable $e) {
-                Log::warning('Receipt mail queue with attachment failed; falling back to HTML-only.', [
+        $cacheKey = 'email_sent:payment_receipt:'.$this->paymentId;
+        if (Cache::get($cacheKey) === $this->receiptNumber) {
+            EmailLog::query()->updateOrCreate(
+                ['dedupe_key' => $dedupeKey],
+                [
+                    'loan_id' => $payment->loan_id,
                     'payment_id' => $payment->id,
-                    'error' => $e->getMessage(),
-                ]);
+                    'notification_type' => EmailLog::NOTIFICATION_PAYMENT_RECEIPT,
+                    'mailable_class' => PaymentReceiptMail::class,
+                    'recipient_email' => $email,
+                    'recipient_name' => $borrower?->name,
+                    'status' => EmailLog::STATUS_SKIPPED_DUPLICATE,
+                    'transport_detail' => 'cache',
+                    'meta' => ['job' => static::class],
+                ]
+            );
+
+            return;
+        }
+
+        $pdfPath = $pdfService->ensureOfficialPdf($payment, $this->confirmedByAdminId);
+        $payment->refresh();
+
+        $mailable = new PaymentReceiptMail($payment->fresh(['loan.borrower']));
+
+        $invoiceNumber = 'INV-'.str_pad((string) $payment->id, 6, '0', STR_PAD_LEFT);
+        $subject = 'Payment confirmed — '.$invoiceNumber.' ('.$this->receiptNumber.') — '.config('app.name', 'Amalgated Lending');
+
+        $brevoFiles = [];
+        if ($pdfPath) {
+            $abs = Storage::disk('public')->path($pdfPath);
+            if (is_readable($abs)) {
+                $brevoFiles[] = [
+                    'name' => 'Official-Receipt-'.$this->receiptNumber.'.pdf',
+                    'path' => $abs,
+                ];
             }
         }
 
-        $invoiceNumber = 'INV-'.str_pad((string) $payment->id, 6, '0', STR_PAD_LEFT);
-        $subject = 'Payment confirmed — '.$invoiceNumber.' — '.config('app.name', 'Amalgated Lending');
-        $ok = $sender->sendHtmlMailable($mailable, $email, (string) $borrowerName, $subject, [
-            'job' => __CLASS__,
-            'payment_id' => $payment->id,
-        ])['ok'] ?? false;
+        try {
+            $send = $sender->sendHtmlMailable($mailable, $email, (string) ($borrower?->name ?: $email), $subject, [
+                'job' => __CLASS__,
+                'payment_id' => $payment->id,
+                'dedupe_key' => $dedupeKey,
+            ], $brevoFiles);
+            $ok = $send['ok'] ?? false;
+            $detail = (string) ($send['detail'] ?? '');
 
-        if ($ok) {
-            Cache::put('email_sent:payment_receipt:'.$this->paymentId, true, now()->addDays(14));
+            if ($ok) {
+                EmailLog::query()->where('dedupe_key', $dedupeKey)->update([
+                    'subject' => $subject,
+                    'status' => EmailLog::STATUS_SENT,
+                    'transport_detail' => $detail !== '' ? $detail : null,
+                    'sent_at' => now(),
+                    'error_message' => null,
+                ]);
+                Cache::put($cacheKey, $this->receiptNumber, now()->addDays(45));
+            } else {
+                EmailLog::query()->where('dedupe_key', $dedupeKey)->update([
+                    'status' => EmailLog::STATUS_FAILED,
+                    'error_message' => $detail !== '' ? $detail : 'send_failed',
+                ]);
+                throw new \RuntimeException('Transactional mail send returned failure: '.$detail);
+            }
+        } catch (Throwable $e) {
+            EmailLog::query()->where('dedupe_key', $dedupeKey)->update([
+                'status' => EmailLog::STATUS_FAILED,
+                'error_message' => mb_substr($e->getMessage(), 0, 2000),
+            ]);
+            throw $e;
         }
     }
 }

@@ -1,0 +1,138 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Payment;
+use App\Models\PaymentReceipt;
+use Dompdf\Dompdf;
+use Dompdf\Options;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\View;
+use Illuminate\Support\Str;
+
+class PaymentReceiptPdfService
+{
+    public function __construct()
+    {
+        File::ensureDirectoryExists(storage_path('app/public/payment-invoices'));
+    }
+
+    /**
+     * Generate (or reuse) the official PDF receipt for a paid installment.
+     *
+     * @return string|null Public disk path relative to storage/app/public
+     */
+    public function ensureOfficialPdf(Payment $payment, ?int $generatedByUserId = null): ?string
+    {
+        $payment->loadMissing(['loan.borrower']);
+
+        if ($payment->status !== Payment::STATUS_PAID) {
+            return null;
+        }
+
+        $path = trim((string) ($payment->invoice_pdf_path ?? ''));
+        if ($path !== '' && Storage::disk('public')->exists($path)) {
+            return $path;
+        }
+
+        $or = trim((string) ($payment->official_receipt_number ?? ''));
+        if ($or === '') {
+            return null;
+        }
+
+        $html = View::make('pdf.official-payment-receipt', $this->composeData($payment))->render();
+
+        $options = new Options;
+        $options->set('isRemoteEnabled', true);
+        $options->set('defaultFont', 'DejaVu Sans');
+        $options->set('chroot', [public_path(), storage_path('app/public')]);
+
+        $dompdf = new Dompdf($options);
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+        $binary = $dompdf->output();
+
+        $safe = preg_replace('/[^A-Za-z0-9._-]+/', '_', $or) ?: 'OR';
+        $filename = 'payment-invoices/'.$payment->loan_id.'/p'.$payment->id.'_'.$safe.'_'.Str::lower(Str::random(6)).'.pdf';
+        Storage::disk('public')->put($filename, $binary);
+
+        PaymentReceipt::query()->create([
+            'payment_id' => $payment->id,
+            'loan_id' => $payment->loan_id,
+            'receipt_number' => $or,
+            'pdf_path' => $filename,
+            'generated_by' => $generatedByUserId,
+        ]);
+
+        $payment->invoice_pdf_path = $filename;
+        $payment->save();
+
+        return $filename;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function composeData(Payment $payment): array
+    {
+        $loan = $payment->loan;
+        $borrower = $loan?->borrower;
+        $loanNumber = $loan?->loan_number ?? ('LN-'.str_pad((string) ($payment->loan_id ?? 0), 6, '0', STR_PAD_LEFT));
+
+        $remaining = (float) (Payment::query()
+            ->where('loan_id', $payment->loan_id)
+            ->selectRaw('COALESCE(SUM(GREATEST(amount_due - amount_paid, 0)), 0) AS r')
+            ->value('r') ?? 0);
+
+        $logoDataUri = $this->logoDataUri();
+
+        return [
+            'payment' => $payment,
+            'loan' => $loan,
+            'borrower' => $borrower,
+            'borrowerName' => $borrower?->name ?? 'Borrower',
+            'loanNumber' => $loanNumber,
+            'officialOr' => trim((string) ($payment->official_receipt_number ?? '')),
+            'invoiceNumber' => 'INV-'.str_pad((string) $payment->id, 6, '0', STR_PAD_LEFT),
+            'amountPaid' => number_format((float) $payment->amount_paid, 2),
+            'amountDue' => number_format((float) $payment->amount_due, 2),
+            'paidAt' => $payment->paid_at?->format('F j, Y g:i A') ?? now()->format('F j, Y g:i A'),
+            'confirmationDate' => $payment->confirmation_date?->format('F j, Y g:i A') ?? $payment->paid_at?->format('F j, Y g:i A'),
+            'remainingBalance' => number_format($remaining, 2),
+            'paymentMethod' => $this->formatPaymentMethod((string) ($payment->payment_method ?? '')),
+            'referenceNumber' => trim((string) ($payment->reference_number ?? '')),
+            'principalPortion' => number_format((float) ($payment->principal_portion ?? 0), 2),
+            'interestPortion' => number_format((float) ($payment->interest_portion ?? 0), 2),
+            'installmentNo' => (string) ($payment->installment_no ?? '—'),
+            'companyName' => config('app.name', 'Amalgated Lending Inc.'),
+            'logoDataUri' => $logoDataUri,
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ];
+    }
+
+    private function formatPaymentMethod(string $raw): string
+    {
+        return match (strtolower(trim($raw))) {
+            'gcash' => 'GCash',
+            'bank' => 'Bank transfer / deposit',
+            'cash' => 'Cash',
+            default => $raw !== '' ? $raw : '—',
+        };
+    }
+
+    private function logoDataUri(): ?string
+    {
+        $p = public_path('amalgated-lending-logo.svg');
+        if (! is_readable($p)) {
+            return null;
+        }
+        $raw = @file_get_contents($p);
+        if ($raw === false || $raw === '') {
+            return null;
+        }
+
+        return 'data:image/svg+xml;charset=utf-8,'.rawurlencode($raw);
+    }
+}

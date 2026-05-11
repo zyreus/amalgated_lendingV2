@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\LoanListResource;
 use App\Jobs\SendLoanApplicationReceivedJob;
 use App\Jobs\SendLoanDecisionJob;
+use App\Mail\LoanDecisionMail;
+use App\Models\EmailLog;
 use App\Models\Loan;
 use App\Models\LoanApplication;
 use App\Models\LoanDocument;
@@ -43,11 +45,11 @@ class LoanController extends Controller
          * extracts. We synthesize those keys with `JSON_EXTRACT` so the heavy column
          * never leaves MySQL.
          */
-        $payloadExtract = "JSON_OBJECT("
+        $payloadExtract = 'JSON_OBJECT('
             ."'loan_product_slug', JSON_UNQUOTE(JSON_EXTRACT(application_payload, '$.loan_product_slug')), "
             ."'selected_rate_type', JSON_UNQUOTE(JSON_EXTRACT(application_payload, '$.selected_rate_type')), "
             ."'selected_interest_rate', JSON_EXTRACT(application_payload, '$.selected_interest_rate')"
-            .") as application_payload";
+            .') as application_payload';
 
         $q = Loan::query()
             ->select([
@@ -130,13 +132,23 @@ class LoanController extends Controller
             $this->augmentLoanApplicationForAdminResponse($loan->loanApplication);
         }
 
-        return response()->json(['ok' => true, 'loan' => $loan]);
+        $lastDecisionEmail = EmailLog::query()
+            ->where('loan_id', $loan->id)
+            ->where('notification_type', EmailLog::NOTIFICATION_LOAN_DECISION)
+            ->orderByDesc('id')
+            ->first();
+
+        return response()->json([
+            'ok' => true,
+            'loan' => $loan,
+            'last_loan_decision_email' => $this->formatLoanDecisionEmailLog($lastDecisionEmail),
+        ]);
     }
 
     public function approve(Request $request, Loan $loan, ActivityLogger $logger): JsonResponse
     {
         $request->validate([
-            'admin_notes' => 'nullable|string',
+            'admin_notes' => 'nullable|string|max:5000',
             'approved_principal' => 'sometimes|numeric|min:0.01',
             'term_months' => 'sometimes|integer|min:1|max:600',
             'monthly_rate_percent' => 'sometimes|numeric|min:0|max:100',
@@ -171,6 +183,16 @@ class LoanController extends Controller
         $pensionType = $payload['pension_type'] ?? null;
 
         $result = DB::transaction(function () use ($request, $loan, $logger, $productSlug, $applicationNature, $age, $monthlyPension, $pensionType) {
+            $loan = Loan::query()
+                ->whereKey($loan->getKey())
+                ->lockForUpdate()
+                ->with('loanApplication')
+                ->firstOrFail();
+
+            if ($loan->status !== Loan::STATUS_PENDING) {
+                return response()->json(['ok' => false, 'message' => 'Only pending loans can be approved.'], 422);
+            }
+
             $principal = (float) $loan->principal;
             if ($request->filled('approved_principal')) {
                 $principal = round((float) $request->input('approved_principal'), 2);
@@ -352,7 +374,18 @@ class LoanController extends Controller
             ['module' => NotificationCenter::MODULE_LOANS],
         );
 
-        return response()->json(['ok' => true, 'loan' => $result]);
+        $lastDecisionEmail = EmailLog::query()
+            ->where('loan_id', $result->id)
+            ->where('notification_type', EmailLog::NOTIFICATION_LOAN_DECISION)
+            ->orderByDesc('id')
+            ->first();
+
+        return response()->json([
+            'ok' => true,
+            'loan' => $result,
+            'last_loan_decision_email' => $this->formatLoanDecisionEmailLog($lastDecisionEmail),
+            'email_notification_queued' => true,
+        ]);
     }
 
     public function reject(Request $request, Loan $loan, ActivityLogger $logger): JsonResponse
@@ -361,52 +394,75 @@ class LoanController extends Controller
             'rejection_reason' => 'required|string|max:2000',
         ]);
 
-        if ($loan->status !== Loan::STATUS_PENDING) {
-            return response()->json(['ok' => false, 'message' => 'Only pending loans can be rejected.'], 422);
+        $result = DB::transaction(function () use ($request, $loan, $logger, $data) {
+            $locked = Loan::query()
+                ->whereKey($loan->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($locked->status !== Loan::STATUS_PENDING) {
+                return response()->json(['ok' => false, 'message' => 'Only pending loans can be rejected.'], 422);
+            }
+
+            $locked->status = Loan::STATUS_REJECTED;
+            $locked->rejection_reason = $data['rejection_reason'];
+            $locked->approved_by = $request->user()->id;
+            $locked->approved_at = now();
+            $locked->save();
+
+            $loanApp = $locked->loanApplication;
+            if ($loanApp) {
+                $loanApp->status = LoanApplication::STATUS_REJECTED;
+                $loanApp->verified_at = now();
+                $loanApp->rejection_reason = $data['rejection_reason'];
+                $loanApp->save();
+            }
+
+            $logger->log($request->user(), 'loans.reject', $locked);
+
+            return $locked->fresh(['borrower', 'approver', 'loanApplication']);
+        });
+
+        if ($result instanceof JsonResponse) {
+            return $result;
         }
 
-        $loan->status = Loan::STATUS_REJECTED;
-        $loan->rejection_reason = $data['rejection_reason'];
-        $loan->approved_by = $request->user()->id;
-        $loan->approved_at = now();
-        $loan->save();
-
-        $loanApp = $loan->loanApplication;
-        if ($loanApp) {
-            $loanApp->status = LoanApplication::STATUS_REJECTED;
-            $loanApp->verified_at = now();
-            $loanApp->rejection_reason = $data['rejection_reason'];
-            $loanApp->save();
-        }
-
-        $logger->log($request->user(), 'loans.reject', $loan);
-
-        $loan->loadMissing(['borrower', 'approver']);
-        $this->notifyBorrowerLoanDecision($loan);
+        $this->notifyBorrowerLoanDecision($result);
 
         $nc = app(NotificationCenter::class);
-        if ($loan->borrower) {
+        if ($result->borrower) {
             $nc->notifyBorrower(
-                $loan->borrower,
+                $result->borrower,
                 NotificationCenter::CATEGORY_LOAN_REJECTED,
                 'loan_rejected',
                 'Loan application update',
-                'Your loan #'.$loan->id.' was not approved. Reason: '.mb_substr((string) $loan->rejection_reason, 0, 500),
-                ['loan_id' => $loan->id],
-                ['dedupe_key' => 'loan_decision:'.$loan->id, 'module' => NotificationCenter::MODULE_LOANS, 'priority' => 4],
+                'Your loan #'.$result->id.' was not approved. Reason: '.mb_substr((string) $result->rejection_reason, 0, 500),
+                ['loan_id' => $result->id],
+                ['dedupe_key' => 'loan_decision:'.$result->id, 'module' => NotificationCenter::MODULE_LOANS, 'priority' => 4],
             );
         }
         $nc->notifyStaff(
             NotificationCenter::CATEGORY_LOAN_REJECTED,
             'loan_rejected',
             'Loan rejected',
-            'Loan #'.$loan->id.($loan->borrower ? ' — '.$loan->borrower->name : '').' was rejected.',
-            ['loan_id' => $loan->id],
+            'Loan #'.$result->id.($result->borrower ? ' — '.$result->borrower->name : '').' was rejected.',
+            ['loan_id' => $result->id],
             (int) $request->user()->id,
             ['module' => NotificationCenter::MODULE_LOANS],
         );
 
-        return response()->json(['ok' => true, 'loan' => $loan]);
+        $lastDecisionEmail = EmailLog::query()
+            ->where('loan_id', $result->id)
+            ->where('notification_type', EmailLog::NOTIFICATION_LOAN_DECISION)
+            ->orderByDesc('id')
+            ->first();
+
+        return response()->json([
+            'ok' => true,
+            'loan' => $result,
+            'last_loan_decision_email' => $this->formatLoanDecisionEmailLog($lastDecisionEmail),
+            'email_notification_queued' => true,
+        ]);
     }
 
     public function publicApply(Request $request): JsonResponse
@@ -609,7 +665,74 @@ class LoanController extends Controller
      */
     private function notifyBorrowerLoanDecision(Loan $loan): void
     {
-        SendLoanDecisionJob::dispatch($loan->id);
+        $loan->loadMissing(['borrower:id,name,email']);
+
+        $decision = $loan->status === Loan::STATUS_REJECTED ? 'rejected' : 'approved';
+        $ts = (int) ($loan->approved_at?->getTimestamp() ?? 0);
+        $dedupeKey = SendLoanDecisionJob::dedupeKey($loan->id, $decision, $ts);
+
+        $borrower = $loan->borrower;
+        $email = trim((string) ($borrower?->email ?? ''));
+        $validEmail = $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL);
+
+        if (! $validEmail) {
+            EmailLog::query()->updateOrCreate(
+                ['dedupe_key' => $dedupeKey],
+                [
+                    'loan_id' => $loan->id,
+                    'notification_type' => EmailLog::NOTIFICATION_LOAN_DECISION,
+                    'mailable_class' => LoanDecisionMail::class,
+                    'recipient_email' => $email !== '' ? $email : 'invalid@invalid.local',
+                    'recipient_name' => $borrower?->name,
+                    'subject' => null,
+                    'status' => EmailLog::STATUS_FAILED,
+                    'transport_detail' => 'invalid_recipient',
+                    'error_message' => 'Missing or invalid borrower email.',
+                    'meta' => ['source' => 'LoanController::notifyBorrowerLoanDecision'],
+                ]
+            );
+
+            return;
+        }
+
+        EmailLog::query()->updateOrCreate(
+            ['dedupe_key' => $dedupeKey],
+            [
+                'loan_id' => $loan->id,
+                'notification_type' => EmailLog::NOTIFICATION_LOAN_DECISION,
+                'mailable_class' => LoanDecisionMail::class,
+                'recipient_email' => $email,
+                'recipient_name' => $borrower?->name,
+                'subject' => null,
+                'status' => EmailLog::STATUS_QUEUED,
+                'transport_detail' => null,
+                'error_message' => null,
+                'meta' => ['source' => 'LoanController::notifyBorrowerLoanDecision'],
+            ]
+        );
+
+        SendLoanDecisionJob::dispatch($loan->id, $decision, $ts);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function formatLoanDecisionEmailLog(?EmailLog $row): ?array
+    {
+        if (! $row) {
+            return null;
+        }
+
+        return [
+            'status' => $row->status,
+            'recipient_email' => $row->recipient_email,
+            'subject' => $row->subject,
+            'transport_detail' => $row->transport_detail,
+            'error_message' => $row->error_message,
+            'sent_at' => $row->sent_at?->toIso8601String(),
+            'created_at' => $row->created_at->toIso8601String(),
+            'updated_at' => $row->updated_at->toIso8601String(),
+        ];
     }
 
     /**

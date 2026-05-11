@@ -6,6 +6,33 @@ import { useAdminApiAuth } from '../context/useAdminApiAuth.js'
 import { admin } from '../components/AdminUi.jsx'
 import { AdminPageSkeleton } from '../../components/AppSkeletons.jsx'
 import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
+import ConfirmModal from '../components/ConfirmModal.jsx'
+
+function mergeLoanFromApi(res) {
+  if (!res?.loan) return null
+  return {
+    ...res.loan,
+    last_decision_email: res.last_loan_decision_email ?? null,
+  }
+}
+
+function describeDecisionEmailStatus(row) {
+  if (!row?.status) return 'No decision email logged yet.'
+  const st = String(row.status)
+  const map = {
+    queued: 'Queued — the notification worker will send this shortly.',
+    sent: 'Delivered successfully.',
+    failed: 'Sending failed — check API logs and mail configuration.',
+    skipped_duplicate: 'Skipped as a duplicate send (already delivered).',
+  }
+  const base = map[st] || `Status: ${st}.`
+  const extra = []
+  if (row.recipient_email) extra.push(`Recipient: ${row.recipient_email}`)
+  if (row.transport_detail) extra.push(`Transport: ${row.transport_detail}`)
+  if (row.sent_at) extra.push(`Sent: ${row.sent_at}`)
+  if (row.error_message) extra.push(`Detail: ${row.error_message}`)
+  return [base, ...extra].join(' ')
+}
 
 function describeLoanRate(loan) {
   const annual = Number(loan?.annual_interest_rate)
@@ -159,12 +186,13 @@ export default function LoanDetailPage() {
   const [staff, setStaff] = useState([])
   const [officerId, setOfficerId] = useState('')
   const [reviewEdits, setReviewEdits] = useState({})
+  const [confirmLoanAction, setConfirmLoanAction] = useState(null)
 
   const load = async () => {
     setLoading(true)
     try {
       const res = await api(`/loans/${id}`)
-      setLoan(res.loan)
+      setLoan(mergeLoanFromApi(res))
     } catch (e) {
       showToast(e.message, 'error')
     } finally {
@@ -221,16 +249,22 @@ export default function LoanDetailPage() {
     }
   }, [loan?.assigned_officer_id])
 
-  const approve = async () => {
+  const runApprove = async () => {
     try {
-      await api(`/loans/${id}/approve`, {
+      const res = await api(`/loans/${id}/approve`, {
         method: 'POST',
-        body: JSON.stringify({ admin_notes: notes || null }),
+        body: JSON.stringify({ admin_notes: notes?.trim() ? notes.trim() : null }),
       })
-      showToast('Loan approved & schedule generated.', 'success')
-      load()
+      setLoan(mergeLoanFromApi(res))
+      const em = res?.last_loan_decision_email
+      showToast(
+        `Loan approved & schedule generated. ${em ? describeDecisionEmailStatus(em) : 'Borrower email queued.'}`,
+        'success',
+      )
+      void load()
     } catch (e) {
       showToast(e.message, 'error')
+      throw e
     }
   }
 
@@ -251,16 +285,27 @@ export default function LoanDetailPage() {
     }
   }
 
-  const reject = async () => {
+  const runReject = async () => {
+    const reason = rejectReason?.trim() || ''
+    if (!reason) {
+      showToast('Enter a rejection reason.', 'error')
+      throw new Error('validation')
+    }
     try {
-      await api(`/loans/${id}/reject`, {
+      const res = await api(`/loans/${id}/reject`, {
         method: 'POST',
-        body: JSON.stringify({ rejection_reason: rejectReason || 'Rejected' }),
+        body: JSON.stringify({ rejection_reason: reason }),
       })
-      showToast('Loan rejected.', 'success')
-      load()
+      setLoan(mergeLoanFromApi(res))
+      const em = res?.last_loan_decision_email
+      showToast(
+        `Loan rejected. ${em ? describeDecisionEmailStatus(em) : 'Borrower email queued.'}`,
+        'success',
+      )
+      void load()
     } catch (e) {
-      showToast(e.message, 'error')
+      if (e.message !== 'validation') showToast(e.message, 'error')
+      throw e
     }
   }
 
@@ -335,7 +380,7 @@ export default function LoanDetailPage() {
             />
             <button
               type="button"
-              onClick={approve}
+              onClick={() => setConfirmLoanAction('approve')}
               className="mt-3 rounded-xl bg-[#DC2626] px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-red-700"
             >
               Approve &amp; generate schedule
@@ -351,7 +396,7 @@ export default function LoanDetailPage() {
             />
             <button
               type="button"
-              onClick={reject}
+              onClick={() => setConfirmLoanAction('reject')}
               className="mt-3 rounded-xl border border-red-300 px-5 py-2.5 text-sm font-semibold text-red-700 dark:border-red-500/50 dark:text-red-300"
             >
               Reject
@@ -359,6 +404,13 @@ export default function LoanDetailPage() {
           </div>
         </div>
       )}
+
+      {loan.last_decision_email ? (
+        <div className={`text-sm ${admin.cardNoHover}`}>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Borrower decision email</h2>
+          <p className={`mt-2 text-sm ${admin.textMuted}`}>{describeDecisionEmailStatus(loan.last_decision_email)}</p>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className={`text-sm ${admin.cardNoHover}`}>
@@ -642,6 +694,25 @@ export default function LoanDetailPage() {
           ) : null}
         </div>
       ) : null}
+
+      <ConfirmModal
+        open={confirmLoanAction === 'approve'}
+        onClose={() => setConfirmLoanAction(null)}
+        title="Approve this loan?"
+        description="This will generate the repayment schedule, mark the loan ongoing, and queue a decision email to the borrower. Continue?"
+        confirmLabel="Approve"
+        tone="default"
+        onConfirm={runApprove}
+      />
+      <ConfirmModal
+        open={confirmLoanAction === 'reject'}
+        onClose={() => setConfirmLoanAction(null)}
+        title="Reject this application?"
+        description="The borrower will be notified by email (queued) with the rejection reason you entered."
+        confirmLabel="Reject application"
+        tone="danger"
+        onConfirm={runReject}
+      />
 
       {payments.length > 0 && (
         <div className={admin.tableWrap}>

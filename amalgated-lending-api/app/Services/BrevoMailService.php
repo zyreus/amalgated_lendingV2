@@ -20,11 +20,15 @@ class BrevoMailService
     /**
      * @throws RuntimeException on HTTP error or missing API response
      */
+    /**
+     * @param  array<int, array{name: string, content: string}>  $attachments  Base64-encoded file bodies per Brevo API.
+     */
     public function sendHtml(
         string $toEmail,
         ?string $toName,
         string $subject,
         string $htmlContent,
+        array $attachments = [],
     ): void {
         $key = config('services.brevo.api_key');
         if (! is_string($key) || $key === '') {
@@ -54,6 +58,10 @@ class BrevoMailService
             'subject' => $subject,
             'htmlContent' => $htmlContent,
         ];
+
+        if ($attachments !== []) {
+            $payload['attachment'] = $attachments;
+        }
 
         $pending = Http::timeout((int) config('services.brevo.timeout', 30))
             ->withHeaders([

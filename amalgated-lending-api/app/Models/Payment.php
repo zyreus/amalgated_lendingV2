@@ -43,6 +43,9 @@ class Payment extends Model
         'adjusted_by',
         'adjustment_reason',
         'adjusted_at',
+        'confirmed_by',
+        'confirmation_date',
+        'invoice_pdf_path',
     ];
 
     protected $casts = [
@@ -57,6 +60,7 @@ class Payment extends Model
         'paid_at' => 'datetime',
         'submitted_at' => 'datetime',
         'adjusted_at' => 'datetime',
+        'confirmation_date' => 'datetime',
     ];
 
     public function loan(): BelongsTo
@@ -72,5 +76,15 @@ class Payment extends Model
     public function adjustedByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'adjusted_by');
+    }
+
+    public function confirmedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'confirmed_by');
+    }
+
+    public function paymentReceipts(): HasMany
+    {
+        return $this->hasMany(PaymentReceipt::class);
     }
 }

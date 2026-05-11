@@ -14,11 +14,19 @@ class PaymentListResource extends JsonResource
         $term = (int) ($this->loan?->term_months ?? 0);
         $isFinal = (bool) ($this->is_final_payment ?? false) || ($term > 0 && (int) $this->installment_no === $term);
 
+        $invoicePath = $this->invoice_pdf_path ?? null;
+
         return [
             'id' => $this->id,
             'loan_id' => $this->loan_id,
             'borrower_id' => $this->loan?->borrower_id,
             'installment_no' => $this->installment_no,
+            'official_receipt_number' => $this->official_receipt_number,
+            'invoice_pdf_path' => $invoicePath,
+            'invoice_pdf_url' => $invoicePath ? PublicStorageUrl::apiUrl((string) $invoicePath) : null,
+            'confirmation_date' => optional($this->confirmation_date)?->toIso8601String(),
+            'confirmed_by_name' => $this->confirmedByUser?->name,
+            'receipt_email_status' => $this->resource->getAttribute('_receipt_email_status'),
             'loan_term_months' => $term > 0 ? $term : null,
             'is_final_payment' => $isFinal,
             'original_amount_due' => $this->original_amount_due !== null ? (float) $this->original_amount_due : null,

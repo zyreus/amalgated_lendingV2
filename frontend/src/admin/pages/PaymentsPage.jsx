@@ -92,6 +92,18 @@ function getPaymentReference(payment) {
 }
 
 /** Full URL to borrower-uploaded receipt (served by Laravel `/storage`, not Vite). */
+function formatReceiptEmailStatus(status) {
+  if (status == null || status === '') return '—'
+  const s = String(status).toLowerCase()
+  const map = {
+    queued: 'Email queued',
+    sent: 'Email sent',
+    failed: 'Email failed',
+    skipped_duplicate: 'Email skipped (dup)',
+  }
+  return map[s] || String(status)
+}
+
 function getReceiptPublicUrl(payment) {
   const u = payment?.receipt_url
   if (u && String(u).trim()) return getLaravelStorageFileUrl(String(u).trim())
@@ -372,7 +384,9 @@ export default function PaymentsPage() {
         body: JSON.stringify({ status: 'paid' }),
       })
       if (res.receipt_email_sent) {
-        showToast('Payment confirmed. Receipt email sent to the borrower.', 'success')
+        const em = res.last_payment_receipt_email
+        const detail = em?.status ? ` ${String(em.status)}.` : ''
+        showToast(`Payment confirmed. Receipt email queued.${detail}`, 'success')
       } else if (res.receipt_email_note === 'no_borrower_email') {
         showToast(
           'Payment confirmed. Receipt was not emailed: borrower has no valid email on file.',
@@ -508,6 +522,9 @@ export default function PaymentsPage() {
                   </div>
                 </div>
               ) : null}
+              <p className={`text-xs ${admin.textMuted}`}>
+                Receipt email: <span className="font-medium text-gray-800 dark:text-gray-200">{formatReceiptEmailStatus(p.receipt_email_status)}</span>
+              </p>
               {pending ? (
                 <>
                 <button
@@ -567,15 +584,16 @@ export default function PaymentsPage() {
               <th className={admin.tableCell}>Status</th>
               <th className={admin.tableCell}>Reference</th>
               <th className={admin.tableCell}>Proof</th>
+              <th className={admin.tableCell}>Receipt email</th>
               <th className={admin.tableCell}>Final / Audit</th>
               <th className={admin.tableCell}>Action</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <TableSkeletonRows cols={13} rows={5} />
+              <TableSkeletonRows cols={14} rows={5} />
             ) : filteredRows.length === 0 ? (
-              <EmptyTableRow colSpan={13} message="No payments found." />
+              <EmptyTableRow colSpan={14} message="No payments found." />
             ) : (
               filteredRows.map((p) => (
                 <tr key={p.id} className={admin.tbodyRow}>
@@ -625,6 +643,7 @@ export default function PaymentsPage() {
                   <td className={`${admin.tableCell} align-middle`}>
                     <ProofCell payment={p} />
                   </td>
+                  <td className={`${admin.tableCell} whitespace-nowrap text-xs`}>{formatReceiptEmailStatus(p.receipt_email_status)}</td>
                   <td className={`${admin.tableCell} max-w-[10rem] whitespace-normal text-xs`}>
                     <div className="flex flex-col gap-1">
                       {canAdjustFinal(p) ? (
