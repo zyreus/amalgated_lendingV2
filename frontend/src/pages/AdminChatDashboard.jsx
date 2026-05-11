@@ -88,6 +88,8 @@ const TICKET_STATUS = {
   closed: 'Closed',
 }
 const CHAT_TIME_ZONE = 'Asia/Manila'
+/** Fixed locale so date + time + AM/PM stay consistent across admin browsers. */
+const CHAT_DATETIME_LOCALE = 'en-PH'
 const CHAT_POLL_MS = 8000
 
 function responseTimeTextClass(ms) {
@@ -148,16 +150,22 @@ function getInitials(name) {
   return 'V'
 }
 
-function fmtTime(d) {
+/**
+ * Visitor CRM list, message bubbles, leads — one instant formatted entirely in PHT
+ * (avoids mixing local calendar date with Manila-only clock, which skewed rows near midnight).
+ */
+function fmtDate(d) {
   const date = d instanceof Date ? d : new Date(d)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: CHAT_TIME_ZONE })
-}
-
-function fmtDate(d) {
-  const date = new Date(d)
-  if (Number.isNaN(date.getTime())) return ''
-  return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${fmtTime(d)}`
+  return date.toLocaleString(CHAT_DATETIME_LOCALE, {
+    timeZone: CHAT_TIME_ZONE,
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
 }
 
 function messageKey(msg) {

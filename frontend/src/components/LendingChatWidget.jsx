@@ -12,6 +12,37 @@ const QUICK_OPTIONS = [
   { id: 'products', label: 'Loan products', icon: '📋' },
   { id: 'agent', label: 'Talk to an agent', icon: '👤' },
 ]
+
+/**
+ * Rich prompts (not just button labels) so Groq + RAG retrieve the right loan/CMS chunks.
+ * Keys: visitor `lang` from the widget (en | fil | es).
+ */
+const QUICK_PROMPTS = {
+  en: {
+    apply:
+      "I'd like a clear guide on how to apply for a loan with Amalgated Lending. Please explain: starting the Apply flow on the website, documents usually required, eligibility verification and underwriting, what happens after approval, and where to click next on amalgatedlending.com. Use only verified website / catalogue information.",
+    rates:
+      'How do interest rates, fees, and monthly amortization work for Amalgated Lending products? If exact figures depend on product and credit assessment, say so clearly and point me to the Apply page or Contact page — do not invent APRs or payment amounts.',
+    products:
+      'What loan products does Amalgated Lending offer on amalgatedlending.com? Briefly describe categories such as salary loan, pension/SSS-related loans, chattel mortgage, real estate mortgage, travel assistance, and business lending — and tell me which site pages to open for details. Follow verified website excerpts when provided.',
+  },
+  fil: {
+    apply:
+      'Paano mag-apply ng loan sa Amalgated Lending? Ipaliwanag ang mga hakbang sa Apply page, karaniwang dokumento, proseso ng verification at underwriting, at susunod na gagawin. Gumamit lamang ng impormasyon mula sa website.',
+    rates:
+      'Paano gumagana ang interest rates, fees, at monthly amortization sa Amalgated Lending? Kung depende sa produkto at credit assessment, sabihin ito — huwag mag-imbento ng eksaktong porsyento o halaga.',
+    products:
+      'Ano ang mga loan product ng Amalgated Lending sa website? Maikling ilarawan (salary, pension/SSS, chattel, real estate mortgage, travel assistance, business) at saang pahina dapat magbasa.',
+  },
+  es: {
+    apply:
+      '¿Cómo solicito un préstamo en Amalgated Lending? Explique el flujo Apply en el sitio, documentos habituales, verificación y sus siguientes pasos. Use solo información del sitio web verificada.',
+    rates:
+      '¿Cómo funcionan tasas, comisiones y amortización mensual en Amalgated Lending? Si depende del producto y evaluación crediticia, dígalo; no invente APR ni cuotas exactas.',
+    products:
+      '¿Qué productos de préstamo ofrece Amalgated Lending en amalgatedlending.com? Resuma (salario, pensión/SSS, prenda, hipoteca, viaje, negocio) y qué páginas abrir.',
+  },
+}
 const CHAT_TIME_ZONE = 'Asia/Manila'
 /** HTTP fallback when Socket.IO is down; keep conservative to avoid hammering Laravel. */
 const CHAT_SYNC_POLL_MS = 8000
@@ -517,14 +548,11 @@ export default function LendingChatWidget() {
         setAgentStep('form')
         return
       }
-      const prompts = {
-        apply: 'How do I apply for a loan?',
-        rates: 'Can you explain your rates and terms?',
-        products: 'What loan products are available?',
-      }
-      sendMessage(prompts[id] || '')
+      const pack = QUICK_PROMPTS[lang] || QUICK_PROMPTS.en
+      const text = pack[id]
+      if (text) sendMessage(text)
     },
-    [sendMessage],
+    [sendMessage, lang],
   )
 
   const submitAgentRequest = useCallback(
@@ -784,7 +812,7 @@ export default function LendingChatWidget() {
             >
               <option value="en" className="text-slate-900">English</option>
               <option value="fil" className="text-slate-900">Filipino</option>
-              <option value="es" className="text-slate-900">Espanol</option>
+              <option value="es" className="text-slate-900">Español</option>
             </select>
             <VisitorChatStatusDot aiReady={socketConnected} />
           </div>
