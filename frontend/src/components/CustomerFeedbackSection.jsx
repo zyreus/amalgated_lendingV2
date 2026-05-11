@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { motion, useReducedMotion } from 'framer-motion'
 import { laravelRequest } from '../utils/lendingLaravelApi.js'
 
 const FALLBACK_ITEMS = [
@@ -32,30 +32,59 @@ const FALLBACK_ITEMS = [
   },
 ]
 
+const GRID_LIMIT = 6
+
 function Stars({ value }) {
-  const reduceMotion = useReducedMotion()
   return (
-    <div className="flex items-center gap-1" aria-label={`${value} out of 5 stars`}>
-      {[1, 2, 3, 4, 5].map((star, idx) => (
-        <motion.span
-          key={star}
-          className={star <= value ? 'text-amber-400' : 'text-gray-300'}
-          initial={reduceMotion ? false : { opacity: 0, scale: 0.85 }}
-          animate={reduceMotion ? {} : { opacity: 1, scale: 1 }}
-          transition={{ duration: 0.2, delay: reduceMotion ? 0 : idx * 0.04 }}
-        >
+    <div className="flex items-center gap-0.5" aria-label={`${value} out of 5 stars`}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <span key={star} className={star <= value ? 'text-amber-400' : 'text-gray-200'} aria-hidden>
           ★
-        </motion.span>
+        </span>
       ))}
     </div>
+  )
+}
+
+function TestimonialCard({ item, index, reduceMotion }) {
+  return (
+    <motion.article
+      initial={reduceMotion ? false : { opacity: 0, y: 14 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-32px' }}
+      transition={{ duration: 0.4, delay: reduceMotion ? 0 : Math.min(index, 5) * 0.05 }}
+      className="group flex min-h-[280px] flex-col rounded-2xl border border-black/[0.08] bg-white p-6 shadow-[0_2px_8px_rgba(0,0,0,0.04)] ring-1 ring-black/[0.03] transition-shadow duration-300 hover:shadow-[0_12px_40px_rgba(0,0,0,0.08)]"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <Stars value={item.rating} />
+        {item.verified ? (
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 ring-1 ring-emerald-200/90">
+            <span aria-hidden>✓</span>
+            Verified borrower
+          </span>
+        ) : (
+          <span className="shrink-0 rounded-full bg-gray-50 px-2.5 py-1 text-[11px] font-medium text-gray-500 ring-1 ring-gray-200/80">
+            Borrower
+          </span>
+        )}
+      </div>
+
+      <p className="mt-5 flex-1 text-[15px] leading-relaxed text-brand-text/90 sm:text-sm">{item.comment}</p>
+
+      <div className="mt-6 border-t border-black/[0.06] pt-4">
+        <p className="text-sm font-semibold tracking-tight text-brand-text">{item.name}</p>
+        <p className="mt-0.5 text-xs font-medium text-brand-text/55">{item.loanType}</p>
+      </div>
+    </motion.article>
   )
 }
 
 export default function CustomerFeedbackSection() {
   const [items, setItems] = useState(FALLBACK_ITEMS)
   const [meta, setMeta] = useState({ review_count: FALLBACK_ITEMS.length, rating_value: 4.67 })
-  const [index, setIndex] = useState(0)
   const reduceMotion = useReducedMotion()
+
+  const gridItems = useMemo(() => items.slice(0, GRID_LIMIT), [items])
 
   useEffect(() => {
     let cancelled = false
@@ -86,23 +115,11 @@ export default function CustomerFeedbackSection() {
         review_count: Number.isFinite(reviewCount) ? reviewCount : mapped.length,
         rating_value: ratingValue != null ? Number(ratingValue) : null,
       })
-      setIndex(0)
     })()
     return () => {
       cancelled = true
     }
   }, [])
-
-  useEffect(() => {
-    if (reduceMotion) return undefined
-    if (items.length <= 1) return undefined
-    const timer = window.setInterval(() => {
-      setIndex((prev) => (prev + 1) % items.length)
-    }, 5000)
-    return () => window.clearInterval(timer)
-  }, [reduceMotion, items.length])
-
-  const active = items[index] || items[0]
 
   const jsonLd = useMemo(() => {
     const count = meta.review_count || items.length
@@ -135,64 +152,52 @@ export default function CustomerFeedbackSection() {
     }
   }, [items, meta.rating_value, meta.review_count])
 
+  const showAggregate = meta.rating_value != null && !Number.isNaN(meta.rating_value)
+
   return (
-    <section className="border-t border-brand-secondary/25 bg-brand-background py-16" aria-labelledby="customer-feedback-heading">
+    <section
+      className="border-t border-brand-secondary/20 bg-gradient-to-b from-brand-background via-white to-brand-background py-14 sm:py-20"
+      aria-labelledby="customer-feedback-heading"
+    >
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <motion.div
-          initial={{ opacity: 0, y: 16 }}
+          initial={{ opacity: 0, y: 14 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-80px' }}
+          viewport={{ once: true, margin: '-72px' }}
           transition={{ duration: 0.45 }}
           className="mx-auto max-w-3xl text-center"
         >
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-primary">Customer Feedback</p>
-          <h2 id="customer-feedback-heading" className="mt-3 text-2xl font-semibold tracking-tight text-brand-text sm:text-3xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-brand-primary">Customer Feedback</p>
+          <h2
+            id="customer-feedback-heading"
+            className="mt-3 text-3xl font-semibold tracking-tight text-brand-text sm:text-[2rem] sm:leading-tight"
+          >
             What our borrowers say
           </h2>
-          <p className="mt-3 text-sm leading-relaxed text-brand-text/70 sm:text-base">
+          <p className="mt-4 text-sm leading-relaxed text-brand-text/70 sm:text-base">
             Real experiences from clients who trusted Amalgated Lending for personal, salary, and business financing.
           </p>
+          {showAggregate ? (
+            <p className="mt-4 inline-flex flex-wrap items-center justify-center gap-2 rounded-full border border-black/[0.06] bg-white/80 px-4 py-2 text-sm text-brand-text/80 shadow-sm backdrop-blur-sm">
+              <span className="font-semibold tabular-nums text-amber-500">★ {Number(meta.rating_value).toFixed(1)}</span>
+              <span className="text-brand-text/50">·</span>
+              <span>
+                From <span className="font-semibold text-brand-text">{meta.review_count || items.length}</span> published
+                reviews
+              </span>
+            </p>
+          ) : null}
         </motion.div>
 
-        <div className="mx-auto mt-8 max-w-3xl">
-          <AnimatePresence mode="wait">
-            <motion.article
-              key={active.id}
-              initial={reduceMotion ? false : { opacity: 0, x: 18 }}
-              animate={reduceMotion ? {} : { opacity: 1, x: 0 }}
-              exit={reduceMotion ? {} : { opacity: 0, x: -18 }}
-              transition={{ duration: 0.35 }}
-              className="rounded-2xl border border-black/10 bg-white p-5 shadow-[0_8px_22px_rgba(0,0,0,0.06)]"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Stars value={active.rating} />
-                {active.verified ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800 ring-1 ring-emerald-200/80">
-                    <span aria-hidden>✓</span> Verified borrower
-                  </span>
-                ) : null}
-              </div>
-              <p className="mt-3 text-sm leading-relaxed text-brand-text/85">{active.comment}</p>
-              <div className="mt-4 border-t border-black/10 pt-3">
-                <p className="text-sm font-semibold text-brand-text">{active.name}</p>
-                <p className="text-xs text-brand-text/60">{active.loanType}</p>
-              </div>
-            </motion.article>
-          </AnimatePresence>
-          <div className="mt-4 flex justify-center gap-2">
-            {items.map((item, dotIndex) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setIndex(dotIndex)}
-                className={`h-2.5 rounded-full transition-all ${dotIndex === index ? 'w-6 bg-brand-primary' : 'w-2.5 bg-black/20 hover:bg-black/30'}`}
-                aria-label={`Show testimonial ${dotIndex + 1}`}
-              />
-            ))}
-          </div>
-        </div>
+        <ul className="mx-auto mt-12 grid max-w-6xl list-none gap-5 sm:grid-cols-2 sm:gap-6 lg:mx-auto lg:mt-14 lg:grid-cols-3 lg:gap-6">
+          {gridItems.map((item, index) => (
+            <li key={item.id} className="min-w-0">
+              <TestimonialCard item={item} index={index} reduceMotion={reduceMotion} />
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   )

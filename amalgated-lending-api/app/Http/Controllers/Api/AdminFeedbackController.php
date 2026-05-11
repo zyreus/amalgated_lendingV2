@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\FeedbackAnalytics;
 use App\Models\FeedbackAuditLog;
-use App\Models\FeedbackReply;
 use App\Models\FeedbackTicket;
 use App\Models\User;
 use App\Mail\FeedbackTestimonialApprovedMail;
@@ -27,8 +26,7 @@ class AdminFeedbackController extends Controller
             ->with([
                 'borrower:id,name,email,phone,role,risk_level,credit_score,created_at',
                 'assignedStaff:id,name,email,role',
-            ])
-            ->withCount('replies');
+            ]);
 
         if ($search = trim((string) $request->query('search', ''))) {
             $s = '%'.$search.'%';
@@ -42,7 +40,6 @@ class AdminFeedbackController extends Controller
         }
 
         foreach ([
-            'category' => 'category',
             'priority' => 'priority',
             'status' => 'status',
             'department' => 'department',
@@ -149,14 +146,12 @@ class AdminFeedbackController extends Controller
         $this->authorizeSensitive($request, $ticket);
 
         $data = $request->validate([
-            'category' => 'nullable|string|max:64',
             'priority' => 'nullable|string|max:24',
             'status' => 'nullable|string|max:32',
             'assigned_staff_id' => 'nullable|integer|exists:users,id',
             'department' => 'nullable|string|max:64',
             'follow_up_at' => 'nullable|date',
             'resolution_deadline_at' => 'nullable|date',
-            'sla_minutes' => 'nullable|integer|min:1|max:10080',
             'is_sensitive' => 'nullable|boolean',
             'is_vip' => 'nullable|boolean',
             'website_visible' => 'nullable|boolean',
@@ -188,12 +183,6 @@ class AdminFeedbackController extends Controller
         }
 
         // Lightweight automation scaffolding.
-        if (isset($data['category'])) {
-            $cat = strtolower((string) $data['category']);
-            if (in_array($cat, ['fraud alert', 'legal concern'], true)) {
-                $ticket->is_sensitive = true;
-            }
-        }
         if (isset($data['priority'])) {
             $p = strtolower((string) $data['priority']);
             if (in_array($p, ['urgent', 'legal concern', 'escalated case'], true)) {
@@ -225,71 +214,8 @@ class AdminFeedbackController extends Controller
             'borrower.loans',
             'borrower.loanApplications.loanProduct',
             'assignedStaff',
-            'replies.sender',
             'analytics',
-            'auditLogs.actor',
         ]))]);
-    }
-
-    public function replies(FeedbackTicket $ticket): JsonResponse
-    {
-        $this->ensureTicketsAvailable();
-        $this->authorizeSensitive($request = request(), $ticket);
-
-        $ticket->loadMissing(['replies.sender:id,name,email,role']);
-
-        return response()->json(['ok' => true, 'data' => $ticket->replies]);
-    }
-
-    public function addReply(Request $request, FeedbackTicket $ticket): JsonResponse
-    {
-        $this->ensureTicketsAvailable();
-        $this->authorizeSensitive($request, $ticket);
-
-        $data = $request->validate([
-            'message' => 'required|string|max:8000',
-            'send_email' => 'nullable|boolean',
-            'is_internal' => 'nullable|boolean',
-        ]);
-
-        $isInternal = (bool) ($data['is_internal'] ?? false);
-        $reply = FeedbackReply::create([
-            'feedback_id' => $ticket->id,
-            'sender_type' => $isInternal ? 'system' : 'staff',
-            'sender_id' => $request->user()?->id,
-            'message' => $data['message'],
-            'attachment' => null,
-        ]);
-
-        if (! $isInternal && ! $ticket->first_response_at) {
-            $ticket->first_response_at = now();
-            $ticket->save();
-        }
-
-        // Optional: mark as Replied when staff replies (not internal notes).
-        if (! $isInternal && ! in_array($ticket->status, ['Resolved', 'Closed', 'Archived'], true)) {
-            $ticket->status = 'Replied';
-            $ticket->save();
-        }
-
-        // Keep legacy support_chat_feedback consistent when present.
-        if (! $isInternal && $ticket->support_chat_feedback_id && DB::getSchemaBuilder()->hasTable('support_chat_feedback')) {
-            DB::table('support_chat_feedback')
-                ->where('id', $ticket->support_chat_feedback_id)
-                ->update([
-                    'status' => 'replied',
-                    'read_at' => DB::raw('COALESCE(read_at, NOW())'),
-                    'replied_at' => now(),
-                    'updated_at' => now(),
-                ]);
-        }
-
-        $this->audit($request, $ticket, 'reply.create', ['reply_id' => $reply->id, 'send_email' => (bool) ($data['send_email'] ?? false)]);
-
-        // Email integration is intentionally stored-first; actual sending is handled elsewhere to avoid blocking.
-        $this->upsertAnalytics($ticket);
-
-        return response()->json(['ok' => true, 'data' => $reply->load('sender:id,name,email,role')], 201);
     }
 
     public function analytics(FeedbackTicket $ticket): JsonResponse
@@ -441,9 +367,7 @@ class AdminFeedbackController extends Controller
             'borrower.loans',
             'borrower.loanApplications.loanProduct',
             'assignedStaff',
-            'replies.sender',
             'analytics',
-            'auditLogs.actor',
         ]);
     }
 
@@ -568,9 +492,7 @@ class AdminFeedbackController extends Controller
             'borrower.loans',
             'borrower.loanApplications.loanProduct',
             'assignedStaff',
-            'replies.sender',
             'analytics',
-            'auditLogs.actor',
         ]);
 
         $borrower = $ticket->borrower;
@@ -588,16 +510,8 @@ class AdminFeedbackController extends Controller
 
         $latestApp = $applications->sortByDesc('id')->first();
 
-        $slaDueAt = null;
-        $slaBreached = false;
-        if ($ticket->sla_minutes && $ticket->created_at && ! $ticket->first_response_at) {
-            $slaDueAt = $ticket->created_at->copy()->addMinutes((int) $ticket->sla_minutes);
-            $slaBreached = now()->greaterThan($slaDueAt);
-        }
-
         return [
             'id' => $ticket->id,
-            'category' => $ticket->category,
             'priority' => $ticket->priority,
             'status' => $ticket->status,
             'department' => $ticket->department,
@@ -625,9 +539,6 @@ class AdminFeedbackController extends Controller
             'closed_at' => optional($ticket->closed_at)?->toIso8601String(),
             'follow_up_at' => optional($ticket->follow_up_at)?->toIso8601String(),
             'resolution_deadline_at' => optional($ticket->resolution_deadline_at)?->toIso8601String(),
-            'sla_minutes' => $ticket->sla_minutes,
-            'sla_due_at' => optional($slaDueAt)?->toIso8601String(),
-            'sla_breached' => (bool) $slaBreached,
             'escalation_count' => $ticket->escalation_count,
             'full_name' => $ticket->full_name,
             'contact' => [
@@ -655,14 +566,6 @@ class AdminFeedbackController extends Controller
                 'email' => $ticket->assignedStaff->email,
                 'role' => $ticket->assignedStaff->role,
             ] : null,
-            'replies' => $ticket->replies->map(fn (FeedbackReply $r) => [
-                'id' => $r->id,
-                'sender_type' => $r->sender_type,
-                'sender' => $r->sender ? ['id' => $r->sender->id, 'name' => $r->sender->name, 'email' => $r->sender->email] : null,
-                'message' => $r->message,
-                'attachment' => $r->attachment,
-                'created_at' => optional($r->created_at)?->toIso8601String(),
-            ])->all(),
             'analytics' => $ticket->analytics ? [
                 'resolution_time' => $ticket->analytics->resolution_time,
                 'csat_score' => $ticket->analytics->csat_score,
@@ -670,13 +573,6 @@ class AdminFeedbackController extends Controller
                 'escalation_count' => $ticket->analytics->escalation_count,
                 'first_response_time' => $ticket->analytics->first_response_time,
             ] : null,
-            'audit_logs' => $ticket->auditLogs->take(25)->map(fn (FeedbackAuditLog $l) => [
-                'id' => $l->id,
-                'action' => $l->action,
-                'actor' => $l->actor ? ['id' => $l->actor->id, 'name' => $l->actor->name] : null,
-                'meta' => $l->meta,
-                'created_at' => optional($l->created_at)?->toIso8601String(),
-            ])->all(),
         ];
     }
 

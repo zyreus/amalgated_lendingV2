@@ -257,8 +257,6 @@ Route::prefix('v1')->group(function () {
             Route::patch('/feedbacks/{ticket}/status', [AdminFeedbackController::class, 'updateStatus']);
             Route::patch('/feedbacks/{ticket}', [AdminFeedbackController::class, 'updateTicket']);
             Route::delete('/feedbacks/{ticket}', [AdminFeedbackController::class, 'destroy']);
-            Route::get('/feedbacks/{ticket}/replies', [AdminFeedbackController::class, 'replies']);
-            Route::post('/feedbacks/{ticket}/replies', [AdminFeedbackController::class, 'addReply']);
             Route::get('/feedbacks/{ticket}/analytics', [AdminFeedbackController::class, 'analytics']);
             Route::put('/feedbacks/{ticket}/approve', [AdminFeedbackController::class, 'approveForWebsite']);
             Route::put('/feedbacks/{ticket}/reject', [AdminFeedbackController::class, 'rejectForWebsite']);
