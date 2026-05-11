@@ -34,7 +34,6 @@ function fallbackAvatar(name) {
 const nav = [
   { to: '/borrower/dashboard', label: 'Dashboard' },
   { to: '/borrower/applications', label: 'Applications' },
-  { to: '/borrower/printable-forms', label: 'Printable forms' },
   { to: '/borrower/apply-loan', label: 'Apply (wizard)' },
   { to: '/borrower/payments', label: 'Payments' },
   { to: '/borrower/chat', label: 'Chat' },

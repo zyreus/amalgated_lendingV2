@@ -339,7 +339,7 @@ th{background:#f9fafb}
         <div className="rounded-2xl border border-red-200 bg-gradient-to-br from-red-50 to-white p-5 shadow-sm transition-colors duration-300 dark:border-red-900/40 dark:from-red-950/30 dark:to-[#111827] dark:shadow-lg">
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">📂 My documents &amp; document applications</h3>
           <p className={`mt-1 text-sm ${ui.textMuted}`}>
-            Application wizard, product requirements, print your form, and upload the signed copy before final submission.
+            Complete product requirements and upload the signed copy before final submission.
           </p>
           <ul className="mt-4 space-y-3">
             {documentApps.map((app) => (
@@ -416,8 +416,8 @@ th{background:#f9fafb}
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg">
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Loan applications</h3>
           <p className={`mt-1 text-sm ${ui.textMuted}`}>
-            Submitted general applications and travel assistance: document checklist, signatures, and print (opens in a new tab;
-            link expires after 45 minutes). Drafts are listed separately until you submit.
+            Submitted general applications and travel assistance: document checklist and signatures. Drafts are listed separately
+            until you submit.
           </p>
           <div className="mt-4 grid gap-6 md:grid-cols-2">
             {lendingApps.general.length > 0 || (lendingApps.general_drafts && lendingApps.general_drafts.length > 0) ? (
@@ -444,16 +444,6 @@ th{background:#f9fafb}
                               {row.submitted_at ? ` · Submitted ${formatDate(row.submitted_at)}` : ''}
                             </p>
                           </div>
-                          {row.print_url ? (
-                            <a
-                              href={sameOriginPrintUrl(row.print_url)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="shrink-0 rounded-lg bg-gray-900 px-2.5 py-1 text-xs font-semibold text-white dark:bg-gray-100 dark:text-gray-900"
-                            >
-                              View filled form
-                            </a>
-                          ) : null}
                         </div>
                         {Array.isArray(row.documents_checklist) && row.documents_checklist.length > 0 ? (
                           <ul className="mt-2 grid grid-cols-1 gap-1 text-xs sm:grid-cols-2">
@@ -481,18 +471,6 @@ th{background:#f9fafb}
                                 </a>
                               ))}
                             </div>
-                          </div>
-                        ) : null}
-                        {Array.isArray(row.form_preview) && row.form_preview.length > 0 ? (
-                          <div className="mt-2 rounded-lg border border-gray-200 bg-white/70 p-2 dark:border-[#1F2937] dark:bg-[#111827]/60">
-                            <p className={`text-[11px] uppercase tracking-wide ${ui.textMuted}`}>Form preview</p>
-                            <ul className="mt-1 space-y-0.5 text-xs text-gray-700 dark:text-gray-300">
-                              {row.form_preview.slice(0, 4).map((f, idx) => (
-                                <li key={`${row.id}-fp-${idx}`}>
-                                  <span className="font-semibold">{f.label}:</span> {f.value}
-                                </li>
-                              ))}
-                            </ul>
                           </div>
                         ) : null}
                         <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-600 dark:text-gray-400">
@@ -577,16 +555,6 @@ th{background:#f9fafb}
                               Terms
                             </a>
                           ) : null}
-                          {row.print_url ? (
-                            <a
-                              href={sameOriginPrintUrl(row.print_url)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="shrink-0 rounded-lg bg-gray-900 px-2.5 py-1 text-xs font-semibold text-white dark:bg-gray-100 dark:text-gray-900"
-                            >
-                              View filled form
-                            </a>
-                          ) : null}
                         </div>
                       </div>
                       {Array.isArray(row.documents_checklist) && row.documents_checklist.length > 0 ? (
@@ -615,18 +583,6 @@ th{background:#f9fafb}
                               </a>
                             ))}
                           </div>
-                        </div>
-                      ) : null}
-                      {Array.isArray(row.form_preview) && row.form_preview.length > 0 ? (
-                        <div className="mt-2 rounded-lg border border-gray-200 bg-white/70 p-2 dark:border-[#1F2937] dark:bg-[#111827]/60">
-                          <p className={`text-[11px] uppercase tracking-wide ${ui.textMuted}`}>Form preview</p>
-                          <ul className="mt-1 space-y-0.5 text-xs text-gray-700 dark:text-gray-300">
-                            {row.form_preview.slice(0, 4).map((f, idx) => (
-                              <li key={`${row.id}-tfp-${idx}`}>
-                                <span className="font-semibold">{f.label}:</span> {f.value}
-                              </li>
-                            ))}
-                          </ul>
                         </div>
                       ) : null}
                     </li>

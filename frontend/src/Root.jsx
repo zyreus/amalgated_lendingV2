@@ -58,7 +58,6 @@ const BorrowerSecurityPage = lazy(() => import('./borrower/pages/BorrowerSecurit
 const BorrowerProfilePage = lazy(() => import('./borrower/pages/BorrowerProfilePage.jsx'))
 const BorrowerLoanWizardPage = lazy(() => import('./borrower/pages/BorrowerLoanWizardPage.jsx'))
 const BorrowerApplicationsPage = lazy(() => import('./borrower/pages/BorrowerApplicationsPage.jsx'))
-const BorrowerPrintableFormsPage = lazy(() => import('./borrower/pages/BorrowerPrintableFormsPage.jsx'))
 const AdminLoanProductsPage = lazy(() => import('./admin/pages/AdminLoanProductsPage.jsx'))
 const PrintableFormsPage = lazy(() => import('./admin/pages/PrintableFormsPage.jsx'))
 const ApplicationFlowPage = lazy(() => import('./pages/ApplicationFlowPage.jsx'))
@@ -201,7 +200,6 @@ export default function Root() {
                   <Route index element={<Navigate to="/borrower/dashboard" replace />} />
                   <Route path="dashboard" element={<BorrowerDashboardPage />} />
                   <Route path="applications" element={<BorrowerApplicationsPage />} />
-                  <Route path="printable-forms" element={<BorrowerPrintableFormsPage />} />
                   <Route path="notifications" element={<Navigate to="/borrower/dashboard" replace />} />
                   <Route path="payments" element={<BorrowerPaymentsPage />} />
                   <Route path="chat" element={<BorrowerChatPage />} />

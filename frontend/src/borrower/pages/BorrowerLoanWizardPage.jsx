@@ -731,16 +731,6 @@ export default function BorrowerLoanWizardPage() {
               ) : null}
             </div>
           </div>
-          {app.print_url ? (
-            <a
-              href={app.print_url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-800 dark:border-gray-600 dark:text-gray-200"
-            >
-              Open print view (A4)
-            </a>
-          ) : null}
           {app.is_draft ? (
             <div className="space-y-3">
               <PrivacyConsentCheckbox

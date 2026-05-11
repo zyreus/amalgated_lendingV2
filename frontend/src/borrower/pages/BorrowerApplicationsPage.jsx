@@ -76,7 +76,7 @@ export default function BorrowerApplicationsPage() {
         <p className="text-xs uppercase tracking-[0.2em] text-[#DC2626]">Borrower Portal</p>
         <h2 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">My applications and documents</h2>
         <p className={`mt-1 text-sm ${ui.textMuted}`}>
-          View your filled up form and all uploaded requirements from your applications.
+          View your applications and uploaded requirements.
         </p>
       </div>
 
@@ -165,11 +165,6 @@ export default function BorrowerApplicationsPage() {
                         {row.status} {row.submitted_at ? `· Submitted ${formatDate(row.submitted_at)}` : ''}
                       </p>
                     </div>
-                    {row.print_url ? (
-                      <a href={row.print_url} target="_blank" rel="noreferrer" className="rounded-lg bg-gray-900 px-2.5 py-1 text-xs font-semibold text-white dark:bg-gray-100 dark:text-gray-900">
-                        View filled form
-                      </a>
-                    ) : null}
                   </div>
                   <DocumentLinks docs={row.uploaded_documents} />
                 </li>
@@ -233,11 +228,6 @@ export default function BorrowerApplicationsPage() {
                     <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Travel #{row.id}</p>
                     <p className={`text-xs capitalize ${ui.tableMuted}`}>{row.status}</p>
                   </div>
-                  {row.print_url ? (
-                    <a href={row.print_url} target="_blank" rel="noreferrer" className="rounded-lg bg-gray-900 px-2.5 py-1 text-xs font-semibold text-white dark:bg-gray-100 dark:text-gray-900">
-                      View filled form
-                    </a>
-                  ) : null}
                 </div>
                 <DocumentLinks docs={row.uploaded_documents} />
               </li>
