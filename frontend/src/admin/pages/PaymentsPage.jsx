@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../api/client.js'
 import { useToast } from '../context/ToastContext.jsx'
@@ -212,6 +212,17 @@ export default function PaymentsPage() {
     }
   }
 
+  const loadPaymentsSilent = useCallback(async () => {
+    try {
+      const qs = new URLSearchParams({ per_page: '200' })
+      if (loanSearchDebounced) qs.set('loan_search', loanSearchDebounced)
+      const paymentsRes = await api(`/payments?${qs.toString()}`)
+      setData(paymentsRes.data)
+    } catch (e) {
+      showToast(e.message, 'error')
+    }
+  }, [loanSearchDebounced, showToast])
+
   useEffect(() => {
     void loadBorrowers()
   }, [])
@@ -406,7 +417,7 @@ export default function PaymentsPage() {
         showToast('Payment confirmed.', 'success')
       }
       setConfirmTarget(null)
-      await loadPayments()
+      await loadPaymentsSilent()
     } catch (e) {
       showToast(e.message || 'Failed to confirm payment.', 'error')
     } finally {

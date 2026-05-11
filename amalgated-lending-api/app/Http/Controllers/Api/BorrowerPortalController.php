@@ -11,6 +11,7 @@ use App\Models\Loan;
 use App\Models\LoanApplication;
 use App\Models\Payment;
 use App\Models\TravelApplication;
+use App\Models\User;
 use App\Services\NotificationCenter;
 use App\Services\PaymentReceiptPdfService;
 use App\Support\LoanApplicationDocumentStatus;
@@ -223,7 +224,9 @@ class BorrowerPortalController extends Controller
         }
 
         $primaryRef = $this->selectPrimaryLoan($allLoans);
-        BorrowerNotificationController::syncPaymentRemindersForUser($user, $primaryRef);
+        if (! $request->boolean('skip_payment_reminder_sync', false)) {
+            BorrowerNotificationController::syncPaymentRemindersForUser($user, $primaryRef);
+        }
 
         // Re-fetch the primary loan with all financial columns + relations. The list query above uses a
         // minimal column set; serializing that model omitted fee/amortization fields the dashboard needs.
@@ -515,43 +518,59 @@ class BorrowerPortalController extends Controller
         $payment->notes = trim((string) ($payment->notes ?? '').' | Receipt uploaded by borrower');
         $payment->save();
 
-        app(NotificationCenter::class)->notifyBorrower(
-            $user,
-            NotificationCenter::CATEGORY_PAYMENT_SUBMITTED,
-            'borrower_payment_submitted_ack',
-            'Receipt received',
-            'Installment #'.($payment->installment_no ?? '—').': we received your proof. An officer will verify it shortly.',
-            ['payment_id' => $payment->id, 'loan_id' => $payment->loan_id],
-            ['dedupe_key' => 'payment_proof_upload:'.$payment->id, 'module' => NotificationCenter::MODULE_PAYMENTS],
-        );
+        $borrowerId = (int) $user->id;
+        $paymentId = (int) $payment->id;
+        $borrowerName = (string) $user->name;
+        $receiptPathStored = (string) $payment->receipt_path;
 
-        // Admin notifications page: reflect borrower-submitted payment proof.
-        $payment->loadMissing('loan');
-        app(NotificationCenter::class)->notifyStaff(
-            NotificationCenter::CATEGORY_PAYMENT_SUBMITTED,
-            'borrower_payment_submitted',
-            'Payment submitted from '.$user->name,
-            'Installment #'.($payment->installment_no ?? '—').' · Amount '.number_format((float) ($payment->amount_due ?? 0), 2).' · Ref '.$payment->reference_number,
-            [
-                'payment_id' => $payment->id,
-                'loan_id' => $payment->loan_id,
-                'borrower_id' => $user->id,
-                'receipt_path' => $payment->receipt_path,
-            ],
-            null,
-            [
-                'module' => NotificationCenter::MODULE_PAYMENTS,
-                'priority' => 3,
-                'throttle_key' => 'borrower_payment_proof:'.$payment->id,
-                'throttle_max' => 1,
-                'throttle_decay_seconds' => 7200,
-            ],
-        );
+        dispatch(static function () use ($borrowerId, $paymentId, $borrowerName, $receiptPathStored): void {
+            try {
+                $borrower = User::query()->find($borrowerId);
+                $paymentRow = Payment::query()->find($paymentId);
+                if (! $borrower || ! $paymentRow) {
+                    return;
+                }
+
+                $center = app(NotificationCenter::class);
+                $center->notifyBorrower(
+                    $borrower,
+                    NotificationCenter::CATEGORY_PAYMENT_SUBMITTED,
+                    'borrower_payment_submitted_ack',
+                    'Receipt received',
+                    'Installment #'.($paymentRow->installment_no ?? '—').': we received your proof. An officer will verify it shortly.',
+                    ['payment_id' => $paymentRow->id, 'loan_id' => $paymentRow->loan_id],
+                    ['dedupe_key' => 'payment_proof_upload:'.$paymentRow->id, 'module' => NotificationCenter::MODULE_PAYMENTS],
+                );
+
+                $center->notifyStaff(
+                    NotificationCenter::CATEGORY_PAYMENT_SUBMITTED,
+                    'borrower_payment_submitted',
+                    'Payment submitted from '.$borrowerName,
+                    'Installment #'.($paymentRow->installment_no ?? '—').' · Amount '.number_format((float) ($paymentRow->amount_due ?? 0), 2).' · Ref '.$paymentRow->reference_number,
+                    [
+                        'payment_id' => $paymentRow->id,
+                        'loan_id' => $paymentRow->loan_id,
+                        'borrower_id' => $borrowerId,
+                        'receipt_path' => $receiptPathStored,
+                    ],
+                    null,
+                    [
+                        'module' => NotificationCenter::MODULE_PAYMENTS,
+                        'priority' => 3,
+                        'throttle_key' => 'borrower_payment_proof:'.$paymentRow->id,
+                        'throttle_max' => 1,
+                        'throttle_decay_seconds' => 7200,
+                    ],
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        })->afterResponse();
 
         return response()->json([
             'ok' => true,
             'message' => 'Payment receipt uploaded. Waiting for admin confirmation.',
-            'payment' => $payment->fresh('loan'),
+            'payment' => $payment,
             'receipt_url' => PublicStorageUrl::apiUrl($path),
         ]);
     }

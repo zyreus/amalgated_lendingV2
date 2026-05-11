@@ -80,7 +80,7 @@ class PaymentController extends Controller
         return response()->json(['ok' => true, 'data' => $payments]);
     }
 
-    public function record(Request $request, Payment $payment, ActivityLogger $logger, CreditScoreService $creditScore): JsonResponse
+    public function record(Request $request, Payment $payment, ActivityLogger $logger): JsonResponse
     {
         $data = $request->validate([
             'amount_paid' => 'required|numeric|min:0',
@@ -148,7 +148,17 @@ class PaymentController extends Controller
         });
 
         if ($freshPayment?->loan?->borrower) {
-            $creditScore->recalculateForUser($freshPayment->loan->borrower);
+            $borrowerIdForScore = (int) $freshPayment->loan->borrower_id;
+            dispatch(function () use ($borrowerIdForScore): void {
+                try {
+                    $b = User::query()->find($borrowerIdForScore);
+                    if ($b) {
+                        app(CreditScoreService::class)->recalculateForUser($b);
+                    }
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            })->afterResponse();
         }
 
         $logger->log($request->user(), 'payments.record', $freshPayment ?? $payment);
@@ -157,24 +167,7 @@ class PaymentController extends Controller
         if ($becamePaid && $freshPayment) {
             $this->queuePaymentReceiptEmail($freshPayment, $request->user());
             $receiptEmail = ['sent' => true, 'note' => 'queued'];
-            $loan = $freshPayment->loan;
-            if ($loan?->borrower) {
-                $remaining = (float) (Payment::query()
-                    ->where('loan_id', $freshPayment->loan_id)
-                    ->selectRaw('COALESCE(SUM(GREATEST(amount_due - amount_paid, 0)), 0) AS r')
-                    ->value('r') ?? 0);
-                $remainingTxt = number_format($remaining, 2);
-                app(NotificationCenter::class)->notifyBorrower(
-                    $loan->borrower,
-                    NotificationCenter::CATEGORY_PAYMENT_RECEIVED,
-                    'payment_received',
-                    'Payment recorded',
-                    'Installment #'.($freshPayment->installment_no ?? '—').' is marked paid. Remaining balance (scheduled): ₱'.$remainingTxt.'. Thank you.',
-                    ['payment_id' => $freshPayment->id, 'loan_id' => $freshPayment->loan_id, 'remaining_balance' => $remaining],
-                    ['dedupe_key' => 'payment_paid:'.$freshPayment->id, 'module' => NotificationCenter::MODULE_PAYMENTS],
-                );
-            }
-            $this->notifyStaffPaymentConfirmed($freshPayment, $request->user());
+            $this->deferPaymentPaidNotifications($freshPayment, $request->user());
         }
 
         $lastReceiptEmail = null;
@@ -184,16 +177,19 @@ class PaymentController extends Controller
                 ->first();
         }
 
+        $outPayment = $freshPayment ?? $payment;
+        $outPayment->loadMissing(['loan.borrower', 'confirmedByUser']);
+
         return response()->json([
             'ok' => true,
-            'payment' => ($freshPayment ?? $payment)->fresh(['loan', 'confirmedByUser']),
+            'payment' => $outPayment,
             'receipt_email_sent' => $receiptEmail['sent'],
             'receipt_email_note' => $receiptEmail['note'],
             'last_payment_receipt_email' => $this->formatPaymentReceiptEmailLog($lastReceiptEmail),
         ]);
     }
 
-    public function updateStatus(Request $request, Payment $payment, ActivityLogger $logger, CreditScoreService $creditScore): JsonResponse
+    public function updateStatus(Request $request, Payment $payment, ActivityLogger $logger): JsonResponse
     {
         $data = $request->validate([
             'status' => 'required|string|in:pending,paid',
@@ -237,7 +233,17 @@ class PaymentController extends Controller
         });
 
         if ($freshPayment?->loan?->borrower) {
-            $creditScore->recalculateForUser($freshPayment->loan->borrower);
+            $borrowerIdForScore = (int) $freshPayment->loan->borrower_id;
+            dispatch(function () use ($borrowerIdForScore): void {
+                try {
+                    $b = User::query()->find($borrowerIdForScore);
+                    if ($b) {
+                        app(CreditScoreService::class)->recalculateForUser($b);
+                    }
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            })->afterResponse();
         }
 
         $logger->log($request->user(), 'payments.status_update', $freshPayment ?? $payment, ['status' => ($freshPayment ?? $payment)->status]);
@@ -246,24 +252,7 @@ class PaymentController extends Controller
         if ($becamePaid && $freshPayment) {
             $this->queuePaymentReceiptEmail($freshPayment, $request->user());
             $receiptEmail = ['sent' => true, 'note' => 'queued'];
-            $loan = $freshPayment->loan;
-            if ($loan?->borrower) {
-                $remaining = (float) (Payment::query()
-                    ->where('loan_id', $freshPayment->loan_id)
-                    ->selectRaw('COALESCE(SUM(GREATEST(amount_due - amount_paid, 0)), 0) AS r')
-                    ->value('r') ?? 0);
-                $remainingTxt = number_format($remaining, 2);
-                app(NotificationCenter::class)->notifyBorrower(
-                    $loan->borrower,
-                    NotificationCenter::CATEGORY_PAYMENT_RECEIVED,
-                    'payment_received',
-                    'Payment recorded',
-                    'Installment #'.($freshPayment->installment_no ?? '—').' is marked paid. Remaining balance (scheduled): ₱'.$remainingTxt.'. Thank you.',
-                    ['payment_id' => $freshPayment->id, 'loan_id' => $freshPayment->loan_id, 'remaining_balance' => $remaining],
-                    ['dedupe_key' => 'payment_paid:'.$freshPayment->id, 'module' => NotificationCenter::MODULE_PAYMENTS],
-                );
-            }
-            $this->notifyStaffPaymentConfirmed($freshPayment, $request->user());
+            $this->deferPaymentPaidNotifications($freshPayment, $request->user());
         }
 
         $lastReceiptEmail = null;
@@ -273,9 +262,12 @@ class PaymentController extends Controller
                 ->first();
         }
 
+        $outPayment = $freshPayment ?? $payment;
+        $outPayment->loadMissing(['loan.borrower', 'confirmedByUser']);
+
         return response()->json([
             'ok' => true,
-            'payment' => ($freshPayment ?? $payment)->fresh(['loan', 'confirmedByUser']),
+            'payment' => $outPayment,
             'receipt_email_sent' => $receiptEmail['sent'],
             'receipt_email_note' => $receiptEmail['note'],
             'last_payment_receipt_email' => $this->formatPaymentReceiptEmailLog($lastReceiptEmail),
@@ -395,7 +387,51 @@ class PaymentController extends Controller
             ]
         );
 
-        SendPaymentReceiptJob::dispatch($payment->id, $or, (int) $admin->id)->afterCommit();
+        SendPaymentReceiptJob::dispatch($payment->id, $or, (int) $admin->id)->afterCommit()->afterResponse();
+    }
+
+    /**
+     * In-app borrower + staff notifications after a payment is marked paid (not needed to block the HTTP response).
+     */
+    private function deferPaymentPaidNotifications(Payment $freshPayment, User $admin): void
+    {
+        $paymentId = (int) $freshPayment->id;
+        $loanId = (int) $freshPayment->loan_id;
+        $adminId = (int) $admin->id;
+        $self = $this;
+
+        dispatch(function () use ($self, $paymentId, $loanId, $adminId): void {
+            try {
+                $pay = Payment::query()->with(['loan.borrower'])->find($paymentId);
+                if (! $pay || ! $pay->loan?->borrower) {
+                    return;
+                }
+
+                $borrower = $pay->loan->borrower;
+                $remaining = (float) (Payment::query()
+                    ->where('loan_id', $loanId)
+                    ->selectRaw('COALESCE(SUM(GREATEST(amount_due - amount_paid, 0)), 0) AS r')
+                    ->value('r') ?? 0);
+                $remainingTxt = number_format($remaining, 2);
+
+                app(NotificationCenter::class)->notifyBorrower(
+                    $borrower,
+                    NotificationCenter::CATEGORY_PAYMENT_RECEIVED,
+                    'payment_received',
+                    'Payment recorded',
+                    'Installment #'.($pay->installment_no ?? '—').' is marked paid. Remaining balance (scheduled): ₱'.$remainingTxt.'. Thank you.',
+                    ['payment_id' => $pay->id, 'loan_id' => $pay->loan_id, 'remaining_balance' => $remaining],
+                    ['dedupe_key' => 'payment_paid:'.$pay->id, 'module' => NotificationCenter::MODULE_PAYMENTS],
+                );
+
+                $adminUser = User::query()->find($adminId);
+                if ($adminUser) {
+                    $self->notifyStaffPaymentConfirmed($pay, $adminUser);
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        })->afterResponse();
     }
 
     private function notifyStaffPaymentConfirmed(Payment $payment, User $admin): void

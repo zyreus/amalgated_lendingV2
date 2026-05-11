@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
 import { borrowerApi } from '../api/client.js'
@@ -107,6 +107,18 @@ export default function BorrowerDashboardPage() {
     }
   }
 
+  /** Refresh dashboard payload only (no full-page skeleton; skips document/lending fetches). */
+  const refreshDashboardSilent = useCallback(async () => {
+    try {
+      const dashRes = await borrowerApi('/borrower/dashboard?skip_payment_reminder_sync=1')
+      setData(dashRes.data)
+      const ph = dashRes?.data?.payment_history
+      setHistoryRows(Array.isArray(ph) ? ph : [])
+    } catch (err) {
+      setError(err.message || 'Failed to refresh dashboard.')
+    }
+  }, [])
+
   useEffect(() => {
     load()
   }, [])
@@ -214,7 +226,7 @@ th{background:#f9fafb}
       setToast('Receipt uploaded. Waiting for confirmation.')
       setModalRow(null)
       setForm({ referenceNumber: '', paymentMethod: 'gcash', receiptFile: null })
-      await load()
+      await refreshDashboardSilent()
     } catch (err) {
       setError(err.message || 'Upload failed.')
     } finally {
