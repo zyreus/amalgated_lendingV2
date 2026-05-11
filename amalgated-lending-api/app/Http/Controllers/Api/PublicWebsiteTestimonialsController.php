@@ -28,7 +28,7 @@ class PublicWebsiteTestimonialsController extends Controller
         $limit = min(max((int) $request->query('limit', 12), 1), 24);
 
         $payload = Cache::remember(
-            'public_website_testimonials_v1_'.$limit,
+            'public_website_testimonials_v2_'.$limit,
             self::CACHE_TTL_SECONDS,
             fn () => $this->buildPayload($limit, true),
         );
@@ -52,7 +52,7 @@ class PublicWebsiteTestimonialsController extends Controller
         $limit = min(max((int) $request->query('limit', 12), 1), 24);
 
         $data = Cache::remember(
-            'public_feedback_testimonials_v1_'.$limit,
+            'public_feedback_testimonials_v2_'.$limit,
             self::CACHE_TTL_SECONDS,
             function () use ($limit) {
                 $full = $this->buildPayload($limit, true);
@@ -102,6 +102,7 @@ class PublicWebsiteTestimonialsController extends Controller
             ->select([
                 'id',
                 'borrower_id',
+                'full_name',
                 'public_author_label',
                 'loan_type',
                 'rating',
@@ -120,8 +121,11 @@ class PublicWebsiteTestimonialsController extends Controller
             ->where('message', '!=', '');
 
         if ($requireNamedDisplay) {
-            $q->whereNotNull('public_author_label')
-                ->whereRaw("TRIM(COALESCE(public_author_label, '')) <> ''");
+            $q->where(function ($w) {
+                $w->whereRaw("TRIM(COALESCE(public_author_label, '')) <> ''")
+                    ->orWhereRaw("TRIM(COALESCE(full_name, '')) <> ''")
+                    ->orWhereHas('borrower', fn ($b) => $b->whereRaw("TRIM(COALESCE(name, '')) <> ''"));
+            });
         }
 
         if ($requireFeatured) {
@@ -141,7 +145,7 @@ class PublicWebsiteTestimonialsController extends Controller
 
             return [
                 'id' => $t->id,
-                'display_name' => $this->displayName($t->borrower, $t->public_author_label),
+                'display_name' => $this->displayName($t->borrower, $t->public_author_label, $t->full_name),
                 'loan_type' => $t->loan_type ?: 'Borrower',
                 'rating' => (int) $t->rating,
                 'message' => $msg,
@@ -163,13 +167,16 @@ class PublicWebsiteTestimonialsController extends Controller
         ];
     }
 
-    private function displayName(?User $borrower, ?string $publicLabel): string
+    private function displayName(?User $borrower, ?string $publicLabel, ?string $ticketFullName = null): string
     {
         $label = trim((string) $publicLabel);
         if ($label !== '') {
             return $label;
         }
         $name = trim((string) ($borrower?->name ?? ''));
+        if ($name === '') {
+            $name = trim((string) ($ticketFullName ?? ''));
+        }
         if ($name === '') {
             return 'Verified borrower';
         }

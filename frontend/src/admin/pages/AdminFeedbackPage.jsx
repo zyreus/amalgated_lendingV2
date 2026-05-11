@@ -802,8 +802,8 @@ export default function AdminFeedbackPage() {
                     Published items appear on the homepage in <span className="font-semibold text-gray-700">Customer feedback</span>{' '}
                     (“What our borrowers say”). Use <span className="font-semibold text-gray-700">Approve</span> and{' '}
                     <span className="font-semibold text-gray-700">Feature</span>, turn on borrower consent, and keep rating at
-                    least the site minimum (usually 4★) with a short message. A display name may be required. Cached updates
-                    can take a few minutes.
+                    least the site minimum (usually 4★) with a short message. The borrower name on the ticket counts if
+                    display name is left blank. Cached updates can take a few minutes.
                   </p>
                 </div>
                 <label className="flex cursor-pointer items-start gap-3 text-sm text-gray-800">

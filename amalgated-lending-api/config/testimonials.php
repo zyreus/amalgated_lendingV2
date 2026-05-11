@@ -6,8 +6,8 @@ return [
     'min_rating' => max(1, min(5, (int) env('TESTIMONIALS_MIN_RATING', 4))),
 
     /**
-     * When true, carousel only includes rows with a non-empty public display label
-     * or a linked borrower account that has a name (avoids anonymous “Verified borrower” only).
+     * When true, only include rows that can show a real name: public display label,
+     * ticket full_name (e.g. chatbot), or linked borrower name. Anonymous-only rows stay out.
      */
     'require_named_display' => filter_var(env('TESTIMONIALS_REQUIRE_NAMED_DISPLAY', true), FILTER_VALIDATE_BOOL),
 

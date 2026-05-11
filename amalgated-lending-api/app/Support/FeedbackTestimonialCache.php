@@ -9,9 +9,9 @@ use Illuminate\Support\Facades\Cache;
  */
 final class FeedbackTestimonialCache
 {
-    private const LEGACY_PREFIX = 'public_feedback_testimonials_v1_';
+    private const LEGACY_PREFIX = 'public_feedback_testimonials_v2_';
 
-    private const WEBSITE_PREFIX = 'public_website_testimonials_v1_';
+    private const WEBSITE_PREFIX = 'public_website_testimonials_v2_';
 
     public static function forgetAll(): void
     {

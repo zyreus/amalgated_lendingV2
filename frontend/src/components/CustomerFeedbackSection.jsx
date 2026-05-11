@@ -2,36 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { laravelRequest } from '../utils/lendingLaravelApi.js'
 
-const FALLBACK_ITEMS = [
-  {
-    id: 'fb-1',
-    name: 'Maria L.',
-    loanType: 'Salary Loan Client',
-    rating: 5,
-    comment:
-      'Fast processing and very clear requirements. The team guided me from application to approval.',
-    verified: true,
-  },
-  {
-    id: 'fb-2',
-    name: 'John C.',
-    loanType: 'Business Loan Client',
-    rating: 5,
-    comment:
-      'The loan officers explained the terms well and helped me choose the best option for my small business.',
-    verified: true,
-  },
-  {
-    id: 'fb-3',
-    name: 'Anne P.',
-    loanType: 'Personal Loan Client',
-    rating: 4,
-    comment:
-      'Responsive support and smooth follow-up. I appreciated how transparent the process was.',
-    verified: false,
-  },
-]
-
 const GRID_LIMIT = 6
 
 function Stars({ value }) {
@@ -80,8 +50,9 @@ function TestimonialCard({ item, index, reduceMotion }) {
 }
 
 export default function CustomerFeedbackSection() {
-  const [items, setItems] = useState(FALLBACK_ITEMS)
-  const [meta, setMeta] = useState({ review_count: FALLBACK_ITEMS.length, rating_value: 4.67 })
+  const [items, setItems] = useState([])
+  const [meta, setMeta] = useState({ review_count: 0, rating_value: null })
+  const [loadState, setLoadState] = useState('loading')
   const reduceMotion = useReducedMotion()
 
   const gridItems = useMemo(() => items.slice(0, GRID_LIMIT), [items])
@@ -89,16 +60,25 @@ export default function CustomerFeedbackSection() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
+      setLoadState('loading')
       const { res } = await laravelRequest('/public/website/testimonials?limit=12', {
         method: 'GET',
         headers: { Accept: 'application/json' },
       })
-      if (cancelled || !res?.ok) return
+      if (cancelled) return
+
+      if (!res?.ok) {
+        setLoadState('error')
+        setItems([])
+        setMeta({ review_count: 0, rating_value: null })
+        return
+      }
+
       const body = await res.json().catch(() => ({}))
       const rows = Array.isArray(body?.data) ? body.data : []
       const reviewCount = Number(body?.meta?.review_count)
       const ratingValue = body?.meta?.rating_value
-      if (rows.length === 0) return
+
       const mapped = rows
         .map((d) => ({
           id: `api-${d.id}`,
@@ -109,12 +89,13 @@ export default function CustomerFeedbackSection() {
           verified: !!(d.verified_borrower || d.verified),
         }))
         .filter((x) => x.comment.length > 0)
-      if (mapped.length === 0) return
+
       setItems(mapped)
       setMeta({
         review_count: Number.isFinite(reviewCount) ? reviewCount : mapped.length,
         rating_value: ratingValue != null ? Number(ratingValue) : null,
       })
+      setLoadState('ready')
     })()
     return () => {
       cancelled = true
@@ -126,7 +107,9 @@ export default function CustomerFeedbackSection() {
     const avg =
       meta.rating_value != null && !Number.isNaN(meta.rating_value)
         ? meta.rating_value
-        : items.reduce((s, x) => s + x.rating, 0) / Math.max(items.length, 1)
+        : items.length > 0
+          ? items.reduce((s, x) => s + x.rating, 0) / items.length
+          : null
     const reviews = items.slice(0, 8).map((it) => ({
       '@type': 'Review',
       author: { '@type': 'Person', name: it.name },
@@ -139,7 +122,7 @@ export default function CustomerFeedbackSection() {
       name: 'Amalgated Lending',
       description: 'Borrower testimonials and reviews published with consent.',
       aggregateRating:
-        count > 0
+        count > 0 && avg != null
           ? {
               '@type': 'AggregateRating',
               ratingValue: Number(avg.toFixed(2)),
@@ -152,7 +135,7 @@ export default function CustomerFeedbackSection() {
     }
   }, [items, meta.rating_value, meta.review_count])
 
-  const showAggregate = meta.rating_value != null && !Number.isNaN(meta.rating_value)
+  const showAggregate = meta.rating_value != null && !Number.isNaN(meta.rating_value) && items.length > 0
 
   return (
     <section
@@ -179,6 +162,16 @@ export default function CustomerFeedbackSection() {
           <p className="mt-4 text-sm leading-relaxed text-brand-text/70 sm:text-base">
             Real experiences from clients who trusted Amalgated Lending for personal, salary, and business financing.
           </p>
+          {loadState === 'loading' ? (
+            <p className="mt-4 text-sm text-brand-text/55" aria-live="polite">
+              Loading published reviews…
+            </p>
+          ) : null}
+          {loadState === 'error' ? (
+            <p className="mt-4 text-sm text-amber-800/90" role="status">
+              Reviews could not be loaded. Refresh the page or try again later.
+            </p>
+          ) : null}
           {showAggregate ? (
             <p className="mt-4 inline-flex flex-wrap items-center justify-center gap-2 rounded-full border border-black/[0.06] bg-white/80 px-4 py-2 text-sm text-brand-text/80 shadow-sm backdrop-blur-sm">
               <span className="font-semibold tabular-nums text-amber-500">★ {Number(meta.rating_value).toFixed(1)}</span>
@@ -191,13 +184,23 @@ export default function CustomerFeedbackSection() {
           ) : null}
         </motion.div>
 
-        <ul className="mx-auto mt-12 grid max-w-6xl list-none gap-5 sm:grid-cols-2 sm:gap-6 lg:mx-auto lg:mt-14 lg:grid-cols-3 lg:gap-6">
-          {gridItems.map((item, index) => (
-            <li key={item.id} className="min-w-0">
-              <TestimonialCard item={item} index={index} reduceMotion={reduceMotion} />
-            </li>
-          ))}
-        </ul>
+        {loadState === 'ready' && items.length === 0 ? (
+          <div className="mx-auto mt-12 max-w-lg rounded-2xl border border-dashed border-black/15 bg-white/60 px-6 py-10 text-center text-sm text-brand-text/70">
+            <p className="font-medium text-brand-text">No published testimonials yet</p>
+            <p className="mt-2 leading-relaxed">
+              When the team approves and features feedback with borrower consent (and a clear name on the ticket), it
+              appears here—usually within a few minutes.
+            </p>
+          </div>
+        ) : (
+          <ul className="mx-auto mt-12 grid max-w-6xl list-none gap-5 sm:grid-cols-2 sm:gap-6 lg:mx-auto lg:mt-14 lg:grid-cols-3 lg:gap-6">
+            {gridItems.map((item, index) => (
+              <li key={item.id} className="min-w-0">
+                <TestimonialCard item={item} index={index} reduceMotion={reduceMotion} />
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </section>
   )
