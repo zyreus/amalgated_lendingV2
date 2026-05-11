@@ -75,7 +75,7 @@ function App() {
 
   useEffect(() => {
     const links = []
-    const prefetchRoutes = ['/loan-products', '/application-flow', '/apply', '/contact']
+    const prefetchRoutes = ['/loan-products', '/application-flow', '/apply', '/contact', '/branches', '/careers']
 
     prefetchRoutes.forEach((href) => {
       const link = document.createElement('link')
@@ -239,7 +239,7 @@ function App() {
             </div>
           </motion.section>
 
-          <section id="trust" className="app-container py-12 sm:py-16">
+          <section id="trust" className="app-container scroll-mt-28 py-12 sm:py-16">
             <div className="grid gap-4 md:grid-cols-4">
               {[
                 ['Licensed & Legitimate', 'Registered Philippine lending operation.'],
@@ -266,7 +266,7 @@ function App() {
           <AboutUsSection />
           <AdvantagesSection />
 
-          <section className="app-container pb-10">
+          <section id="calculator" className="app-container scroll-mt-28 pb-10">
             <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
               <HomeLoanCalculator />
               <div id="cta" className="surface-card-light p-6">
@@ -310,7 +310,7 @@ function App() {
             </section>
           </LazySection>
 
-          <LazySection minHeight={420}>
+          <LazySection id="newsletter" minHeight={420} className="scroll-mt-28">
             <NewsletterSection />
           </LazySection>
 

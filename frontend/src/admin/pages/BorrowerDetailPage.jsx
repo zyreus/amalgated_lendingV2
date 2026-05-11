@@ -7,6 +7,7 @@ import { admin } from '../components/AdminUi.jsx'
 import { AdminPageSkeleton } from '../../components/AppSkeletons.jsx'
 import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
 import { applicationPayloadRows } from '../utils/loanApplicationPayloadDisplay.js'
+import BorrowerUploadedFilesPanel from '../components/BorrowerUploadedFilesPanel.jsx'
 
 function formatDateTime(iso) {
   if (iso == null || iso === '') return '—'
@@ -341,6 +342,8 @@ export default function BorrowerDetailPage() {
           </div>
         </dl>
       </div>
+
+      <BorrowerUploadedFilesPanel borrowerId={borrower.id} canVerifyDocs={can('loans.approve')} showToast={showToast} />
 
       {can('users.manage') ? (
         <div className={admin.cardNoHover}>

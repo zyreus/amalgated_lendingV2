@@ -561,7 +561,7 @@ export default function AdminFeedbackPage() {
                 <p className="mt-1 text-[11px] text-gray-500">
                   Source: <span className="font-semibold text-gray-700">{selected.source || '—'}</span>
                   {' · '}
-                  Website:{' '}
+                  Publication (testimonial):{' '}
                   <span className="font-semibold text-gray-700">{selected.publication_status || 'pending'}</span>
                   {selected.featured ? (
                     <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">

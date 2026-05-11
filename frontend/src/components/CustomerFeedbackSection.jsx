@@ -77,7 +77,7 @@ export default function CustomerFeedbackSection() {
           loanType: String(d.loan_type || 'Borrower').trim() || 'Borrower',
           rating: Math.min(5, Math.max(1, Number(d.rating) || 5)),
           comment: String(d.message || '').trim(),
-          verified: !!d.verified_borrower,
+          verified: !!(d.verified_borrower || d.verified),
         }))
         .filter((x) => x.comment.length > 0)
       if (mapped.length === 0) return

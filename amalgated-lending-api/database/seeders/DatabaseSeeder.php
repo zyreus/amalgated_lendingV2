@@ -34,6 +34,8 @@ class DatabaseSeeder extends Seeder
             ['name' => 'View activity logs', 'slug' => 'activity.view', 'group_name' => 'Audit'],
             ['name' => 'View notifications', 'slug' => 'notifications.view', 'group_name' => 'Notifications'],
             ['name' => 'Manage printable PDF forms', 'slug' => 'forms.printable.manage', 'group_name' => 'Forms'],
+            ['name' => 'View careers (HR dashboard, jobs, applicants)', 'slug' => 'careers.view', 'group_name' => 'Careers'],
+            ['name' => 'Manage careers (postings, pipeline, interviews, exports)', 'slug' => 'careers.manage', 'group_name' => 'Careers'],
         ];
 
         $ids = [];
@@ -72,6 +74,13 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Accountant', 'description' => 'Financial reporting and payment oversight.']
         )->permissions()->sync(Permission::whereIn('slug', [
             'dashboard.view', 'loans.view', 'payments.manage', 'reports.view', 'notifications.view',
+        ])->pluck('id')->all());
+
+        Role::updateOrCreate(
+            ['slug' => 'hr-manager'],
+            ['name' => 'HR Manager', 'description' => 'Careers, job postings, applicant pipeline, and recruiting workflows.']
+        )->permissions()->sync(Permission::whereIn('slug', [
+            'dashboard.view', 'careers.view', 'careers.manage', 'notifications.view',
         ])->pluck('id')->all());
 
         Role::updateOrCreate(

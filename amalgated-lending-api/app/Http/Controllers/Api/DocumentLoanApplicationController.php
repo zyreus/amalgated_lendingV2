@@ -122,6 +122,19 @@ class DocumentLoanApplicationController extends Controller
             return response()->json(['ok' => false, 'message' => 'Unauthorized.'], 401);
         }
 
+        $activeOther = DocumentLoanApplication::query()
+            ->where('user_id', $user->id)
+            ->where('loan_product_id', $product->id)
+            ->whereNotNull('submitted_at')
+            ->whereIn('status', [DocumentLoanApplication::STATUS_PENDING, DocumentLoanApplication::STATUS_APPROVED])
+            ->exists();
+        if ($activeOther) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'You already have an active submitted application for this product. Check My Applications or wait for a decision before starting another.',
+            ], 422);
+        }
+
         $existing = DocumentLoanApplication::query()
             ->where('user_id', $user->id)
             ->where('loan_product_id', $product->id)
@@ -391,6 +404,20 @@ class DocumentLoanApplicationController extends Controller
 
         if ($documentLoanApplication->submitted_at !== null) {
             return response()->json(['ok' => false, 'message' => 'Already submitted.'], 422);
+        }
+
+        $duplicateActive = DocumentLoanApplication::query()
+            ->where('user_id', $documentLoanApplication->user_id)
+            ->where('loan_product_id', $documentLoanApplication->loan_product_id)
+            ->whereNotNull('submitted_at')
+            ->whereIn('status', [DocumentLoanApplication::STATUS_PENDING, DocumentLoanApplication::STATUS_APPROVED])
+            ->where('id', '!=', $documentLoanApplication->id)
+            ->exists();
+        if ($duplicateActive) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Another active application for this product is already on file. Contact support if you need to replace it.',
+            ], 422);
         }
 
         $requirements = LoanRequirement::query()->where('loan_product_id', $documentLoanApplication->loan_product_id)->pluck('id');

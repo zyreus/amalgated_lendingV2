@@ -16,6 +16,7 @@ export default function LazySection({
   minHeight = 240,
   fallback = null,
   className = '',
+  id,
 }) {
   const ref = useRef(null)
   const [visible, setVisible] = useState(false)
@@ -50,6 +51,7 @@ export default function LazySection({
 
   return (
     <div
+      id={id}
       ref={ref}
       className={className}
       style={!visible ? { minHeight: typeof minHeight === 'number' ? `${minHeight}px` : minHeight } : undefined}

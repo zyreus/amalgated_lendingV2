@@ -11,48 +11,53 @@ use App\Support\SupportChatPresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
-class ChatbotFeedbackController extends Controller
+/**
+ * Public website feedback form (no chat session). Creates CRM tickets with publication = pending.
+ */
+class PublicFeedbackSubmitController extends Controller
 {
-    /**
-     * Unified borrower / visitor feedback intake for chatbot and automation flows.
-     */
     public function store(Request $request): JsonResponse
     {
         abort_unless(Schema::hasTable('feedback_tickets'), 503, 'Feedback ticketing is not available.');
 
         $data = $request->validate([
+            'full_name' => 'required|string|max:191',
+            'email' => 'required|email|max:191',
+            'feedback_message' => 'required|string|max:5000',
             'rating' => 'required|integer|min:1|max:5',
-            'message' => 'required|string|max:5000',
             'loan_type' => 'nullable|string|max:96',
+            'display_name' => 'nullable|string|max:120',
             'consent_public_display' => 'nullable|boolean',
-            'session_id' => 'nullable|string|max:191',
-            'name' => 'nullable|string|max:191',
-            'email' => 'nullable|email|max:191',
             'borrower_id' => 'nullable|integer|exists:users,id',
-            'subject' => 'nullable|string|max:191',
-            'source' => 'nullable|string|in:chatbot,website,manual',
+            'website_url' => 'nullable|string|max:255',
         ]);
 
-        $message = SupportChatPresenter::sanitizeBody($data['message']);
-        if ($message === '') {
-            return response()->json(['message' => 'Feedback message invalid.'], 422);
+        if (filled($data['website_url'] ?? null)) {
+            return response()->json(['ok' => true, 'message' => 'Thank you for your feedback.'], 201);
         }
 
+        $message = SupportChatPresenter::sanitizeBody($data['feedback_message']);
+        if ($message === '') {
+            return response()->json(['ok' => false, 'message' => 'Feedback message invalid.'], 422);
+        }
+
+        $email = strtolower(trim((string) $data['email']));
         $borrowerId = isset($data['borrower_id']) ? (int) $data['borrower_id'] : null;
-        $email = isset($data['email']) ? trim((string) $data['email']) : null;
-        if (! $borrowerId && $email) {
+        if (! $borrowerId) {
             $borrowerId = User::query()->where('email', $email)->value('id');
         }
 
-        if (FeedbackSubmissionGuard::isRecentDuplicate($borrowerId, $email, (int) $data['rating'], $message)) {
-            return response()->json(['ok' => true, 'duplicate' => true, 'message' => 'Thank you — we already recorded similar feedback recently.']);
+        if (FeedbackSubmissionGuard::isRecentDuplicate($borrowerId ? (int) $borrowerId : null, $email, (int) $data['rating'], $message)) {
+            return response()->json([
+                'ok' => true,
+                'duplicate' => true,
+                'message' => 'Thank you — we already recorded similar feedback recently.',
+            ], 201);
         }
 
-        $fullName = isset($data['name']) ? trim((string) $data['name']) : null;
-        if ($fullName === '') {
-            $fullName = null;
-        }
+        $publicLabel = isset($data['display_name']) ? trim((string) $data['display_name']) : '';
 
         $ticket = FeedbackTicket::query()->create([
             'borrower_id' => $borrowerId,
@@ -63,24 +68,21 @@ class ChatbotFeedbackController extends Controller
             'status' => 'New',
             'publication_status' => 'pending',
             'featured' => false,
-            'source' => $data['source'] ?? 'chatbot',
+            'source' => 'website',
             'consent_public_display' => (bool) ($data['consent_public_display'] ?? false),
             'verified_borrower' => (bool) $borrowerId,
             'loan_type' => isset($data['loan_type']) ? trim((string) $data['loan_type']) : null,
-            'subject' => isset($data['subject']) ? trim((string) $data['subject']) : null,
+            'subject' => 'Website feedback — '.Str::limit(trim((string) $data['full_name']), 80, ''),
             'message' => $message,
             'rating' => (int) $data['rating'],
             'email' => $email,
-            'full_name' => $fullName,
+            'full_name' => trim((string) $data['full_name']),
+            'public_author_label' => $publicLabel !== '' ? Str::limit($publicLabel, 120, '') : null,
             'website_visible' => false,
         ]);
 
         $ticketId = (int) $ticket->id;
-        $sessionIdTrim = isset($data['session_id']) ? trim((string) $data['session_id']) : null;
-        if ($sessionIdTrim === '') {
-            $sessionIdTrim = null;
-        }
-        dispatch(function () use ($ticketId, $borrowerId, $email, $request, $sessionIdTrim): void {
+        dispatch(function () use ($ticketId): void {
             try {
                 $t = FeedbackTicket::query()->find($ticketId);
                 if (! $t) {
@@ -88,18 +90,15 @@ class ChatbotFeedbackController extends Controller
                 }
                 app(NotificationCenter::class)->notifyStaff(
                     NotificationCenter::CATEGORY_FEEDBACK,
-                    'chatbot_feedback',
-                    'New feedback — '.((int) $t->rating).'/5',
+                    'website_feedback',
+                    'New website feedback — '.((int) $t->rating).'/5',
                     mb_substr((string) $t->message, 0, 500),
-                    [
-                        'feedback_ticket_id' => $t->id,
-                        'session_id' => $sessionIdTrim,
-                    ],
+                    ['feedback_ticket_id' => $t->id],
                     null,
                     [
                         'module' => NotificationCenter::MODULE_FEEDBACK,
-                        'throttle_key' => 'chatbot-feedback:'.($borrowerId ?: $email ?: $request->ip()),
-                        'throttle_max' => 8,
+                        'throttle_key' => 'website-feedback:'.$t->id,
+                        'throttle_max' => 2,
                         'throttle_decay_seconds' => 3600,
                     ],
                 );

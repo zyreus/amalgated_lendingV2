@@ -8,7 +8,10 @@ use App\Models\FeedbackAuditLog;
 use App\Models\FeedbackReply;
 use App\Models\FeedbackTicket;
 use App\Models\User;
+use App\Mail\FeedbackTestimonialApprovedMail;
+use App\Services\TransactionalMailSender;
 use App\Support\SupportChatPresenter;
+use Illuminate\Support\Str;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -157,6 +160,7 @@ class AdminFeedbackController extends Controller
             'is_sensitive' => 'nullable|boolean',
             'is_vip' => 'nullable|boolean',
             'website_visible' => 'nullable|boolean',
+            'full_name' => 'nullable|string|max:191',
             'public_author_label' => 'nullable|string|max:120',
             'publication_status' => 'nullable|string|in:pending,approved,rejected',
             'featured' => 'nullable|boolean',
@@ -341,6 +345,34 @@ class AdminFeedbackController extends Controller
 
         $this->audit($request, $ticket, 'publication.approve', $data);
         PublicWebsiteTestimonialsController::forgetCaches();
+
+        $ticketId = (int) $ticket->id;
+        dispatch(function () use ($ticketId): void {
+            try {
+                $t = FeedbackTicket::query()->with(['borrower:id,name,email'])->find($ticketId);
+                if (! $t || ($t->publication_status ?? '') !== 'approved' || ! ($t->consent_public_display ?? false)) {
+                    return;
+                }
+                $to = trim((string) ($t->email ?: $t->borrower?->email ?? ''));
+                if ($to === '' || ! filter_var($to, FILTER_VALIDATE_EMAIL)) {
+                    return;
+                }
+                $name = trim((string) ($t->full_name ?: $t->borrower?->name ?: $to));
+                $display = trim((string) ($t->public_author_label ?? ''));
+                if ($display === '') {
+                    $display = Str::limit($name, 80, '');
+                }
+                $body = 'Your review has been approved for public display on our website (where you gave consent). Thank you for sharing your experience'.($display !== '' ? ' — we may show you as “'.$display.'”.' : '.');
+                $mailable = new FeedbackTestimonialApprovedMail($name !== '' ? $name : 'Borrower', $body);
+                $subject = 'Thank you — testimonial approved — '.config('app.name', 'Amalgated Lending');
+                app(TransactionalMailSender::class)->sendHtmlMailable($mailable, $to, $name !== '' ? $name : $to, $subject, [
+                    'flow' => 'feedback_testimonial_approved',
+                    'feedback_ticket_id' => $t->id,
+                ], []);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        })->afterResponse();
 
         return response()->json(['ok' => true, 'data' => $this->presentTicket($this->freshTicketForPresentation($ticket))]);
     }
@@ -597,8 +629,10 @@ class AdminFeedbackController extends Controller
             'sla_due_at' => optional($slaDueAt)?->toIso8601String(),
             'sla_breached' => (bool) $slaBreached,
             'escalation_count' => $ticket->escalation_count,
+            'full_name' => $ticket->full_name,
             'contact' => [
-                'full_name' => $borrower ? ($borrower->name ?? null) : (($profile?->first_name || $profile?->last_name) ? trim(($profile?->first_name ?? '').' '.($profile?->last_name ?? '')) : null),
+                'full_name' => $ticket->full_name
+                    ?: ($borrower ? ($borrower->name ?? null) : (($profile?->first_name || $profile?->last_name) ? trim(($profile?->first_name ?? '').' '.($profile?->last_name ?? '')) : null)),
                 'borrower_id' => $borrower?->id,
                 'contact_number' => $ticket->contact_number ?: ($profile?->phone_number ?: ($borrower?->phone ?? null)),
                 'email' => $ticket->email ?: ($borrower?->email ?? null),

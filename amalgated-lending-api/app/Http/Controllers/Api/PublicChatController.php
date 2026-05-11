@@ -9,6 +9,7 @@ use App\Models\SupportChatFeedback;
 use App\Models\SupportConversation;
 use App\Models\User;
 use App\Services\NotificationCenter;
+use App\Support\FeedbackSubmissionGuard;
 use App\Support\SupportChatPresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -186,6 +187,22 @@ class PublicChatController extends Controller
             return response()->json(['message' => 'Feedback comment invalid.'], 422);
         }
 
+        $emailNorm = isset($data['email']) ? strtolower(trim((string) $data['email'])) : null;
+        if ($emailNorm === '') {
+            $emailNorm = null;
+        }
+        $borrowerId = null;
+        if ($emailNorm) {
+            $borrowerId = User::query()->where('email', $emailNorm)->value('id');
+        }
+        if (FeedbackSubmissionGuard::isRecentDuplicate($borrowerId ? (int) $borrowerId : null, $emailNorm, (int) $data['rating'], $comment)) {
+            return response()->json([
+                'ok' => true,
+                'duplicate' => true,
+                'message' => 'Thank you — we already recorded similar feedback recently.',
+            ]);
+        }
+
         $conv = SupportConversation::query()->where('session_id', trim($data['session_id']))->first();
 
         $supportFeedback = SupportChatFeedback::create([
@@ -202,11 +219,9 @@ class PublicChatController extends Controller
 
         // Feedback Management Center: create a ticket mirror if migrated.
         if (DB::getSchemaBuilder()->hasTable('feedback_tickets')) {
-            $borrowerId = null;
-            if (! empty($data['email'])) {
-                $borrowerId = User::query()
-                    ->where('email', trim((string) $data['email']))
-                    ->value('id');
+            $fullName = isset($data['name']) ? trim((string) $data['name']) : null;
+            if ($fullName === '') {
+                $fullName = null;
             }
 
             FeedbackTicket::query()->updateOrCreate(
@@ -226,7 +241,8 @@ class PublicChatController extends Controller
                     'subject' => isset($data['subject']) ? trim((string) $data['subject']) : null,
                     'message' => $comment,
                     'rating' => (int) $data['rating'],
-                    'email' => $data['email'] ?? null,
+                    'email' => $emailNorm ?: ($data['email'] ?? null),
+                    'full_name' => $fullName,
                     'website_visible' => false,
                 ],
             );
@@ -239,24 +255,33 @@ class PublicChatController extends Controller
             $conv->save();
         }
 
-        app(NotificationCenter::class)->notifyStaff(
-            NotificationCenter::CATEGORY_FEEDBACK,
-            'visitor_feedback',
-            'Visitor feedback — '.((int) $data['rating']).'/5',
-            mb_substr($comment, 0, 500),
-            [
-                'session_id' => trim($data['session_id']),
-                'support_conversation_id' => $conv?->id,
-                'support_chat_feedback_id' => $supportFeedback->id,
-            ],
-            null,
-            [
-                'module' => NotificationCenter::MODULE_FEEDBACK,
-                'throttle_key' => 'feedback:'.trim($data['session_id']),
-                'throttle_max' => 6,
-                'throttle_decay_seconds' => 7200,
-            ],
-        );
+        $sessionIdTrim = trim($data['session_id']);
+        $supportFeedbackId = (int) $supportFeedback->id;
+        $rating = (int) $data['rating'];
+        dispatch(function () use ($sessionIdTrim, $conv, $supportFeedbackId, $rating, $comment): void {
+            try {
+                app(NotificationCenter::class)->notifyStaff(
+                    NotificationCenter::CATEGORY_FEEDBACK,
+                    'visitor_feedback',
+                    'Visitor feedback — '.$rating.'/5',
+                    mb_substr($comment, 0, 500),
+                    [
+                        'session_id' => $sessionIdTrim,
+                        'support_conversation_id' => $conv?->id,
+                        'support_chat_feedback_id' => $supportFeedbackId,
+                    ],
+                    null,
+                    [
+                        'module' => NotificationCenter::MODULE_FEEDBACK,
+                        'throttle_key' => 'feedback:'.$sessionIdTrim,
+                        'throttle_max' => 6,
+                        'throttle_decay_seconds' => 7200,
+                    ],
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        })->afterResponse();
 
         return response()->json(['ok' => true]);
     }

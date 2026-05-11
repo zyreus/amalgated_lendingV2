@@ -8,6 +8,7 @@ use App\Models\LoanApplication;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\BorrowerUploadedFilesManifest;
 use App\Support\SignedPrintUrls;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -191,27 +192,14 @@ class BorrowerController extends Controller
 
     public function show(User $borrower): JsonResponse
     {
+        $deny = $this->borrowerCrmAccessDeniedResponse($borrower);
+        if ($deny instanceof JsonResponse) {
+            return $deny;
+        }
+
         $tables = $this->verificationTables();
         $hasLivenessTable = $tables['liveness'];
         $hasFaceTable = $tables['face'];
-
-        $hasApplicantHistory = $borrower->loanApplications()->exists();
-        $hasLoanAsBorrower = $borrower->loans()->exists();
-        $hasLivenessHistory = $hasLivenessTable ? $borrower->livenessVerifications()->exists() : false;
-        $hasFaceHistory = $hasFaceTable ? $borrower->faceVerifications()->exists() : false;
-
-        $hasBorrowerRole = ($borrower->role ?? '') === 'borrower'
-            || $borrower->roles()->where('slug', 'borrower')->exists();
-
-        if (
-            ! $hasApplicantHistory
-            && ! $hasLoanAsBorrower
-            && ! $hasLivenessHistory
-            && ! $hasFaceHistory
-            && ! $hasBorrowerRole
-        ) {
-            return response()->json(['ok' => false, 'message' => 'User is not a borrower.'], 404);
-        }
 
         $relations = [
             'borrowerProfile',
@@ -264,6 +252,52 @@ class BorrowerController extends Controller
         });
 
         return response()->json(['ok' => true, 'borrower' => $borrower]);
+    }
+
+    /**
+     * Unified manifest of borrower uploads (document loans, portal ID, loan KYC, payments) for admin review.
+     */
+    public function uploadedFiles(User $borrower): JsonResponse
+    {
+        $deny = $this->borrowerCrmAccessDeniedResponse($borrower);
+        if ($deny instanceof JsonResponse) {
+            return $deny;
+        }
+
+        return response()->json([
+            'ok' => true,
+            'data' => BorrowerUploadedFilesManifest::build($borrower),
+        ]);
+    }
+
+    /**
+     * @return JsonResponse|null 404 when the user is not eligible for borrower CRM views.
+     */
+    private function borrowerCrmAccessDeniedResponse(User $borrower): ?JsonResponse
+    {
+        $tables = $this->verificationTables();
+        $hasLivenessTable = $tables['liveness'];
+        $hasFaceTable = $tables['face'];
+
+        $hasApplicantHistory = $borrower->loanApplications()->exists();
+        $hasLoanAsBorrower = $borrower->loans()->exists();
+        $hasLivenessHistory = $hasLivenessTable ? $borrower->livenessVerifications()->exists() : false;
+        $hasFaceHistory = $hasFaceTable ? $borrower->faceVerifications()->exists() : false;
+
+        $hasBorrowerRole = ($borrower->role ?? '') === 'borrower'
+            || $borrower->roles()->where('slug', 'borrower')->exists();
+
+        if (
+            ! $hasApplicantHistory
+            && ! $hasLoanAsBorrower
+            && ! $hasLivenessHistory
+            && ! $hasFaceHistory
+            && ! $hasBorrowerRole
+        ) {
+            return response()->json(['ok' => false, 'message' => 'User is not a borrower.'], 404);
+        }
+
+        return null;
     }
 
     /**

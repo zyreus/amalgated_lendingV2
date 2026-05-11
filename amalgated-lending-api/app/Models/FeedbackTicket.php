@@ -26,6 +26,7 @@ class FeedbackTicket extends Model
         'sentiment_score',
         'contact_number',
         'email',
+        'full_name',
         'location',
         'is_sensitive',
         'is_vip',

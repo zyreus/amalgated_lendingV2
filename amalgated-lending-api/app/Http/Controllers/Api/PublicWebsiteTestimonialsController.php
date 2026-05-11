@@ -95,21 +95,41 @@ class PublicWebsiteTestimonialsController extends Controller
      */
     private function buildPayload(int $limit, bool $requireFeatured): array
     {
+        $minRating = max(1, min(5, (int) config('testimonials.min_rating', 4)));
+        $requireNamedDisplay = (bool) config('testimonials.require_named_display', true);
+
         $q = FeedbackTicket::query()
+            ->select([
+                'id',
+                'borrower_id',
+                'public_author_label',
+                'loan_type',
+                'rating',
+                'message',
+                'verified_borrower',
+                'source',
+                'created_at',
+                'updated_at',
+            ])
             ->with(['borrower:id,name'])
             ->where('publication_status', 'approved')
             ->where('consent_public_display', true)
             ->whereNotNull('rating')
-            ->where('rating', '>=', 4)
+            ->where('rating', '>=', $minRating)
             ->whereNotNull('message')
             ->where('message', '!=', '');
+
+        if ($requireNamedDisplay) {
+            $q->whereNotNull('public_author_label')
+                ->whereRaw("TRIM(COALESCE(public_author_label, '')) <> ''");
+        }
 
         if ($requireFeatured) {
             $q->where('featured', true);
         }
 
         $rows = $q
-            ->orderByDesc('created_at')
+            ->orderByDesc('updated_at')
             ->orderByDesc('id')
             ->limit($limit)
             ->get();
@@ -117,6 +137,7 @@ class PublicWebsiteTestimonialsController extends Controller
         $avg = $rows->avg('rating');
         $items = $rows->map(function (FeedbackTicket $t) {
             $msg = Str::limit(trim(strip_tags((string) $t->message)), 320, '…');
+            $verified = (bool) $t->verified_borrower;
 
             return [
                 'id' => $t->id,
@@ -124,9 +145,11 @@ class PublicWebsiteTestimonialsController extends Controller
                 'loan_type' => $t->loan_type ?: 'Borrower',
                 'rating' => (int) $t->rating,
                 'message' => $msg,
-                'verified_borrower' => (bool) $t->verified_borrower,
+                'verified_borrower' => $verified,
+                'verified' => $verified,
                 'source' => $t->source ?: 'chatbot',
                 'submitted_at' => optional($t->created_at)?->toIso8601String(),
+                'updated_at' => optional($t->updated_at)?->toIso8601String(),
             ];
         })->values()->all();
 

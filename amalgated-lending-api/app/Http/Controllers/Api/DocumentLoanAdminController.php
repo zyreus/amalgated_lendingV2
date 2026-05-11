@@ -39,11 +39,12 @@ class DocumentLoanAdminController extends Controller
     public function updateUpload(Request $request, UploadedDocument $uploadedDocument): JsonResponse
     {
         $data = $request->validate([
-            'status' => 'required|string|in:pending,verified,rejected',
+            'status' => 'required|string|in:pending,verified,rejected,approved',
             'remarks' => 'nullable|string|max:2000',
         ]);
 
-        $uploadedDocument->status = $data['status'];
+        $status = $data['status'] === 'approved' ? UploadedDocument::STATUS_VERIFIED : $data['status'];
+        $uploadedDocument->status = $status;
         $uploadedDocument->remarks = $data['remarks'] ?? $uploadedDocument->remarks;
         $uploadedDocument->save();
 
