@@ -6,9 +6,11 @@
 import fs from 'fs';
 import path from 'path';
 
-export const LENDING_PHONE = '(082) 297 8099';
+/** Primary public contact (mobile) — aligned with amalgatedlending.com Contact page */
+export const LENDING_PHONE = '09190675095';
+export const LENDING_EMAIL = 'support@amalgatedlending.com';
 export const LENDING_OFFICE =
-  'Doña Carolina Bldg, J.P. Laurel Ave, Bo. Obrero, Davao City, Philippines';
+  'ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000';
 
 export const LENDING_AI_APPEND = `
 Lending assistant — this chat is from the Amalgated Lending website (Amalgated Lending Inc. / ALI).
@@ -120,7 +122,7 @@ export function getLendingFallbackReply(userMessage, lang) {
       return `Depende ang rates at terms sa loan product, halaga, at profile mo. Para sa tumpak na quote, mag-apply online o tumawag sa ${LENDING_PHONE}.`;
     }
     if (/branch|opisina|saan|location|davao|address|bisita/i.test(m)) {
-      return `Opisina: ${LENDING_OFFICE}. Telepono: ${LENDING_PHONE}.`;
+      return `Opisina: ${LENDING_OFFICE}. Mobile: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}.`;
     }
     if (/hello|hi |^hi$|kumusta|tulong|help|magandang/i.test(m)) {
       return `Kumusta! Tutulungan ka namin sa Amalgated Lending — personal, salary, business loans, at iba pa. Ano ang gusto mong malaman? Puwede mo ring gamitin ang mga quick option sa chat.`;
@@ -142,7 +144,7 @@ export function getLendingFallbackReply(userMessage, lang) {
       return `Las tasas y plazos dependen del producto, monto y perfil. Para una cotización exacta, aplique en línea o llame al ${LENDING_PHONE}.`;
     }
     if (/sucursal|oficina|dirección|ubicación|dónde|davao/i.test(m)) {
-      return `Oficina principal: ${LENDING_OFFICE}. Teléfono: ${LENDING_PHONE}.`;
+      return `Oficina principal: ${LENDING_OFFICE}. Móvil: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}.`;
     }
     if (/hola|buenos|ayuda|gracias por contactar/i.test(m)) {
       return `Hola, le ayudamos con préstamos Amalgated Lending (personal, salarial, empresarial y más). ¿Qué necesita saber? También puede usar las opciones rápidas del chat.`;
@@ -187,7 +189,7 @@ export function getLendingFallbackReply(userMessage, lang) {
     return `Interest rates and terms depend on the loan product, amount, term, and your profile. For accurate figures, apply online or call ${LENDING_PHONE} — our staff can provide a personalized quote.`;
   }
   if (/branch|office|location|davao|where|address|visit|open/i.test(m)) {
-    return `Main office: ${LENDING_OFFICE}. Phone: ${LENDING_PHONE}. You can also explore Loan Products and Apply on our site.`;
+    return `Main office: ${LENDING_OFFICE}. Mobile: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}. You can also explore Loan Products and Apply on our site.`;
   }
   if (/hours|when are you|schedule/i.test(m)) {
     return `For branch hours and appointments, please call ${LENDING_PHONE}.`;

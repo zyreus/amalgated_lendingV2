@@ -903,14 +903,16 @@ Use only provided website/company details for contacts, addresses, and company f
 If information is not available, say so briefly and suggest contacting the team.
 When a "Lending assistant" section is included, follow it strictly and never invent rates, approvals, legal claims, or guarantees.`;
 
-// Static company/office info (aligned with the website Contact page) for AI context
+// Static company/office info (aligned with amalgatedlending.com Contact page) for AI context
 const WEBSITE_KNOWLEDGE = `
-- Company: Amalgated Holdings – a diversified group of companies.
-- Main office: Amalgated Capital, Inc. (Dona Carolina Bldg, J.P. Laurel Ave, Bo. Obrero, Davao City, 8000 Davao del Sur). Located behind Eastwest Bajada, Davao City.
-- Office phone: (082) 297 8099.
-- Website: https://amalgatedholdings.com.
-- Office hours: Open, closes 6 PM.
-- Visitors can send an inquiry via the contact form on the website or use the chat to leave their details for the team to follow up.
+- Amalgated Lending (Amalgated Lending Inc.) — personal and business loans in Davao & Mindanao.
+- Address: ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000.
+- Mobile: 09190675095.
+- Email: support@amalgatedlending.com.
+- Website: https://amalgatedlending.com.
+- Operating hours (typical): Monday–Saturday, 8:30 AM–5:30 PM (confirm by phone if unsure).
+- Parent group: Amalgated Holdings — https://amalgatedholdings.com.
+- Visitors can use the contact form on the website or this chat; staff may follow up by phone or email.
 `;
 
 let websiteContextCache = null;
@@ -1182,14 +1184,17 @@ function resolveLocationFromIp(visitId, ip, cb) {
 function getHoldingsFallbackReply(userMessage, lang) {
   const m = String(userMessage || '').toLowerCase();
   const l = normalizeLang(lang);
-  const phone = '(082) 297 8099';
+  const phone = '09190675095';
+  const email = 'support@amalgatedlending.com';
+  const addr =
+    'ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000';
   if (l === 'fil') {
-    return `Salamat sa mensahe mo. Para sa Amalgated Holdings, tumawag sa ${phone} o bisitahin ang amalgatedholdings.com.`
+    return `Salamat sa mensahe mo. Para sa Amalgated Holdings / Amalgated Lending, mobile ${phone}, email ${email}, o bisitahin ang amalgatedlending.com o amalgatedholdings.com.`
   }
   if (/contact|phone|email|address|office|where|location/i.test(m)) {
-    return `Amalgated Holdings — main office: Doña Carolina Bldg, J.P. Laurel Ave, Bo. Obrero, Davao City. Phone: ${phone}. Website: https://amalgatedholdings.com`
+    return `Amalgated Lending — ${addr}. Mobile: ${phone}. Email: ${email}. Website: https://amalgatedlending.com (Holdings group: https://amalgatedholdings.com).`
   }
-  return `Thanks for reaching out to Amalgated Holdings, a diversified group of companies. For general enquiries, call ${phone} or use the contact form on amalgatedholdings.com. How can I help you today?`
+  return `Thanks for reaching out. Amalgated Lending: mobile ${phone}, ${email}, https://amalgatedlending.com. Amalgated Holdings group: https://amalgatedholdings.com. How can I help you today?`
 }
 
 function optimizeReplyForProfile(reply, contentProfile) {
