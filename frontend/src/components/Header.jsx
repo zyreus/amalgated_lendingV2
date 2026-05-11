@@ -44,7 +44,15 @@ export default function Header() {
           onClick={goHome}
           className="flex shrink-0 items-center gap-3 transition hover:opacity-90 text-left"
         >
-          <img src="/amalgated-lending-logo.png" alt="Amalgated Lending" className="h-11 w-11 object-contain sm:h-12 sm:w-12" />
+          <img
+            src="/amalgated-lending-logo.png"
+            alt="Amalgated Lending"
+            width={48}
+            height={48}
+            decoding="async"
+            fetchpriority="high"
+            className="h-11 w-11 object-contain sm:h-12 sm:w-12"
+          />
           <span className="hidden flex-col leading-tight sm:flex sm:flex-col">
             <span className="text-sm font-semibold tracking-wide text-brand-text">Amalgated Lending</span>
             <span className="text-xs text-brand-text/70">Trusted Lending Solutions</span>

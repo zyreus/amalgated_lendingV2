@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { getLoanProducts } from '../../utils/loanProductsPublicApi.js'
 import { laravelRequest } from '../../utils/lendingLaravelApi.js'
+import { loanCalculatorAmountInputClass, loanCalculatorSelectClass } from '../loan/loanCalculatorTermInputClass.js'
 
 function peso(v) {
   return Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -52,6 +53,11 @@ export default function HomeLoanCalculator() {
   const pensionMode = isPensionProduct(selected)
   const maxTerm = selected?.max_term || 360
   const effectiveTerm = travelMode ? 1 : Number(termMonths || 0)
+
+  const termMonthOptions = useMemo(() => {
+    const max = Math.max(1, Math.floor(Number(maxTerm) || 1))
+    return Array.from({ length: max }, (_, i) => i + 1)
+  }, [maxTerm])
 
   const compute = async () => {
     if (!productId) return
@@ -113,39 +119,63 @@ export default function HomeLoanCalculator() {
       </p>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <select className="rounded-xl border border-black/15 px-4 py-3 text-sm" value={productId} onChange={(e) => setProductId(e.target.value)}>
+        <select
+          className={loanCalculatorSelectClass}
+          value={productId}
+          onChange={(e) => setProductId(e.target.value)}
+          aria-label="Loan type"
+        >
           <option value="">Select loan product</option>
           {products.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
         <input
-          className="rounded-xl border border-black/15 px-4 py-3 text-sm"
+          className={loanCalculatorAmountInputClass}
           type="number"
           min="1000"
           max={travelMode ? 2000000 : undefined}
           value={loanAmount}
           onChange={(e) => setLoanAmount(e.target.value)}
           placeholder={travelMode ? 'Loan amount (max 2,000,000)' : 'Loan amount'}
+          aria-label="Loan amount"
         />
-        <input
-          className="rounded-xl border border-black/15 px-4 py-3 text-sm"
-          type="number"
-          min="1"
-          max={maxTerm}
-          value={termMonths}
-          onChange={(e) => setTermMonths(e.target.value)}
-          placeholder="Term in months"
-          disabled={travelMode}
-        />
-        <select className="rounded-xl border border-black/15 px-4 py-3 text-sm" value={nature} onChange={(e) => setNature(e.target.value)}>
+        {travelMode ? (
+          <select
+            className={`${loanCalculatorSelectClass} cursor-not-allowed opacity-80`}
+            disabled
+            value="1"
+            aria-label="Loan term in months"
+          >
+            <option value="1">1</option>
+          </select>
+        ) : (
+          <select
+            className={loanCalculatorSelectClass}
+            value={termMonths}
+            onChange={(e) => setTermMonths(e.target.value)}
+            aria-label="Loan term in months"
+          >
+            {termMonthOptions.map((m) => (
+              <option key={m} value={String(m)}>
+                {m}
+              </option>
+            ))}
+          </select>
+        )}
+        <select
+          className={loanCalculatorSelectClass}
+          value={nature}
+          onChange={(e) => setNature(e.target.value)}
+          aria-label="New loan or re-loan"
+        >
           <option value="new">New loan</option>
           <option value="reloan">Re-loan</option>
         </select>
         {pensionMode ? (
           <>
             <input
-              className="rounded-xl border border-black/15 px-4 py-3 text-sm"
+              className={loanCalculatorAmountInputClass}
               type="number"
               min="0"
               value={monthlyPension}
@@ -153,15 +183,16 @@ export default function HomeLoanCalculator() {
               placeholder="Monthly pension"
             />
             <select
-              className="rounded-xl border border-black/15 px-4 py-3 text-sm"
+              className={loanCalculatorSelectClass}
               value={pensionType}
               onChange={(e) => setPensionType(e.target.value)}
+              aria-label="Pension type"
             >
               <option value="SSS">SSS</option>
               <option value="GSIS">GSIS</option>
             </select>
             <input
-              className="rounded-xl border border-black/15 px-4 py-3 text-sm"
+              className={loanCalculatorAmountInputClass}
               type="number"
               min="18"
               max="100"

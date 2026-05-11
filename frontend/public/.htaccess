@@ -15,6 +15,13 @@
     Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
 
+  # Root-level brand assets (logo / favicon) — non-hashed but stable for the
+  # life of a deploy. 30-day cache + must-revalidate keeps logo updates safe
+  # while removing the per-page round trip on the 180 KB PNG header logo.
+  <FilesMatch "^(amalgated-lending-logo|favicon)\.(png|svg|ico)$">
+    Header set Cache-Control "public, max-age=2592000, must-revalidate"
+  </FilesMatch>
+
   # Always fetch latest application shell and service worker.
   <FilesMatch "^(index\.html|service-worker\.js)$">
     Header set Cache-Control "no-cache, no-store, must-revalidate"
@@ -38,7 +45,14 @@
 </IfModule>
 
 <IfModule mod_deflate.c>
-  AddOutputFilterByType DEFLATE text/plain text/html text/css text/javascript application/javascript application/json application/xml image/svg+xml
+  AddOutputFilterByType DEFLATE text/plain text/html text/css text/javascript application/javascript application/json application/xml application/manifest+json image/svg+xml font/woff2 application/font-woff2
+  # Don't waste CPU recompressing already-compressed assets.
+  SetEnvIfNoCase Request_URI \.(?:gif|jpe?g|png|webp|avif|woff2)$ no-gzip dont-vary
+</IfModule>
+
+# Brotli (~20% smaller than gzip) when the module is available — Apache picks the best encoding via Accept-Encoding.
+<IfModule mod_brotli.c>
+  AddOutputFilterByType BROTLI_COMPRESS text/plain text/html text/css text/javascript application/javascript application/json application/xml application/manifest+json image/svg+xml font/woff2 application/font-woff2
 </IfModule>
 
 <IfModule mod_rewrite.c>

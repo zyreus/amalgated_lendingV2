@@ -6,6 +6,11 @@ import {
   straightLineMonthlyTotal,
   travelRenewalMonthlyInterest,
 } from '../../utils/sssLoanCalculator.js'
+import { loanCalculatorTermMonthsInputClass } from './loanCalculatorTermInputClass.js'
+
+/** Emerald-bordered select — matches Loan type / other fields in this card */
+const loanProductsCalcSelectClass =
+  'mt-1 w-full rounded-xl border border-emerald-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/30 dark:border-emerald-800 dark:bg-slate-900 dark:text-white'
 
 function isPensionProduct(product) {
   const c = product?.calculator_config
@@ -66,6 +71,21 @@ export default function LoanProductsCalculator({ products = [] }) {
     setServer(null)
     setErr('')
   }, [product?.slug, pensionMode, travelMode, termMax])
+
+  useEffect(() => {
+    if (travelMode) return
+    setTerm((prev) => {
+      const n = parseInt(prev, 10)
+      const clamped = Math.min(termMax, Math.max(1, Number.isFinite(n) ? n : 1))
+      const next = String(clamped)
+      return next === prev ? prev : next
+    })
+  }, [termMax, travelMode])
+
+  const termMonthOptions = useMemo(() => {
+    const max = Math.max(1, Math.floor(Number(termMax) || 1))
+    return Array.from({ length: max }, (_, i) => i + 1)
+  }, [termMax])
 
   const cfg = product?.calculator_config || {}
 
@@ -235,18 +255,21 @@ export default function LoanProductsCalculator({ products = [] }) {
               type="text"
               readOnly
               value="1 (monthly renewal)"
-              className="mt-1 w-full cursor-not-allowed rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-slate-700 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-100"
+              className={`mt-1 cursor-not-allowed opacity-80 ${loanCalculatorTermMonthsInputClass}`}
             />
           ) : (
-            <input
+            <select
               id="term-input"
-              type="number"
-              min={1}
-              max={termMax}
               value={term}
               onChange={(e) => setTerm(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/30 dark:border-emerald-800 dark:bg-slate-900 dark:text-white"
-            />
+              className={loanProductsCalcSelectClass}
+            >
+              {termMonthOptions.map((m) => (
+                <option key={m} value={String(m)}>
+                  {m}
+                </option>
+              ))}
+            </select>
           )}
         </div>
       </div>

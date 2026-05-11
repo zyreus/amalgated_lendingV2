@@ -1,9 +1,10 @@
-const SW_VERSION = 'amalgated-sw-v1'
+/** Bumped to v2 — invalidates the previous SW cache that pinned the placeholder SVG logo. */
+const SW_VERSION = 'amalgated-sw-v2'
 const STATIC_CACHE = `${SW_VERSION}-static`
 const API_CACHE = `${SW_VERSION}-api`
 const OFFLINE_URL = '/offline.html'
 
-const STATIC_ASSETS = ['/', '/index.html', '/favicon.svg', '/amalgated-lending-logo.svg', OFFLINE_URL]
+const STATIC_ASSETS = ['/', '/index.html', '/favicon.svg', '/amalgated-lending-logo.png', OFFLINE_URL]
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

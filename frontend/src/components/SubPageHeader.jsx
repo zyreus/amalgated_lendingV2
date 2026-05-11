@@ -32,7 +32,15 @@ export default function SubPageHeader() {
     <header className="sticky top-0 z-40 w-full border-b border-brand-secondary/60 bg-brand-background-alt/95 backdrop-blur-md">
       <div className="app-container flex items-center justify-between gap-2 py-3 sm:py-4">
         <Link to="/" className="flex shrink-0 items-center gap-3 transition hover:opacity-90">
-          <img src="/amalgated-lending-logo.png" alt="Amalgated Lending" className="h-11 w-11 object-contain sm:h-12 sm:w-12" />
+          <img
+            src="/amalgated-lending-logo.png"
+            alt="Amalgated Lending"
+            width={48}
+            height={48}
+            decoding="async"
+            fetchpriority="high"
+            className="h-11 w-11 object-contain sm:h-12 sm:w-12"
+          />
           <span className="hidden flex-col leading-tight sm:flex sm:flex-col">
             <span className="text-sm font-semibold tracking-wide text-brand-text">Amalgated Lending</span>
             <span className="text-xs text-brand-text/70">Trusted Lending Solutions</span>

@@ -35,6 +35,20 @@ class LoanController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        /**
+         * `application_payload` is a JSON column that stores the full borrower wizard
+         * snapshot (signatures, schedule snapshot, calculator output…). Loading it for
+         * every row in the admin loan table is wasteful — the list view only needs the
+         * three product-quote keys that {@see LoanListResource::quotedPayloadSnippet()}
+         * extracts. We synthesize those keys with `JSON_EXTRACT` so the heavy column
+         * never leaves MySQL.
+         */
+        $payloadExtract = "JSON_OBJECT("
+            ."'loan_product_slug', JSON_UNQUOTE(JSON_EXTRACT(application_payload, '$.loan_product_slug')), "
+            ."'selected_rate_type', JSON_UNQUOTE(JSON_EXTRACT(application_payload, '$.selected_rate_type')), "
+            ."'selected_interest_rate', JSON_EXTRACT(application_payload, '$.selected_interest_rate')"
+            .") as application_payload";
+
         $q = Loan::query()
             ->select([
                 'id',
@@ -55,7 +69,6 @@ class LoanController extends Controller
                 'total_deductions',
                 'net_proceeds',
                 'total_payment',
-                'application_payload',
                 'monthly_payment',
                 'total_interest',
                 'outstanding_balance',
@@ -68,6 +81,7 @@ class LoanController extends Controller
                 'created_at',
                 'updated_at',
             ])
+            ->selectRaw($payloadExtract)
             ->with([
                 'borrower:id,name,email,phone',
                 'approver:id,name,email',

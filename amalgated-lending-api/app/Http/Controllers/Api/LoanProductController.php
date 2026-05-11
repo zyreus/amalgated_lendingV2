@@ -27,7 +27,15 @@ class LoanProductController extends Controller
                 ->get();
         });
 
-        return response()->json(['ok' => true, 'data' => $rows]);
+        return response()
+            ->json(['ok' => true, 'data' => $rows])
+            /**
+             * Catalog is mostly-static — 5-minute browser/CDN cache cuts repeated hits from
+             * landing-page calculator + every product page. `Cache::forget()` calls in
+             * `store/update/destroy` invalidate the server-side cache; the browser cache
+             * is short enough that admins see the change after one refresh window.
+             */
+            ->header('Cache-Control', 'public, max-age=300, must-revalidate');
     }
 
     /** Admin: all products */

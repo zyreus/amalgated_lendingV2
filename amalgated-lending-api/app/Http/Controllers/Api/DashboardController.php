@@ -56,10 +56,14 @@ class DashboardController extends Controller
             ];
         });
 
-        return response()->json([
-            'ok' => true,
-            'summary' => $payload,
-        ]);
+        return response()
+            ->json(['ok' => true, 'summary' => $payload])
+            /**
+             * 15 s aligns with the server-side `Cache::remember` TTL above, so the SPA can
+             * reuse this response from the disk cache without a network call. `must-revalidate`
+             * forces a refresh once the TTL expires (no stale data).
+             */
+            ->header('Cache-Control', 'private, max-age=15, must-revalidate');
     }
 
     public function charts(): JsonResponse
@@ -107,11 +111,14 @@ class DashboardController extends Controller
             ];
         });
 
-        return response()->json([
-            'ok' => true,
-            'loan_growth' => $body['loan_growth'],
-            'repayments' => $body['repayments'],
-            'revenue_trend' => $body['revenue_trend'],
-        ]);
+        return response()
+            ->json([
+                'ok' => true,
+                'loan_growth' => $body['loan_growth'],
+                'repayments' => $body['repayments'],
+                'revenue_trend' => $body['revenue_trend'],
+            ])
+            /** 120 s aligns with the server-side `Cache::remember` TTL — chart data shifts slowly. */
+            ->header('Cache-Control', 'private, max-age=60, must-revalidate');
     }
 }

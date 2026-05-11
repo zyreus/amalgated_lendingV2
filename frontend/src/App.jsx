@@ -1,23 +1,31 @@
-import { useEffect, useMemo } from 'react'
+import { lazy, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import './App.css'
 import Header from './components/Header.jsx'
 import Footer from './components/Footer.jsx'
-import CustomerFeedbackSection from './components/CustomerFeedbackSection.jsx'
 import SeoMeta from './components/SeoMeta.jsx'
 import HomeLoanCalculator from './components/home/HomeLoanCalculator.jsx'
 import AboutUsSection from './components/home/AboutUsSection.jsx'
 import AdvantagesSection from './components/home/AdvantagesSection.jsx'
-import LoanRequirementsSection from './components/home/LoanRequirementsSection.jsx'
-import LoanProcessSection from './components/home/LoanProcessSection.jsx'
-import FaqSection from './components/home/FaqSection.jsx'
-import SecurityPrivacySection from './components/home/SecurityPrivacySection.jsx'
-import ContactSupportSection from './components/home/ContactSupportSection.jsx'
-import NewsletterSection from './components/NewsletterSection.jsx'
 import { FadeInView } from './components/animations/MotionPrimitives.jsx'
 import ScrollProgressBar from './components/ScrollProgressBar.jsx'
 import BackToTopButton from './components/BackToTopButton.jsx'
+import LazySection from './components/LazySection.jsx'
+
+/**
+ * Below-the-fold sections are lazy-loaded with `React.lazy` + IntersectionObserver
+ * (`LazySection`). This keeps them out of the homepage's initial JS chunk and only
+ * downloads / mounts them when the visitor scrolls near them — a major LCP / TBT
+ * win on the public landing page (the largest entry point for the SPA).
+ */
+const LoanRequirementsSection = lazy(() => import('./components/home/LoanRequirementsSection.jsx'))
+const LoanProcessSection = lazy(() => import('./components/home/LoanProcessSection.jsx'))
+const FaqSection = lazy(() => import('./components/home/FaqSection.jsx'))
+const SecurityPrivacySection = lazy(() => import('./components/home/SecurityPrivacySection.jsx'))
+const ContactSupportSection = lazy(() => import('./components/home/ContactSupportSection.jsx'))
+const NewsletterSection = lazy(() => import('./components/NewsletterSection.jsx'))
+const CustomerFeedbackSection = lazy(() => import('./components/CustomerFeedbackSection.jsx'))
 
 const AMALGATED_HOLDINGS_URL = import.meta.env.VITE_AMALGATED_HOLDINGS_URL || 'https://amalgatedholdings.com'
 
@@ -278,8 +286,12 @@ function App() {
             </div>
           </section>
 
-          <LoanRequirementsSection />
-          <LoanProcessSection />
+          <LazySection minHeight={420}>
+            <LoanRequirementsSection />
+          </LazySection>
+          <LazySection minHeight={420}>
+            <LoanProcessSection />
+          </LazySection>
 
           <section id="stats" className="app-container py-8 sm:py-12">
             <FadeInView className="surface-card-light p-6">
@@ -292,15 +304,25 @@ function App() {
             </FadeInView>
           </section>
 
-          <section id="testimonials" className="app-container py-6 sm:py-10">
-            <CustomerFeedbackSection />
-          </section>
+          <LazySection minHeight={360} className="app-container py-6 sm:py-10">
+            <section id="testimonials">
+              <CustomerFeedbackSection />
+            </section>
+          </LazySection>
 
-          <NewsletterSection />
+          <LazySection minHeight={420}>
+            <NewsletterSection />
+          </LazySection>
 
-          <FaqSection />
-          <SecurityPrivacySection />
-          <ContactSupportSection />
+          <LazySection minHeight={360}>
+            <FaqSection />
+          </LazySection>
+          <LazySection minHeight={280}>
+            <SecurityPrivacySection />
+          </LazySection>
+          <LazySection minHeight={300}>
+            <ContactSupportSection />
+          </LazySection>
 
           <section className="app-container pb-14">
             <div className="surface-card-light p-6 text-center">

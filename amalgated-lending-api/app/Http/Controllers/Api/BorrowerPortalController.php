@@ -504,17 +504,39 @@ class BorrowerPortalController extends Controller
     {
         $user = $request->user();
         $lead = $this->resolveBorrowerLead($user);
-        $messages = $lead->messages()->with('adminUser')->get()->map(function (LeadMessage $m) {
-            return [
-                'id' => $m->id,
-                'sender_type' => $m->sender_type,
-                'message' => $m->message,
-                'attachment_name' => $m->attachment_name,
-                'attachment_url' => $m->attachment_path ? PublicStorageUrl::apiUrl($m->attachment_path) : null,
-                'admin_name' => $m->adminUser?->name,
-                'created_at' => optional($m->created_at)?->toIso8601String(),
-            ];
-        });
+
+        /**
+         * Long-running borrower chats can accumulate hundreds of rows. The previous
+         * `->get()` returned the entire history every poll, which both slowed the
+         * Laravel response and bloated the React payload. Returning the most recent
+         * 200 messages keeps the chat snappy; older history is paged via `before_id`.
+         */
+        $limit = max(20, min(200, (int) $request->query('limit', 100)));
+        $beforeId = $request->query('before_id');
+
+        $query = $lead->messages()
+            ->with(['adminUser:id,name'])
+            ->orderByDesc('id')
+            ->limit($limit);
+
+        if (is_numeric($beforeId)) {
+            $query->where('id', '<', (int) $beforeId);
+        }
+
+        $messages = $query->get()
+            ->reverse()
+            ->values()
+            ->map(function (LeadMessage $m) {
+                return [
+                    'id' => $m->id,
+                    'sender_type' => $m->sender_type,
+                    'message' => $m->message,
+                    'attachment_name' => $m->attachment_name,
+                    'attachment_url' => $m->attachment_path ? PublicStorageUrl::apiUrl($m->attachment_path) : null,
+                    'admin_name' => $m->adminUser?->name,
+                    'created_at' => optional($m->created_at)?->toIso8601String(),
+                ];
+            });
 
         return response()->json([
             'ok' => true,

@@ -4,7 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#dc2626" />
+    <!--
+      Real Amalgated Lending logo (180 KB PNG). Preloaded at high priority so the
+      sticky header / splash screen LCP element is decoded the moment the HTML lands,
+      and warmed in the HTTP cache for every subsequent page that reuses it.
+    -->
     <link rel="icon" type="image/png" href="/amalgated-lending-logo.png" />
+    <link rel="apple-touch-icon" href="/amalgated-lending-logo.png" />
+    <link rel="preload" as="image" href="/amalgated-lending-logo.png" type="image/png" fetchpriority="high" />
 
     <!--
       Speed up the very first paint:

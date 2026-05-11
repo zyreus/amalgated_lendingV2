@@ -13,7 +13,16 @@ export default function Footer() {
       <div className="app-container py-10 sm:py-12">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
-            <img src="/amalgated-lending-logo.png" alt="" className="h-10 w-10 object-contain" aria-hidden loading="lazy" decoding="async" />
+            <img
+              src="/amalgated-lending-logo.png"
+              alt=""
+              width={40}
+              height={40}
+              className="h-10 w-10 object-contain"
+              aria-hidden
+              loading="lazy"
+              decoding="async"
+            />
             <div className="space-y-0.5">
               <p className="text-sm font-semibold leading-none tracking-wide text-white">Amalgated Lending</p>
               <p className="text-sm text-white/70">Trusted Lending Solutions in Davao & Mindanao.</p>

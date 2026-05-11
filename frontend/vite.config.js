@@ -223,6 +223,16 @@ export default defineConfig(({ mode }) => {
       target: 'es2020',
       sourcemap: false,
       reportCompressedSize: false,
+      /** Inline anything ≤ 4 KB as base64 to skip the request round-trip. */
+      assetsInlineLimit: 4096,
+      /** Per-route CSS is split into its own file alongside its JS chunk (default true, pinned). */
+      cssCodeSplit: true,
+      /**
+       * `modulePreload.polyfill` ships ~1 KB of polyfill so older Safari/iOS browsers still
+       * preload route chunks. Keeping it on (default) avoids a slow first-route navigation
+       * for a small minority of users.
+       */
+      modulePreload: { polyfill: true },
       rollupOptions: {
         output: {
           manualChunks(id) {
@@ -327,6 +337,8 @@ export default defineConfig(({ mode }) => {
     esbuild: {
       drop: mode === 'production' ? ['console', 'debugger'] : [],
       legalComments: 'none',
+      /** Strip pure annotations from React.memo / forwardRef so Rollup can tree-shake unused wrappers. */
+      pure: mode === 'production' ? ['console.log', 'console.info', 'console.debug'] : [],
     },
   }
 })

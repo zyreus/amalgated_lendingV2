@@ -11,9 +11,17 @@ use App\Services\NotificationCenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 class BorrowerNotificationController extends Controller
 {
+    /**
+     * How often the per-borrower reminder sync may run. Polling endpoints typically fire every
+     * 30–60 s — running this expensive job every poll thrashes the DB. The dashboard request
+     * always passes a primary loan so it bypasses the cooldown.
+     */
+    private const REMINDER_SYNC_TTL_SECONDS = 90;
+
     /**
      * Sync payment-related reminders from current loan state (idempotent; preserves read_at).
      *
@@ -23,6 +31,20 @@ class BorrowerNotificationController extends Controller
      */
     public static function syncPaymentRemindersForUser(User $user, ?Loan $primaryLoan = null): void
     {
+        /**
+         * Cooldown short-circuit: a borrower polling the bell-icon ~every minute would otherwise
+         * re-run the entire payment reconcile + delete query each tick. We still always run when the
+         * dashboard explicitly passed a hot Loan model (real user-facing change) — only the cheap
+         * polling endpoints honor the cache.
+         */
+        if ($primaryLoan === null) {
+            $key = 'borrower_reminder_sync:'.$user->id;
+            if (Cache::get($key)) {
+                return;
+            }
+            Cache::put($key, 1, self::REMINDER_SYNC_TTL_SECONDS);
+        }
+
         $loan = $primaryLoan;
 
         if ($loan === null) {
