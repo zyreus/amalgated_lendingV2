@@ -70,6 +70,19 @@ function mergeApiNav(rows, can) {
   if (can('cms.manage') && !filtered.some((x) => x.path === '/admin/newsletter')) {
     filtered.push(normalizeNavItem({ path: '/admin/newsletter', label: 'News & announcements', icon_key: 'bell', match_end: false }, filtered.length))
   }
+  /** Careers routes are not always present in `admin_navigation_items` yet — merge requires API rows to match config paths. */
+  if (can('careers.view')) {
+    const careerNav = [
+      { path: '/admin/careers', label: 'Careers', icon_key: 'careers', match_end: true },
+      { path: '/admin/careers/jobs', label: 'Job posts', icon_key: 'careers', match_end: false },
+      { path: '/admin/careers/applications', label: 'Applicants', icon_key: 'careers', match_end: false },
+    ]
+    careerNav.forEach((c) => {
+      if (!filtered.some((x) => x.path === c.path)) {
+        filtered.push(normalizeNavItem(c, filtered.length))
+      }
+    })
+  }
 
   const pathToItem = new Map(filtered.map((x) => [x.path, x]))
   const used = new Set()
