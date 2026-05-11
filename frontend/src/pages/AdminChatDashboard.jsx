@@ -271,6 +271,9 @@ export default function AdminChatDashboard({
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [analyticsError, setAnalyticsError] = useState(null)
   const [warehouseAnalytics, setWarehouseAnalytics] = useState(null)
+  const [knowledgeStats, setKnowledgeStats] = useState(null)
+  const [knowledgeSyncLoading, setKnowledgeSyncLoading] = useState(false)
+  const [knowledgeSyncMessage, setKnowledgeSyncMessage] = useState(null)
   const [tickets, setTickets] = useState([])
   const [ticketReadFilter, setTicketReadFilter] = useState('all')
   const [ticketStatusFilter, setTicketStatusFilter] = useState('all')
@@ -459,6 +462,16 @@ export default function AdminChatDashboard({
   }, [leadsFilter, leadsSearch])
 
   /* analyticsError / setAnalyticsError: declared once with other useState hooks above (do not redeclare here). */
+  const fetchKnowledgeStats = useCallback(async () => {
+    try {
+      const d = await adminApi('/admin/chat/knowledge')
+      if (d?.ok) setKnowledgeStats(d)
+      else setKnowledgeStats(null)
+    } catch {
+      setKnowledgeStats(null)
+    }
+  }, [])
+
   const fetchAnalytics = useCallback(async () => {
     setAnalyticsLoading(true)
     setAnalyticsError(null)
@@ -488,6 +501,11 @@ export default function AdminChatDashboard({
     }
     setAnalyticsLoading(false)
   }, [])
+
+  useEffect(() => {
+    if (view !== 'analytics') return
+    fetchKnowledgeStats()
+  }, [view, fetchKnowledgeStats])
 
   const fetchTickets = useCallback(async () => {
     try {
@@ -2913,6 +2931,57 @@ export default function AdminChatDashboard({
                   </div>
                 </div>
               )}
+              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/90 p-4 text-slate-800">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-emerald-950">AI chat · website knowledge (RAG)</p>
+                  <button
+                    type="button"
+                    disabled={knowledgeSyncLoading}
+                    onClick={async () => {
+                      setKnowledgeSyncLoading(true)
+                      setKnowledgeSyncMessage(null)
+                      try {
+                        const r = await adminApi('/admin/chat/knowledge/sync', {
+                          method: 'POST',
+                          body: JSON.stringify({ embeddings: true }),
+                        })
+                        setKnowledgeSyncMessage(
+                          r?.stats
+                            ? `Synced: ${r.stats.documents_upserted} docs updated, ${r.stats.chunks_written} chunks, ${r.stats.embeddings_set ?? 0} embeddings.`
+                            : 'Sync completed.',
+                        )
+                        await fetchKnowledgeStats()
+                      } catch (e) {
+                        setKnowledgeSyncMessage(e?.message || 'Sync failed')
+                      } finally {
+                        setKnowledgeSyncLoading(false)
+                      }
+                    }}
+                    className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+                  >
+                    {knowledgeSyncLoading ? 'Syncing…' : 'Re-sync from CMS & loan products'}
+                  </button>
+                </div>
+                {knowledgeStats ? (
+                  <p className="mt-2 text-xs text-slate-600">
+                    Documents {knowledgeStats.documents ?? '–'} · Chunks {knowledgeStats.chunks ?? '–'} · With embeddings{' '}
+                    {knowledgeStats.chunks_with_embeddings ?? '–'}
+                    {knowledgeStats.last_sync_at ? ` · Last sync ${knowledgeStats.last_sync_at}` : ''}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-500">Loading knowledge stats…</p>
+                )}
+                {knowledgeSyncMessage ? (
+                  <p className="mt-2 text-xs text-emerald-900" role="status">
+                    {knowledgeSyncMessage}
+                  </p>
+                ) : null}
+                <p className="mt-2 text-[11px] leading-snug text-slate-500">
+                  Runs daily at ~02:15 (server). Set OPENAI_API_KEY for semantic embeddings; otherwise retrieval uses MySQL full-text and keywords. Chat-server uses{' '}
+                  <code className="rounded bg-white/70 px-1">LARAVEL_CHAT_SYNC_URL</code> +{' '}
+                  <code className="rounded bg-white/70 px-1">LARAVEL_CHAT_SYNC_SECRET</code>.
+                </p>
+              </div>
               <p className="text-right text-xs text-gray-500">
                 From database · updates every 15s and when visitors join or message
               </p>

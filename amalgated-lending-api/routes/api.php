@@ -21,7 +21,9 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DocumentLoanAdminController;
 use App\Http\Controllers\Api\DocumentLoanApplicationController;
 use App\Http\Controllers\Api\FaceRecognitionController;
+use App\Http\Controllers\Api\AdminChatKnowledgeController;
 use App\Http\Controllers\Api\HealthCheckController;
+use App\Http\Controllers\Api\InternalChatRagController;
 use App\Http\Controllers\Api\LivenessController;
 use App\Http\Controllers\Api\LoanApplicationController;
 use App\Http\Controllers\Api\LoanComputationController;
@@ -123,6 +125,8 @@ Route::prefix('v1')->group(function () {
     Route::post('/internal/support/sync/message', [SupportChatSyncController::class, 'syncMessage'])
         ->middleware(['support.sync', 'throttle:600,1']);
     Route::post('/internal/support/sync/feedback', [SupportChatSyncController::class, 'syncFeedback'])
+        ->middleware(['support.sync', 'throttle:120,1']);
+    Route::post('/internal/chat/rag/context', [InternalChatRagController::class, 'context'])
         ->middleware(['support.sync', 'throttle:120,1']);
 
     Route::middleware(['auth:api', 'active'])->group(function () {
@@ -313,6 +317,8 @@ Route::prefix('v1')->group(function () {
         Route::patch('/chat/conversations/{sessionId}/warehouse-status', [AdminChatController::class, 'patchStatus']);
         Route::post('/chat/conversations/{sessionId}/warehouse-assign', [AdminChatController::class, 'assignConversation']);
         Route::delete('/chat/conversations/{sessionId}/warehouse', [AdminChatController::class, 'destroyConversation']);
+        Route::get('/chat/knowledge', [AdminChatKnowledgeController::class, 'stats']);
+        Route::post('/chat/knowledge/sync', [AdminChatKnowledgeController::class, 'sync']);
         Route::get('/loan-products', [LoanProductController::class, 'adminIndex']);
         Route::post('/loan-products', [LoanProductController::class, 'store']);
         Route::put('/loan-products/{loanProduct}', [LoanProductController::class, 'update']);

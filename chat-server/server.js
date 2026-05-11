@@ -916,6 +916,60 @@ const WEBSITE_KNOWLEDGE = `
 let websiteContextCache = null;
 let websiteContextCachedAt = 0;
 const WEBSITE_CONTEXT_CACHE_MS = Math.max(30_000, Number(process.env.WEBSITE_CONTEXT_CACHE_MS || 180_000) || 180_000);
+
+/** Build URL for Laravel RAG endpoint (supports base ending with /api/v1 like LARAVEL_CHAT_SYNC_URL). */
+function laravelInternalRagUrl(baseRaw) {
+  const base = String(baseRaw || '').trim().replace(/\/$/, '');
+  if (!base) return '';
+  if (base.includes('/api/v1')) {
+    return `${base}/internal/chat/rag/context`;
+  }
+  return `${base}/api/v1/internal/chat/rag/context`;
+}
+
+/** RAG: Laravel MySQL knowledge base (POST …/internal/chat/rag/context, X-Support-Sync-Secret). */
+async function fetchLaravelRagContext(userMessage) {
+  const base = (
+    process.env.LARAVEL_INTERNAL_API_URL
+    || process.env.LARAVEL_CHAT_SYNC_URL
+    || process.env.LARAVEL_API_BASE
+    || ''
+  )
+    .trim()
+    .replace(/\/$/, '');
+  const secret = (process.env.LARAVEL_CHAT_SYNC_SECRET || process.env.SUPPORT_CHAT_SYNC_SECRET || '')
+    .trim();
+  if (!base || !secret) return '';
+  if (String(process.env.CHAT_RAG_ENABLED || '1').trim() === '0') return '';
+  const url = laravelInternalRagUrl(base);
+  const query = String(userMessage || '').trim().slice(0, 8000);
+  if (!query) return '';
+  try {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), Math.max(3000, Number(process.env.CHAT_RAG_TIMEOUT_MS || 10000) || 10000));
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Support-Sync-Secret': secret,
+      },
+      body: JSON.stringify({ query }),
+      signal: ac.signal,
+    });
+    clearTimeout(t);
+    if (!res.ok) {
+      console.warn('[rag] http', res.status, await res.text().catch(() => ''));
+      return '';
+    }
+    const json = await res.json().catch(() => ({}));
+    return typeof json.context === 'string' ? json.context.trim() : '';
+  } catch (e) {
+    console.warn('[rag]', e?.message || e);
+    return '';
+  }
+}
+
 async function getWebsiteContext() {
   if (websiteContextCache && (Date.now() - websiteContextCachedAt) < WEBSITE_CONTEXT_CACHE_MS) {
     return websiteContextCache;
@@ -1179,7 +1233,14 @@ async function prepareAiContext(conversationId, userMessage, lang, options = {})
     }]);
   }
   const ctx = aiContexts.get(key);
-  ctx.push({ role: 'user', content: userText });
+  let userContent = userText;
+  if (fromLending) {
+    const rag = await fetchLaravelRagContext(rawUserText);
+    if (rag) {
+      userContent = `${rag}\n\n---\n\nVisitor question:\n${userText}`;
+    }
+  }
+  ctx.push({ role: 'user', content: userContent });
   aiContexts.set(key, trimContextMessages(ctx));
   return {
     key,
