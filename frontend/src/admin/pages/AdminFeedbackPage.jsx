@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client.js'
+import ConfirmModal from '../components/ConfirmModal.jsx'
 
 const QUICK_TABS = [
   { id: 'all', label: 'All' },
@@ -110,6 +111,8 @@ export default function AdminFeedbackPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
+  /** { id, subject } when delete confirmation modal is open */
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
 
   const loadStaff = useCallback(async () => {
     try {
@@ -280,24 +283,29 @@ export default function AdminFeedbackPage() {
     [internalNote, loadTicket, loadTickets, replyText, selectedId],
   )
 
-  const onDeleteTicket = useCallback(async () => {
+  const openDeleteModal = useCallback(() => {
     if (!selectedId) return
-    if (!window.confirm('Delete this feedback ticket permanently?')) return
+    const subject = String(selected?.subject || selectedSummary?.subject || '').trim() || 'General Feedback'
+    setDeleteConfirm({ id: selectedId, subject })
+  }, [selected?.subject, selectedId, selectedSummary?.subject])
 
-    setBusy(true)
+  const performDeleteTicket = useCallback(async () => {
+    const id = deleteConfirm?.id
+    if (!id) return
     setError('')
     try {
-      await api(`/feedbacks/${selectedId}`, { method: 'DELETE' })
+      await api(`/feedbacks/${id}`, { method: 'DELETE' })
       setToast('Ticket deleted.')
-      setSelected(null)
-      setSelectedId(null)
+      if (selectedId === id) {
+        setSelected(null)
+        setSelectedId(null)
+      }
       await loadTickets()
     } catch (err) {
       setError(err?.message || 'Unable to delete ticket.')
-    } finally {
-      setBusy(false)
+      throw err
     }
-  }, [loadTickets, selectedId])
+  }, [deleteConfirm?.id, loadTickets, selectedId])
 
   const customer = selected?.contact || null
   const loan = selected?.loan_context || null
@@ -720,7 +728,7 @@ export default function AdminFeedbackPage() {
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={onDeleteTicket}
+                        onClick={openDeleteModal}
                         className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
                       >
                         Delete
@@ -889,6 +897,21 @@ export default function AdminFeedbackPage() {
           <div className="fixed bottom-4 right-4 z-50 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white shadow-xl">{toast}</div>
         ) : null}
       </section>
+
+      <ConfirmModal
+        open={deleteConfirm != null}
+        onClose={() => setDeleteConfirm(null)}
+        title="Delete feedback ticket?"
+        description={
+          deleteConfirm
+            ? `This permanently removes “${deleteConfirm.subject}” (ticket #${deleteConfirm.id}) and its CRM thread. You cannot undo this action.`
+            : ''
+        }
+        confirmLabel="Delete permanently"
+        cancelLabel="Cancel"
+        tone="danger"
+        onConfirm={performDeleteTicket}
+      />
     </div>
   )
 }
