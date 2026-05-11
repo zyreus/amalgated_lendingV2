@@ -323,21 +323,12 @@ export default function SssPensionLoanPage() {
               Complete the official Amalgated application and co-maker statement. For pension loans, co-maker is optional. Use the section below to set
               your borrower portal password.
             </p>
-            {liveQuote?.fee_breakdown ? (
+            {liveQuote != null && liveQuote.monthly_amortization != null ? (
               <div className="mt-4 rounded-xl border border-brand-primary/20 bg-brand-primary/5 p-4 text-sm dark:border-brand-primary/30 dark:bg-brand-primary/10">
-                <p className="font-semibold text-brand-text dark:text-white">Live pension computation preview</p>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  <p>Monthly principal: <strong>₱{Number(liveQuote.fee_breakdown.monthly_principal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                  <p>Monthly interest: <strong>₱{Number(liveQuote.fee_breakdown.monthly_interest_on_full_principal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                  <p>Monthly amortization: <strong>₱{Number(liveQuote.monthly_amortization || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                  <p>Semi-monthly: <strong>₱{Number(liveQuote.fee_breakdown.semi_monthly_payment || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                  <p>Total deductions: <strong>₱{Number(liveQuote.fee_breakdown.total_miscellaneous || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                  <p>Net proceeds: <strong>₱{Number(liveQuote.fee_breakdown.net_proceeds_after_misc || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-                  <p className="sm:col-span-2">
-                    Remaining pension: <strong>₱{Number(liveQuote.fee_breakdown.remaining_pension || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                    {' '} (minimum retention ₱{Number(liveQuote.fee_breakdown.pension_retention_threshold || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
-                  </p>
-                </div>
+                <p className="font-semibold text-brand-text dark:text-white">Monthly amortization</p>
+                <p className="mt-2 text-2xl font-bold tabular-nums text-brand-text dark:text-white">
+                  ₱{Number(liveQuote.monthly_amortization || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
               </div>
             ) : null}
             {quoteError ? (

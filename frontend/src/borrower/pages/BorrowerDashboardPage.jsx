@@ -46,6 +46,20 @@ function describeBorrowerLoanInterest(loan) {
   return '—'
 }
 
+function isSssGsisPensionLoan(loan) {
+  if (!loan) return false
+  const slug = loan.application_payload?.loan_product_slug
+  const type = loan.loan_application?.loan_type
+  return slug === 'sss-pension-loan' || type === 'sss_pension'
+}
+
+function isSalaryLoan(loan) {
+  if (!loan) return false
+  const slug = loan.application_payload?.loan_product_slug
+  const type = loan.loan_application?.loan_type
+  return slug === 'salary-loan' || type === 'salary'
+}
+
 export default function BorrowerDashboardPage() {
   const { user, loadMe } = useBorrowerAuth()
   const [data, setData] = useState(null)
@@ -124,6 +138,7 @@ export default function BorrowerDashboardPage() {
 
   const summary = data?.summary || {}
   const loan = data?.active_loan
+  const amortizationOnlyLoanUi = isSssGsisPensionLoan(loan) || isSalaryLoan(loan)
   const loansList = Array.isArray(data?.loans) ? data.loans : []
   const pendingRows = useMemo(() => data?.pending_payments || [], [data])
   const notifications = data?.notifications || []
@@ -625,7 +640,10 @@ th{background:#f9fafb}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Total Loan Balance" value={formatPeso(summary.total_loan_balance)} />
-        <SummaryCard label="Monthly Payment" value={formatPeso(summary.monthly_payment)} />
+        <SummaryCard
+          label={amortizationOnlyLoanUi ? 'Monthly amortization' : 'Monthly Payment'}
+          value={formatPeso(summary.monthly_payment)}
+        />
         <SummaryCard label="Next Due Date" value={formatDate(summary.next_due_date)} sub={dueCountdownLabel(summary.next_due_date)} />
         <SummaryCard
           label="Overdue Amount"
@@ -771,30 +789,36 @@ th{background:#f9fafb}
               label="Approved principal"
               value={formatPeso(loan?.loan_application?.approved_amount ?? loan?.principal)}
             />
-            <Row label="Monthly payment" value={formatPeso(loan?.monthly_payment)} />
-            <Row
-              label="Semi-monthly payment"
-              value={formatPeso(
-                loan?.monthly_payment != null ? Number(loan.monthly_payment) / 2 : null,
-              )}
-            />
-            <Row label="Monthly principal" value={formatPeso(loan?.monthly_principal)} />
-            <Row label="Monthly interest" value={formatPeso(loan?.monthly_interest)} />
-            <Row label="Service charge" value={formatPeso(loan?.service_charge)} />
-            <Row label="Insurance / MRI" value={formatPeso(loan?.mri_fee)} />
-            <Row label="Doc stamp" value={formatPeso(loan?.doc_stamp)} />
-            <Row label="Notarial fee" value={formatPeso(loan?.notarial_fee)} />
-            <Row label="Total deductions" value={formatPeso(loan?.total_deductions)} />
-            <Row label="Net proceeds" value={formatPeso(loan?.net_proceeds)} />
-            <Row
-              label="Remaining pension"
-              value={formatPeso(
-                loan?.loan_computation_snapshot?.breakdown?.remaining_pension ??
-                  (loan?.application_payload?.monthly_pension != null && loan?.monthly_payment != null
-                    ? Number(loan.application_payload.monthly_pension) - Number(loan.monthly_payment)
-                    : null),
-              )}
-            />
+            {amortizationOnlyLoanUi ? (
+              <Row label="Monthly amortization" value={formatPeso(loan?.monthly_payment)} />
+            ) : (
+              <>
+                <Row label="Monthly payment" value={formatPeso(loan?.monthly_payment)} />
+                <Row
+                  label="Semi-monthly payment"
+                  value={formatPeso(
+                    loan?.monthly_payment != null ? Number(loan.monthly_payment) / 2 : null,
+                  )}
+                />
+                <Row label="Monthly principal" value={formatPeso(loan?.monthly_principal)} />
+                <Row label="Monthly interest" value={formatPeso(loan?.monthly_interest)} />
+                <Row label="Service charge" value={formatPeso(loan?.service_charge)} />
+                <Row label="Insurance / MRI" value={formatPeso(loan?.mri_fee)} />
+                <Row label="Doc stamp" value={formatPeso(loan?.doc_stamp)} />
+                <Row label="Notarial fee" value={formatPeso(loan?.notarial_fee)} />
+                <Row label="Total deductions" value={formatPeso(loan?.total_deductions)} />
+                <Row label="Net proceeds" value={formatPeso(loan?.net_proceeds)} />
+                <Row
+                  label="Remaining pension"
+                  value={formatPeso(
+                    loan?.loan_computation_snapshot?.breakdown?.remaining_pension ??
+                      (loan?.application_payload?.monthly_pension != null && loan?.monthly_payment != null
+                        ? Number(loan.application_payload.monthly_pension) - Number(loan.monthly_payment)
+                        : null),
+                  )}
+                />
+              </>
+            )}
             <Row
               label="Final installment (scheduled)"
               value={formatPeso(

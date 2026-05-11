@@ -300,6 +300,11 @@ export default function LoanDetailPage() {
 
   const payments = loan.payments || []
   const app = loan.loan_application || null
+  const isPensionLoan =
+    app?.loan_type === 'sss_pension' || loan.application_payload?.loan_product_slug === 'sss-pension-loan'
+  const isSalaryLoan =
+    app?.loan_type === 'salary' || loan.application_payload?.loan_product_slug === 'salary-loan'
+  const isAmortizationOnlyBorrowerCard = isPensionLoan || isSalaryLoan
 
   return (
     <div className="w-full min-w-0 space-y-8">
@@ -366,21 +371,22 @@ export default function LoanDetailPage() {
           </p>
           {loan.monthly_payment != null && Number(loan.monthly_payment) > 0 && (
             <p className={`mt-2 ${admin.textMuted}`}>
-              Est. monthly payment: ₱{Number(loan.monthly_payment).toLocaleString()}
+              {isAmortizationOnlyBorrowerCard ? 'Monthly amortization' : 'Est. monthly payment'}: ₱
+              {Number(loan.monthly_payment).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           )}
-          {loan.monthly_payment != null && Number(loan.monthly_payment) > 0 && (
+          {!isAmortizationOnlyBorrowerCard && loan.monthly_payment != null && Number(loan.monthly_payment) > 0 && (
             <p className={`mt-1 ${admin.textMuted}`}>
               Est. semi-monthly payment: ₱{(Number(loan.monthly_payment) / 2).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           )}
-          {loan.total_deductions != null && (
+          {!isAmortizationOnlyBorrowerCard && loan.total_deductions != null && (
             <p className={`mt-1 ${admin.textMuted}`}>
               Deductions: ₱{Number(loan.total_deductions).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Net proceeds: ₱
               {Number(loan.net_proceeds || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           )}
-          {loan?.application_payload?.monthly_pension != null && loan.monthly_payment != null && (
+          {!isAmortizationOnlyBorrowerCard && loan?.application_payload?.monthly_pension != null && loan.monthly_payment != null && (
             <p className={`mt-1 ${admin.textMuted}`}>
               Remaining pension after deduction: ₱
               {(Number(loan.application_payload.monthly_pension) - Number(loan.monthly_payment)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

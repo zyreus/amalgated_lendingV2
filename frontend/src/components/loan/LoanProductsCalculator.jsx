@@ -17,10 +17,6 @@ function isTravelProduct(product) {
   return product?.slug === 'travel-assistance-loan' || c?.fee_profile === 'travel'
 }
 
-function isSalaryProduct(product) {
-  return product?.slug === 'salary-loan'
-}
-
 function maxTermMonths(product) {
   const m = product?.max_term
   if (m != null && Number(m) > 0) return Number(m)
@@ -33,7 +29,6 @@ export default function LoanProductsCalculator({ products = [] }) {
 
   const pensionMode = product ? isPensionProduct(product) : false
   const travelMode = product ? isTravelProduct(product) : false
-  const salaryMode = product ? isSalaryProduct(product) : false
   const termMax = product ? maxTermMonths(product) : 60
 
   const [pension, setPension] = useState('4000')
@@ -114,7 +109,7 @@ export default function LoanProductsCalculator({ products = [] }) {
       const payload = {
         slug: product.slug,
         term_months: t,
-        include_fees: salaryMode || pensionMode,
+        include_fees: pensionMode,
       }
       if (pensionMode) {
         payload.monthly_pension = Number(pension)
@@ -133,17 +128,6 @@ export default function LoanProductsCalculator({ products = [] }) {
   }
 
   const amort = server?.monthly_amortization ?? localEst.monthly
-  const salarySemiMonthly = Number(server?.fee_breakdown?.semi_monthly_payment || 0)
-  const salaryNetProceeds = Number(server?.fee_breakdown?.net_proceeds_after_misc || 0)
-  const salaryTotalDeductions = Number(server?.fee_breakdown?.total_deductions || 0)
-  const pensionPrincipal = Number(server?.fee_breakdown?.monthly_principal || 0)
-  const pensionInterest = Number(server?.fee_breakdown?.monthly_interest_on_full_principal || 0)
-  const pensionSemiMonthly = Number(server?.fee_breakdown?.semi_monthly_payment || 0)
-  const pensionNetProceeds = Number(server?.fee_breakdown?.net_proceeds_after_misc || 0)
-  const pensionRemaining = Number(server?.fee_breakdown?.remaining_pension || 0)
-  const pensionThreshold = Number(server?.fee_breakdown?.pension_retention_threshold || 0)
-  const pensionCompliant = Boolean(server?.fee_breakdown?.pension_compliance_ok)
-
   if (!products.length || !product) {
     return null
   }
@@ -289,71 +273,6 @@ export default function LoanProductsCalculator({ products = [] }) {
             {Number(amort || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </dd>
         </div>
-        {salaryMode && server ? (
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl bg-white/80 p-4 dark:bg-slate-900/60">
-              <dt className="text-[11px] font-medium uppercase tracking-wide text-emerald-800/70 dark:text-emerald-300/80">
-                Semi-monthly
-              </dt>
-              <dd className="mt-1 text-lg font-bold tabular-nums text-emerald-900 dark:text-emerald-100">
-                PHP {salarySemiMonthly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </dd>
-            </div>
-            <div className="rounded-xl bg-white/80 p-4 dark:bg-slate-900/60">
-              <dt className="text-[11px] font-medium uppercase tracking-wide text-emerald-800/70 dark:text-emerald-300/80">
-                Total deductions
-              </dt>
-              <dd className="mt-1 text-lg font-bold tabular-nums text-emerald-900 dark:text-emerald-100">
-                PHP {salaryTotalDeductions.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </dd>
-            </div>
-            <div className="rounded-xl bg-white/80 p-4 dark:bg-slate-900/60">
-              <dt className="text-[11px] font-medium uppercase tracking-wide text-emerald-800/70 dark:text-emerald-300/80">
-                Net proceeds
-              </dt>
-              <dd className="mt-1 text-lg font-bold tabular-nums text-emerald-900 dark:text-emerald-100">
-                PHP {salaryNetProceeds.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </dd>
-            </div>
-          </div>
-        ) : null}
-        {pensionMode && server ? (
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl bg-white/80 p-4 dark:bg-slate-900/60">
-              <dt className="text-[11px] font-medium uppercase tracking-wide text-emerald-800/70 dark:text-emerald-300/80">Monthly principal</dt>
-              <dd className="mt-1 text-base font-bold tabular-nums text-emerald-900 dark:text-emerald-100">
-                PHP {pensionPrincipal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </dd>
-            </div>
-            <div className="rounded-xl bg-white/80 p-4 dark:bg-slate-900/60">
-              <dt className="text-[11px] font-medium uppercase tracking-wide text-emerald-800/70 dark:text-emerald-300/80">Monthly interest</dt>
-              <dd className="mt-1 text-base font-bold tabular-nums text-emerald-900 dark:text-emerald-100">
-                PHP {pensionInterest.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </dd>
-            </div>
-            <div className="rounded-xl bg-white/80 p-4 dark:bg-slate-900/60">
-              <dt className="text-[11px] font-medium uppercase tracking-wide text-emerald-800/70 dark:text-emerald-300/80">Semi-monthly</dt>
-              <dd className="mt-1 text-base font-bold tabular-nums text-emerald-900 dark:text-emerald-100">
-                PHP {pensionSemiMonthly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </dd>
-            </div>
-            <div className="rounded-xl bg-white/80 p-4 dark:bg-slate-900/60">
-              <dt className="text-[11px] font-medium uppercase tracking-wide text-emerald-800/70 dark:text-emerald-300/80">Net proceeds</dt>
-              <dd className="mt-1 text-base font-bold tabular-nums text-emerald-900 dark:text-emerald-100">
-                PHP {pensionNetProceeds.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </dd>
-            </div>
-            <div className="rounded-xl bg-white/80 p-4 dark:bg-slate-900/60 sm:col-span-2">
-              <dt className="text-[11px] font-medium uppercase tracking-wide text-emerald-800/70 dark:text-emerald-300/80">Remaining pension</dt>
-              <dd className="mt-1 text-base font-bold tabular-nums text-emerald-900 dark:text-emerald-100">
-                PHP {pensionRemaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (minimum {pensionThreshold.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
-              </dd>
-              <p className={`mt-1 text-xs ${pensionCompliant ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
-                {pensionCompliant ? 'Pension retention policy: compliant' : 'Pension retention policy: not compliant'}
-              </p>
-            </div>
-          </div>
-        ) : null}
       </dl>
     </div>
   )
