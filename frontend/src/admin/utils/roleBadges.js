@@ -11,8 +11,6 @@ export const ADMIN_ROLE_BADGE = {
     'bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-500/35',
   accountant:
     'bg-violet-50 text-violet-800 ring-violet-200 dark:bg-violet-950/40 dark:text-violet-200 dark:ring-violet-500/35',
-  'hr-manager':
-    'bg-emerald-50 text-emerald-800 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:ring-emerald-500/35',
 }
 
 export const ADMIN_ROLE_BADGE_FALLBACK =
@@ -20,7 +18,6 @@ export const ADMIN_ROLE_BADGE_FALLBACK =
 
 const SORT_RANK = {
   'super-admin': 0,
-  'hr-manager': 1,
   'loan-officer': 2,
   accountant: 3,
   collector: 4,

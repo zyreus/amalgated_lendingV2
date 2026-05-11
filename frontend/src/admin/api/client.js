@@ -1,9 +1,7 @@
-import axios from 'axios'
 import {
   laravelRequest,
   normalizeLaravelApiBase,
   formatLaravelUnreachableError,
-  laravelApiBases,
 } from '../../utils/lendingLaravelApi.js'
 
 /** Default display / docs; actual requests use {@link laravelRequest} multi-base resolution. */
@@ -108,55 +106,6 @@ export async function api(path, options = {}) {
   }
 
   return data
-}
-
-/**
- * Authenticated binary download (e.g. careers resume). Tries the same API bases as {@link api}.
- */
-export async function downloadAdminFile(relPath, suggestedFilename) {
-  const rel = relPath.startsWith('/') ? relPath : `/${relPath}`
-  const token = getToken()
-  const headers = {}
-  if (token) headers.Authorization = `Bearer ${token}`
-  let lastError = null
-  for (const base of laravelApiBases()) {
-    const url =
-      base === '' || base == null
-        ? `/api/v1${rel}`
-        : `${String(normalizeLaravelApiBase(base) || base).replace(/\/$/, '')}${rel}`
-    try {
-      const response = await axios({
-        url,
-        method: 'GET',
-        responseType: 'blob',
-        headers,
-        timeout: Number(import.meta.env.VITE_LENDING_REQUEST_TIMEOUT_MS || 120000),
-        validateStatus: () => true,
-      })
-      if (response.status >= 200 && response.status < 300) {
-        const blob = response.data
-        const href = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = href
-        a.download = suggestedFilename || 'download'
-        a.rel = 'noopener'
-        document.body.appendChild(a)
-        a.click()
-        a.remove()
-        window.URL.revokeObjectURL(href)
-        return
-      }
-      if (response.status === 401 && !rel.includes('/admin/login')) {
-        setToken(null)
-        window.dispatchEvent(new CustomEvent('lending-admin-unauthorized'))
-      }
-      lastError = new Error(`HTTP ${response.status}`)
-    } catch (e) {
-      lastError = e
-    }
-  }
-  const err = lastError || new Error(formatLaravelUnreachableError(null))
-  throw err
 }
 
 export { API_BASE }

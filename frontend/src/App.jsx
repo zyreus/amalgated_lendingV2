@@ -75,7 +75,7 @@ function App() {
 
   useEffect(() => {
     const links = []
-    const prefetchRoutes = ['/loan-products', '/application-flow', '/apply', '/contact', '/branches', '/careers']
+    const prefetchRoutes = ['/loan-products', '/application-flow', '/apply', '/contact', '/branches']
 
     prefetchRoutes.forEach((href) => {
       const link = document.createElement('link')

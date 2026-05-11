@@ -181,7 +181,7 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
     private const ADMIN_PRIMARY_ROLES = ['admin', 'loan_officer', 'collector', 'accountant'];
 
     /** Role slugs that may use the admin portal (RBAC). */
-    private const ADMIN_ROLE_SLUGS = ['super-admin', 'admin-staff', 'loan-officer', 'collector', 'accountant', 'hr-manager'];
+    private const ADMIN_ROLE_SLUGS = ['super-admin', 'admin-staff', 'loan-officer', 'collector', 'accountant'];
 
     public function canAccessAdminPortal(): bool
     {
@@ -236,7 +236,7 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
     {
         $this->loadMissing('roles');
         $slugs = $this->roles->pluck('slug')->map(fn ($s) => strtolower((string) $s))->all();
-        if (in_array('super-admin', $slugs, true) || in_array('admin', $slugs, true) || in_array('admin-staff', $slugs, true) || in_array('hr-manager', $slugs, true)) {
+        if (in_array('super-admin', $slugs, true) || in_array('admin', $slugs, true) || in_array('admin-staff', $slugs, true)) {
             return 'admin';
         }
         if (in_array('loan-officer', $slugs, true)) {

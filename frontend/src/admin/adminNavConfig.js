@@ -21,15 +21,6 @@ export const ADMIN_NAV_GROUPS = [
     ],
   },
   {
-    id: 'hr',
-    label: 'HR & careers',
-    items: [
-      { to: '/admin/careers', label: 'Careers', perm: 'careers.view', icon_key: 'careers' },
-      { to: '/admin/careers/jobs', label: 'Job posts', perm: 'careers.view', icon_key: 'careers' },
-      { to: '/admin/careers/applications', label: 'Applicants', perm: 'careers.view', icon_key: 'careers' },
-    ],
-  },
-  {
     id: 'operations',
     label: 'Operations',
     items: [

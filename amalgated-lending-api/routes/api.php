@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\AdminAuthController;
-use App\Http\Controllers\Api\AdminCareersController;
 use App\Http\Controllers\Api\AdminChatController;
 use App\Http\Controllers\Api\AdminFeedbackController;
 use App\Http\Controllers\Api\AdminLeadController;
@@ -43,7 +42,6 @@ use App\Http\Controllers\Api\PublicChatController;
 use App\Http\Controllers\Api\PublicFeedbackSubmitController;
 use App\Http\Controllers\Api\PublicWebsiteTestimonialsController;
 use App\Http\Controllers\Api\ChatbotFeedbackController;
-use App\Http\Controllers\Api\CareersPublicController;
 use App\Http\Controllers\Api\PublicFileController;
 use App\Http\Controllers\Api\PublicInquiryController;
 use App\Http\Controllers\Api\PublicLeadController;
@@ -129,14 +127,6 @@ Route::prefix('v1')->group(function () {
     Route::post('/public/feedback/submit', [PublicFeedbackSubmitController::class, 'store'])->middleware('throttle:12,1');
     Route::post('/feedback/submit', [PublicFeedbackSubmitController::class, 'store'])->middleware('throttle:12,1');
     Route::get('/public/feedback/testimonials', [PublicWebsiteTestimonialsController::class, 'legacyList'])->middleware('throttle:120,1');
-    Route::get('/public/careers/jobs', [CareersPublicController::class, 'jobs'])->middleware('throttle:120,1');
-    Route::get('/public/careers/jobs/{slug}', [CareersPublicController::class, 'show'])
-        ->middleware('throttle:120,1')
-        ->where('slug', '[a-zA-Z0-9\-]+');
-    Route::post('/public/careers/jobs/{slug}/apply', [CareersPublicController::class, 'apply'])
-        ->middleware('throttle:15,1')
-        ->where('slug', '[a-zA-Z0-9\-]+');
-
     Route::get('/public/website/testimonials', [PublicWebsiteTestimonialsController::class, 'website'])->middleware('throttle:120,1');
     Route::get('/public/testimonials', [PublicWebsiteTestimonialsController::class, 'website'])->middleware('throttle:120,1');
     Route::get('/website/testimonials', [PublicWebsiteTestimonialsController::class, 'website'])->middleware('throttle:120,1');
@@ -350,37 +340,6 @@ Route::prefix('v1')->group(function () {
         Route::put('/loan-products/{loanProduct}', [LoanProductController::class, 'update']);
         Route::delete('/loan-products/{loanProduct}', [LoanProductController::class, 'destroy']);
         Route::apiResource('/loan-applications', LoanApplicationController::class);
-
-        Route::middleware(['permission:careers.view'])->group(function () {
-            Route::get('/careers/dashboard', [AdminCareersController::class, 'dashboard']);
-            Route::get('/careers/departments', [AdminCareersController::class, 'departments']);
-            Route::get('/careers/branches', [AdminCareersController::class, 'branches']);
-            Route::get('/careers/jobs', [AdminCareersController::class, 'jobs']);
-            Route::get('/careers/jobs/{career_job}', [AdminCareersController::class, 'showJob']);
-            Route::get('/careers/applications', [AdminCareersController::class, 'applications']);
-            Route::get('/careers/applications/{career_application}', [AdminCareersController::class, 'showApplication']);
-            Route::get('/careers/email-logs', [AdminCareersController::class, 'emailLogs']);
-        });
-        Route::middleware(['permission:careers.manage'])->group(function () {
-            Route::post('/careers/departments', [AdminCareersController::class, 'storeDepartment']);
-            Route::patch('/careers/departments/{career_department}', [AdminCareersController::class, 'updateDepartment']);
-            Route::delete('/careers/departments/{career_department}', [AdminCareersController::class, 'destroyDepartment']);
-            Route::post('/careers/branches', [AdminCareersController::class, 'storeBranch']);
-            Route::patch('/careers/branches/{career_branch}', [AdminCareersController::class, 'updateBranch']);
-            Route::delete('/careers/branches/{career_branch}', [AdminCareersController::class, 'destroyBranch']);
-            Route::post('/careers/jobs', [AdminCareersController::class, 'storeJob']);
-            Route::put('/careers/jobs/{career_job}', [AdminCareersController::class, 'updateJob']);
-            Route::patch('/careers/jobs/{career_job}', [AdminCareersController::class, 'updateJob']);
-            Route::delete('/careers/jobs/{career_job}', [AdminCareersController::class, 'destroyJob']);
-            Route::post('/careers/jobs/{career_job}/publish', [AdminCareersController::class, 'publishJob']);
-            Route::post('/careers/jobs/{career_job}/unpublish', [AdminCareersController::class, 'unpublishJob']);
-            Route::patch('/careers/applications/{career_application}', [AdminCareersController::class, 'updateApplication']);
-            Route::post('/careers/applications/{career_application}/interviews', [AdminCareersController::class, 'storeInterview']);
-            Route::patch('/careers/interviews/{career_interview}', [AdminCareersController::class, 'updateInterview']);
-            Route::delete('/careers/interviews/{career_interview}', [AdminCareersController::class, 'destroyInterview']);
-            Route::get('/careers/applications/{career_application}/resume', [AdminCareersController::class, 'resume']);
-            Route::get('/careers/applications-export', [AdminCareersController::class, 'exportApplications']);
-        });
     });
 
     Route::prefix('borrower')->middleware(['auth:api', 'active', 'borrower'])->group(function () {

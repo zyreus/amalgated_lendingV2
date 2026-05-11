@@ -25,7 +25,6 @@ const ContactPage = lazy(() => import('./pages/ContactPage.jsx'))
 const LoanProductsPage = lazy(() => import('./pages/LoanProductsPage.jsx'))
 const FeaturesPage = lazy(() => import('./pages/FeaturesPage.jsx'))
 const BranchesPage = lazy(() => import('./pages/BranchesPage.jsx'))
-const CareersPage = lazy(() => import('./pages/CareersPage.jsx'))
 const ChattelMortgagePage = lazy(() => import('./pages/ChattelMortgagePage.jsx'))
 const RealEstateMortgagePage = lazy(() => import('./pages/RealEstateMortgagePage.jsx'))
 const SalaryLoanPage = lazy(() => import('./pages/SalaryLoanPage.jsx'))
@@ -61,11 +60,6 @@ const BorrowerLoanWizardPage = lazy(() => import('./borrower/pages/BorrowerLoanW
 const BorrowerApplicationsPage = lazy(() => import('./borrower/pages/BorrowerApplicationsPage.jsx'))
 const AdminLoanProductsPage = lazy(() => import('./admin/pages/AdminLoanProductsPage.jsx'))
 const PrintableFormsPage = lazy(() => import('./admin/pages/PrintableFormsPage.jsx'))
-const AdminCareersDashboardPage = lazy(() => import('./admin/pages/AdminCareersDashboardPage.jsx'))
-const AdminCareersJobsPage = lazy(() => import('./admin/pages/AdminCareersJobsPage.jsx'))
-const AdminCareersApplicationsPage = lazy(() => import('./admin/pages/AdminCareersApplicationsPage.jsx'))
-const AdminCareerApplicationDetailPage = lazy(() => import('./admin/pages/AdminCareerApplicationDetailPage.jsx'))
-const CareerJobDetailPage = lazy(() => import('./pages/CareerJobDetailPage.jsx'))
 const ApplicationFlowPage = lazy(() => import('./pages/ApplicationFlowPage.jsx'))
 const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage.jsx'))
 
@@ -194,10 +188,6 @@ export default function Root() {
                     <Route path="notifications" element={<Navigate to="/admin/dashboard" replace />} />
                     <Route path="chat-crm" element={<AdminChatCRM />} />
                     <Route path="feedback" element={<AdminFeedbackPage />} />
-                    <Route path="careers" element={<AdminCareersDashboardPage />} />
-                    <Route path="careers/jobs" element={<AdminCareersJobsPage />} />
-                    <Route path="careers/applications" element={<AdminCareersApplicationsPage />} />
-                    <Route path="careers/applications/:id" element={<AdminCareerApplicationDetailPage />} />
                     <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
                   </Route>
                 </Route>
@@ -225,8 +215,6 @@ export default function Root() {
               <Route path="/loan-products" element={<LoanProductsPage />} />
               <Route path="/features" element={<FeaturesPage />} />
               <Route path="/branches" element={<BranchesPage />} />
-              <Route path="/careers/:slug" element={<CareerJobDetailPage />} />
-              <Route path="/careers" element={<CareersPage />} />
               <Route path="/contact" element={<ContactPage />} />
               <Route path="/apply" element={<Navigate to="/borrower/login" replace />} />
               <Route path="/application-flow" element={<ApplicationFlowPage />} />
