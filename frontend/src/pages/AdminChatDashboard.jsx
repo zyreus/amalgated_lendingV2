@@ -1354,9 +1354,17 @@ export default function AdminChatDashboard({
   const openLeadEmailModal = (lead) => {
     setLeadEmailError('')
     setLeadEmailSubject('Re: Your inquiry — Amalgated Lending')
-    setLeadEmailBody(
-      `Hello ${lead.name || 'there'},\n\n\n\nKind regards,\nAmalgated Lending team`,
-    )
+    const body = `Hello ${lead.name || 'there'},
+
+Thank you for reaching out to Amalgated Lending regarding your inquiry.
+
+We appreciate your interest in our loan services. Our team has received your message and is currently reviewing your request. We will get back to you as soon as possible with the necessary details, assistance, or next steps regarding your application or concern.
+
+If you have any additional questions or require immediate assistance, please feel free to reply to this email.
+
+Kind regards,
+Amalgated Lending Team`
+    setLeadEmailBody(body)
     setLeadEmailModal(lead)
   }
 
@@ -4005,7 +4013,7 @@ export default function AdminChatDashboard({
               id="lead-email-body"
               value={leadEmailBody}
               onChange={(e) => setLeadEmailBody(e.target.value)}
-              rows={8}
+              rows={12}
               className="mt-1 w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-bg)] px-3 py-2 text-sm text-[var(--admin-text)]"
             />
             <div className="mt-6 flex flex-wrap gap-3">
