@@ -5,21 +5,30 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ChatKnowledgeChunk;
 use App\Models\ChatKnowledgeDocument;
+use App\Models\ChatKnowledgeSyncLog;
 use App\Services\Chat\ChatKnowledgeIngestionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 
 class AdminChatKnowledgeController extends Controller
 {
     public function stats(): JsonResponse
     {
+        $lastLog = Schema::hasTable('chat_knowledge_sync_logs')
+            ? ChatKnowledgeSyncLog::query()->latest('id')->first([
+                'ok', 'duration_ms', 'created_at', 'error_message', 'stats',
+            ])
+            : null;
+
         return response()->json([
             'ok' => true,
             'documents' => ChatKnowledgeDocument::query()->count(),
             'chunks' => ChatKnowledgeChunk::query()->count(),
             'chunks_with_embeddings' => ChatKnowledgeChunk::query()->whereNotNull('embedding_json')->count(),
             'last_sync_at' => Cache::get('chat_knowledge:last_sync_at'),
+            'last_sync_log' => $lastLog,
         ]);
     }
 

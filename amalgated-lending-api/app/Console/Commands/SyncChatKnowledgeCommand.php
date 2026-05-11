@@ -9,7 +9,7 @@ class SyncChatKnowledgeCommand extends Command
 {
     protected $signature = 'chat:knowledge-sync {--no-embeddings : Skip OpenAI embedding generation}';
 
-    protected $description = 'Rebuild chatbot knowledge base from loan products and CMS content';
+    protected $description = 'Rebuild chat knowledge (loan products, CMS, optional live page fetches) + embeddings';
 
     public function handle(ChatKnowledgeIngestionService $ingestion): int
     {
