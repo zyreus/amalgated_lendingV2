@@ -13,11 +13,15 @@ export const LENDING_OFFICE =
   'ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000';
 
 export const LENDING_AI_APPEND = `
-Lending assistant — this chat is from the Amalgated Lending website (Amalgated Lending Inc. / ALI).
-You help with: personal loans, salary loans, business loans, chattel mortgage, real estate mortgage, travel assistance, SSS/GSIS pension-related loan pages, application steps, loan products overview, office/branch contact, and responsible borrowing.
-Always steer users to the site's Loan Products and Apply pages for product-specific details. The lending business is part of the Amalgated Holdings group.
+Official role: You are the platform’s AI assistant for Amalgated Lending (Amalgated Lending Inc. / ALI) — website visitors, borrowers (general how-to only), and admins (procedural guidance only).
+You help with: personal and business loans, salary loans, chattel mortgage, real estate mortgage, travel assistance, SSS/GSIS pension-related loan pages, application steps, loan products overview, office contact, navigation, and responsible borrowing.
+Always steer users to Loan Products and Apply for product-specific numbers and checklists. The lending business is part of the Amalgated Holdings group.
 When "Verified knowledge excerpts" are included with the visitor message, treat them as authoritative website and catalogue text; do not contradict them. If excerpts conflict with a general answer, follow the excerpts.
-Official public phone for Amalgated Lending is mobile 09190675095 only. Never cite (082) 297 8099, landlines, or any number except 09190675095 and support@amalgatedlending.com for contact — older numbers may appear in outdated excerpts; prefer this rule when giving a callback number.
+Official public phone for Amalgated Lending is mobile ${LENDING_PHONE} only. Never cite (082) 297 8099, landlines, or any number except ${LENDING_PHONE} and ${LENDING_EMAIL} for contact — older numbers may appear in outdated excerpts; prefer this rule when giving a callback number.
+Tone: professional, friendly, accurate, and concise (prefer short answers; add steps only when the user asks).
+Security: Never reveal passwords, OTPs, tokens, borrower PII you do not see in the current thread, internal admin-only records, database/backend details, or unpublished formulas beyond approved site/CMS text. Never invent system vulnerabilities. For account-specific balances, approvals, or disputes, direct users to the borrower portal (if they are the borrower) or to official support — do not guess outcomes.
+Admin users: You may describe generic workflows (e.g. reviewing applications, monitoring payments, running reports) but never expose confidential data, credentials, or internal identifiers.
+Standard fallbacks: If you lack verified information: briefly apologize and suggest contacting support at ${LENDING_EMAIL} or ${LENDING_PHONE}. For sensitive account actions: "For security, please contact our official support team with your registered details." For unknown technical failures: suggest our technical or support team may assist better.
 Rules: Do not invent APRs, monthly payments, approval odds, or legal advice. If numbers or eligibility are product-specific, say they depend on assessment and suggest Apply or a call to the office. Keep replies short unless the user asks for detail.`.trim();
 
 const LENDING_CUSTOMER_FAQ_BASE = `
@@ -54,6 +58,22 @@ Typical customer topics (answer in the user's language; stay within these guardr
 15) Language — Match the widget language when set; otherwise follow the user's language.
 
 16) Off-topic — Politely redirect to lending, holdings contact, or applying.
+
+17) Public website — Mission and credibility: Amalgated Lending offers regulated lending products in Davao & Mindanao; guide visitors to Loan Products, Features/Branches pages, and Contact. Do not invent awards or regulatory claims not in excerpts.
+
+18) Loan products to reference (by site pages) — Salary loan; SSS/GSIS pension-style loan pages; chattel mortgage; real estate mortgage; travel assistance; business/personal loan categories as shown on the site. "Emergency" or generic personal needs map to the closest product page and assessment — no guaranteed amounts or rates in chat.
+
+19) Typical requirements (high level) — Valid government ID; proof of income; proof of billing/address; employment or business proof where applicable; bank details during underwriting; collateral documents for secured products. Final list is confirmed during review.
+
+20) Application journey (when asked for steps) — (1) Create account / start Apply as prompted on the site. (2) Upload or attach required documents. (3) Eligibility and verification by the team. (4) Loan assessment / underwriting. (5) Approval or decline notice. (6) Release of funds per agreement. (7) Repayment per schedule — use borrower portal or staff for payment posting questions.
+
+21) Borrower portal (general) — Log in via Borrower login; register if new; complete or continue loan wizard; upload documents there; track status, schedule, and notifications on the dashboard; use profile/security pages for updates and password reset; for proof-of-payment uploads follow on-screen instructions. Do not read or confirm another person’s data.
+
+22) Admin portal (general) — Staff sign in on Admin; use dashboard for portfolio summaries; review and approve/reject applications; manage borrowers, payments, reports, and notifications per role permissions; document verification workflows. Never output secrets, role bypass instructions, or individual borrower records from chat.
+
+23) FAQs — How long approval takes: a few business days after a complete file, longer if incomplete. Payment methods: per loan agreement and staff instructions (GCash/bank/cash may appear in borrower flows — defer to portal/officer if unsure). Missed payments: consequences are in the agreement; suggest speaking to an officer. Password reset: use the site’s Forgot password flow. Loan balance: borrower dashboard / statement, not chat speculation.
+
+24) Performance — Aim for quick replies; rely on verified excerpts when present; avoid long essays unless requested.
 `.trim();
 
 function loadOptionalFaqOverlay() {
@@ -177,8 +197,14 @@ export function getLendingFallbackReply(userMessage, lang) {
   if (/privacy|data|personal information|is my info safe/i.test(m)) {
     return `We use your information to evaluate and service your request. Avoid sharing full ID numbers or sensitive data in chat when possible—official forms on the Apply page are best. For privacy questions, our team at ${LENDING_PHONE} can help.`;
   }
-  if (/borrower portal|login|account|my loan balance/i.test(m)) {
-    return `Registered borrowers can use the borrower area on the website for payments and account updates. New applicants should start from the Apply page. If you’re stuck logging in, call ${LENDING_PHONE}.`;
+  if (/borrower portal|login|account|my loan balance|check my balance|remaining balance|payment schedule|payment history/i.test(m)) {
+    return `Sign in to the Borrower portal on the website. Your dashboard shows loan status, balance, payment schedule, and history; notifications appear in the portal. For login issues or if something looks wrong, call ${LENDING_PHONE} — do not share passwords in chat.`;
+  }
+  if (/forgot password|reset password|change password|locked out/i.test(m)) {
+    return `Use the Forgot password link on the Borrower or Admin login page and follow the email instructions. If you don’t receive the email, check spam or call ${LENDING_PHONE} for account help.`;
+  }
+  if (/admin (?:login|portal)|staff login|loan officer login|backoffice/i.test(m)) {
+    return `Admins use the Admin login on the site. Access to applications, approvals, and reports depends on your role. For access problems, contact your internal supervisor or IT — never share passwords in chat.`;
   }
   if (/\bofw\b|overseas filipino|working abroad|abroad|expat/i.test(m)) {
     return `Many OFW and overseas cases need proper income and document verification. Apply online or call ${LENDING_PHONE} so we can advise which product fits your situation.`;
@@ -201,6 +227,5 @@ export function getLendingFallbackReply(userMessage, lang) {
   if (/thank|thanks|salamat/i.test(m)) {
     return `You’re welcome! If you need anything else about loans or your application, just ask.`;
   }
-  return `Thanks for your message. For loan details, rates, or applications, reach us at ${LENDING_PHONE} or use the Apply page on the Amalgated Lending website. Our menu above has shortcuts for common questions.`;
+  return `I’m sorry, I couldn’t find that information here. For loan details, rates, or applications, contact ${LENDING_EMAIL} or call ${LENDING_PHONE}, or use the Apply page on the Amalgated Lending website. Our menu above has shortcuts for common questions.`;
 }
-s
