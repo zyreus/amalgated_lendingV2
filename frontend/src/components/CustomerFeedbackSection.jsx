@@ -136,7 +136,7 @@ export default function CustomerFeedbackSection() {
   }, [items, meta.rating_value, meta.review_count])
 
   return (
-    <section id="customer-feedback" className="border-t border-brand-secondary/25 bg-brand-background py-16">
+    <section className="border-t border-brand-secondary/25 bg-brand-background py-16" aria-labelledby="customer-feedback-heading">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -148,7 +148,7 @@ export default function CustomerFeedbackSection() {
           className="mx-auto max-w-3xl text-center"
         >
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-primary">Customer Feedback</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-brand-text sm:text-3xl">
+          <h2 id="customer-feedback-heading" className="mt-3 text-2xl font-semibold tracking-tight text-brand-text sm:text-3xl">
             What our borrowers say
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-brand-text/70 sm:text-base">

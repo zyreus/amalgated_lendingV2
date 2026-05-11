@@ -16,19 +16,9 @@ const MEGA_LOAN_PRODUCTS = [
     desc: 'Payroll-backed financing for employed professionals with clear amortization.',
   },
   {
-    to: '/loan-products',
-    title: 'Business Loan',
-    desc: 'Working capital and growth financing for SMEs, traders, and registered enterprises.',
-  },
-  {
     to: '/loans/real-estate-mortgage',
     title: 'Collateral Loan',
     desc: 'Property-secured credit lines with structured appraisal and transparent charges.',
-  },
-  {
-    to: '/loan-products',
-    title: 'Personal Loan',
-    desc: 'Flexible-use personal credit and purpose-based products — compare options in one place.',
   },
   {
     to: '/loans/chattel-mortgage',
@@ -284,7 +274,7 @@ export default function Header() {
                   <p className="text-xs font-semibold text-brand-text/60 dark:text-white/55">Also explore</p>
                   <ul className="mt-2 space-y-2 text-sm">
                     <li>
-                      <button type="button" className="font-medium text-brand-primary hover:underline" onClick={() => { goToSection('testimonials'); setOpenMenu(null) }}>
+                      <button type="button" className="font-medium text-brand-primary hover:underline" onClick={() => { goToSection('customer-feedback'); setOpenMenu(null) }}>
                         Borrower testimonials
                       </button>
                     </li>
@@ -482,7 +472,7 @@ export default function Header() {
                   <p className="mt-2 text-sm font-medium text-brand-text dark:text-white">Main office — Davao</p>
                   <p className="mt-1 text-xs leading-relaxed text-brand-text/70 dark:text-white/65">{MAIN_OFFICE}</p>
                   <p className="mt-3 text-xs text-brand-text/60 dark:text-white/55">
-                    <span className="font-semibold text-brand-text dark:text-white">Hours:</span> Mon–Fri · 9:00 AM – 5:00 PM (PH)
+                    <span className="font-semibold text-brand-text dark:text-white">Hours:</span> Mon–Fri · 8:00 AM – 5:00 PM (PH)
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <a

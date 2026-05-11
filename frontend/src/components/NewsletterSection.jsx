@@ -5,6 +5,52 @@ const LOCALE = 'en'
 const NEWS_KEY = 'landing.newsletter.news'
 const ANNOUNCEMENTS_KEY = 'landing.newsletter.announcements'
 
+/** Keeps the skeleton visible long enough to read smoothly (avoids sub‑100ms flashes). */
+const MIN_LOADING_MS = 1400
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
+function NewsletterLoadingSkeleton() {
+  const bar = 'animate-pulse rounded-md bg-brand-text/[0.08] dark:bg-white/[0.08]'
+  return (
+    <section
+      id="newsletter"
+      className="border-t border-brand-secondary/25 bg-brand-background py-16"
+      aria-busy="true"
+      aria-label="Loading news and announcements"
+    >
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <div className="overflow-hidden rounded-2xl border border-brand-secondary/30 bg-brand-background-alt shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+          <div className="grid md:grid-cols-2 md:divide-x md:divide-brand-secondary/25">
+            {['Announcements', 'News'].map((label) => (
+              <div key={label} className="flex flex-col p-6 sm:p-8">
+                <div className={`h-3 w-36 ${bar}`} />
+                <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3">
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={`${label}-${i}`}
+                      className="rounded-xl border border-brand-secondary/20 bg-white/60 p-4 dark:bg-white/[0.04]"
+                    >
+                      <div className={`h-4 w-[min(100%,14rem)] ${bar}`} />
+                      <div className={`mt-3 h-3 w-full ${bar}`} />
+                      <div className={`mt-2 h-3 w-[88%] ${bar}`} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <p className="mt-4 text-center text-xs text-brand-text/55">Loading news and announcements…</p>
+      </div>
+    </section>
+  )
+}
+
 function parseItems(body) {
   if (!body) return []
   try {
@@ -54,6 +100,7 @@ export default function NewsletterSection() {
     let cancelled = false
     ;(async () => {
       setLoading(true)
+      const started = typeof performance !== 'undefined' ? performance.now() : Date.now()
       try {
         const [newsRow, annRow] = await Promise.all([
           fetchCmsSection(NEWS_KEY),
@@ -69,6 +116,11 @@ export default function NewsletterSection() {
         setNews([])
         setAnnouncements([])
       } finally {
+        if (cancelled) return
+        const elapsed =
+          (typeof performance !== 'undefined' ? performance.now() : Date.now()) - started
+        const remaining = Math.max(0, MIN_LOADING_MS - elapsed)
+        if (remaining > 0) await delay(remaining)
         if (!cancelled) setLoading(false)
       }
     })()
@@ -79,14 +131,8 @@ export default function NewsletterSection() {
 
   const hasContent = useMemo(() => news.length > 0 || announcements.length > 0, [news, announcements])
 
-  if (loading && !hasContent) {
-    return (
-      <section id="newsletter" className="bg-brand-background py-16">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <p className="text-sm text-brand-text/70">Loading news and announcements...</p>
-        </div>
-      </section>
-    )
+  if (loading) {
+    return <NewsletterLoadingSkeleton />
   }
 
   if (!hasContent) return null

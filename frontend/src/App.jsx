@@ -304,10 +304,12 @@ function App() {
             </FadeInView>
           </section>
 
-          <LazySection minHeight={360} className="app-container py-6 sm:py-10">
-            <section id="testimonials">
-              <CustomerFeedbackSection />
-            </section>
+          <LazySection
+            id="customer-feedback"
+            minHeight={360}
+            className="app-container scroll-mt-24 py-6 sm:scroll-mt-28 sm:py-10"
+          >
+            <CustomerFeedbackSection />
           </LazySection>
 
           <LazySection id="newsletter" minHeight={420} className="scroll-mt-28">
