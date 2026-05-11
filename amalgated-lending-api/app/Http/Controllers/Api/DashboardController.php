@@ -36,11 +36,15 @@ class DashboardController extends Controller
             $totalPrincipalReleased = (float) ($loanAgg->total_principal_released ?? 0);
             $totalRevenue = (float) Payment::query()->sum('amount_paid');
 
-            $overdueLoans = Loan::query()
-                ->where('status', Loan::STATUS_ONGOING)
-                ->whereHas('payments', function ($q) {
-                    $q->where('status', '!=', Payment::STATUS_PAID)
-                        ->whereDate('due_date', '<', now()->toDateString());
+            /** EXISTS + `(loan_id, status, due_date)` index — avoids correlating through Eloquent `whereHas`. */
+            $overdueLoans = (int) Loan::query()
+                ->where('loans.status', Loan::STATUS_ONGOING)
+                ->whereExists(function ($q) {
+                    $q->selectRaw('1')
+                        ->from('payments')
+                        ->whereColumn('payments.loan_id', 'loans.id')
+                        ->where('payments.status', '!=', Payment::STATUS_PAID)
+                        ->whereDate('payments.due_date', '<', now()->toDateString());
                 })
                 ->count();
 

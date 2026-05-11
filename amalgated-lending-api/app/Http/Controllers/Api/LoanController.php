@@ -92,9 +92,15 @@ class LoanController extends Controller
             $q->where('status', $request->query('status'));
         }
         if ($search = $request->query('search')) {
-            $q->whereHas('borrower', function ($w) use ($search) {
-                $w->where('name', 'like', '%'.$search.'%')
-                    ->orWhere('email', 'like', '%'.$search.'%');
+            $like = '%'.$search.'%';
+            /** Subquery on `users` avoids correlated `whereHas` per loan row (better plan with `users.email` / name lookups). */
+            $q->whereIn('borrower_id', function ($sub) use ($like) {
+                $sub->select('id')
+                    ->from('users')
+                    ->where(function ($w) use ($like) {
+                        $w->where('name', 'like', $like)
+                            ->orWhere('email', 'like', $like);
+                    });
             });
         }
 

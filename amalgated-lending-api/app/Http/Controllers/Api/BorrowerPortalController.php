@@ -18,6 +18,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class BorrowerPortalController extends Controller
@@ -167,24 +168,55 @@ class BorrowerPortalController extends Controller
     public function dashboard(Request $request): JsonResponse
     {
         $user = $request->user();
-        $allLoans = Loan::query()
-            ->where('borrower_id', $user->id)
-            ->orderByDesc('id')
-            ->get([
-                'id',
-                'borrower_id',
-                'principal',
-                'requested_principal',
-                'term_months',
-                'annual_interest_rate',
-                'status',
-                'rejection_reason',
-                'application_payload',
-                'schedule_json',
-                'monthly_payment',
-                'outstanding_balance',
-                'created_at',
-            ]);
+        $driver = DB::connection()->getDriverName();
+        /**
+         * MySQL/MariaDB: never hydrate full `application_payload` / `schedule_json` for every loan row
+         * (wizard snapshots can be large — this was a major TTFB cost on `/borrower`).
+         */
+        if (in_array($driver, ['mysql', 'mariadb'], true)) {
+            $allLoans = Loan::query()
+                ->where('borrower_id', $user->id)
+                ->orderByDesc('id')
+                ->select([
+                    'id',
+                    'borrower_id',
+                    'principal',
+                    'requested_principal',
+                    'term_months',
+                    'annual_interest_rate',
+                    'status',
+                    'rejection_reason',
+                    'monthly_payment',
+                    'outstanding_balance',
+                    'created_at',
+                ])
+                ->selectRaw(
+                    'JSON_UNQUOTE(JSON_EXTRACT(application_payload, \'$.loan_product_slug\')) AS dash_loan_product_slug, '.
+                    'JSON_EXTRACT(application_payload, \'$.selected_interest_rate\') AS dash_selected_interest_rate, '.
+                    'JSON_UNQUOTE(JSON_EXTRACT(application_payload, \'$.selected_rate_type\')) AS dash_selected_rate_type, '.
+                    '(schedule_json IS NOT NULL AND COALESCE(JSON_LENGTH(schedule_json), 0) > 0) AS dash_has_schedule'
+                )
+                ->get();
+        } else {
+            $allLoans = Loan::query()
+                ->where('borrower_id', $user->id)
+                ->orderByDesc('id')
+                ->get([
+                    'id',
+                    'borrower_id',
+                    'principal',
+                    'requested_principal',
+                    'term_months',
+                    'annual_interest_rate',
+                    'status',
+                    'rejection_reason',
+                    'application_payload',
+                    'schedule_json',
+                    'monthly_payment',
+                    'outstanding_balance',
+                    'created_at',
+                ]);
+        }
 
         $primaryRef = $this->selectPrimaryLoan($allLoans);
         BorrowerNotificationController::syncPaymentRemindersForUser($user, $primaryRef);
@@ -203,8 +235,20 @@ class BorrowerPortalController extends Controller
         }
 
         $loansSummary = $allLoans->map(function (Loan $l) {
-            $hasSchedule = is_array($l->schedule_json) && count($l->schedule_json) > 0;
+            $attrs = $l->getAttributes();
+            $hasSchedule = array_key_exists('dash_has_schedule', $attrs)
+                ? (bool) $l->dash_has_schedule
+                : (is_array($l->schedule_json) && count($l->schedule_json) > 0);
             $pl = is_array($l->application_payload) ? $l->application_payload : [];
+            $slug = array_key_exists('dash_loan_product_slug', $attrs)
+                ? ($l->dash_loan_product_slug ?: null)
+                : ($pl['loan_product_slug'] ?? null);
+            $rate = array_key_exists('dash_selected_interest_rate', $attrs)
+                ? $l->dash_selected_interest_rate
+                : ($pl['selected_interest_rate'] ?? null);
+            $rateType = array_key_exists('dash_selected_rate_type', $attrs)
+                ? ($l->dash_selected_rate_type ?: null)
+                : ($pl['selected_rate_type'] ?? null);
 
             return [
                 'id' => $l->id,
@@ -214,11 +258,9 @@ class BorrowerPortalController extends Controller
                 'applied_principal' => (float) ($l->requested_principal ?? $l->principal),
                 'term_months' => $l->term_months,
                 'annual_interest_rate' => $l->annual_interest_rate,
-                'loan_product_slug' => $pl['loan_product_slug'] ?? null,
-                'selected_interest_rate' => isset($pl['selected_interest_rate'])
-                    ? (float) $pl['selected_interest_rate']
-                    : null,
-                'selected_rate_type' => $pl['selected_rate_type'] ?? null,
+                'loan_product_slug' => $slug,
+                'selected_interest_rate' => $rate !== null && $rate !== '' ? (float) $rate : null,
+                'selected_rate_type' => $rateType,
                 'monthly_payment' => $l->monthly_payment,
                 'outstanding_balance' => $l->outstanding_balance,
                 'created_at' => optional($l->created_at)?->toIso8601String(),
@@ -310,10 +352,10 @@ class BorrowerPortalController extends Controller
     public function payments(Request $request): JsonResponse
     {
         $user = $request->user();
-        $loanIds = Loan::query()->where('borrower_id', $user->id)->pluck('id');
+        $loanIdSub = Loan::query()->where('borrower_id', $user->id)->select('id');
 
         $payments = Payment::query()
-            ->whereIn('loan_id', $loanIds)
+            ->whereIn('loan_id', $loanIdSub)
             ->with('loan')
             ->orderBy('due_date')
             ->paginate((int) $request->query('per_page', 15));
@@ -324,10 +366,10 @@ class BorrowerPortalController extends Controller
     public function paymentHistory(Request $request): JsonResponse
     {
         $user = $request->user();
-        $loanIds = Loan::query()->where('borrower_id', $user->id)->pluck('id');
+        $loanIdSub = Loan::query()->where('borrower_id', $user->id)->select('id');
 
         $rows = Payment::query()
-            ->whereIn('loan_id', $loanIds)
+            ->whereIn('loan_id', $loanIdSub)
             ->where('status', Payment::STATUS_PAID)
             ->with('loan')
             ->orderByDesc('paid_at')

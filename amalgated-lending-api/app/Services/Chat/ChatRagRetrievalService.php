@@ -18,6 +18,8 @@ class ChatRagRetrievalService
     {
         $limit = $limit ?? (int) config('chat_knowledge.rag_chunk_limit', 6);
         $maxChars = (int) config('chat_knowledge.rag_context_chars', 6000);
+        $poolCap = max(12, (int) config('chat_knowledge.rag_pool_scan_limit', 48));
+        $fullTextCap = min(40, $poolCap);
         $queryText = trim($query);
         if ($queryText === '') {
             return ['context' => '', 'sources' => []];
@@ -31,7 +33,7 @@ class ChatRagRetrievalService
                 $pool = ChatKnowledgeChunk::query()
                     ->with('document:id,title,source_url,source_type')
                     ->whereFullText('body', $queryText)
-                    ->limit(80)
+                    ->limit($fullTextCap)
                     ->get();
             } catch (\Throwable) {
                 $pool = collect();
@@ -41,7 +43,7 @@ class ChatRagRetrievalService
             $pool = ChatKnowledgeChunk::query()
                 ->with('document:id,title,source_url,source_type')
                 ->orderByDesc('id')
-                ->limit(200)
+                ->limit($poolCap)
                 ->get();
         }
 

@@ -1449,16 +1449,30 @@ export async function getAdminStats() {
     }
   }
 
-  const users = await safeCount(`SELECT COUNT(1) AS count FROM users`)
-  const messages = await safeCount(`SELECT COUNT(1) AS count FROM messages`)
-  const posts = await safeCount(`SELECT COUNT(1) AS count FROM posts`)
-  const activeChats = await safeCount(`SELECT COUNT(1) AS count FROM conversations WHERE status IN ('open','in_progress')`)
-  const unreadChat = await safeCount(`SELECT COALESCE(SUM(admin_unread_count), 0) AS count FROM conversations`)
-  const unreadTickets = await safeCount(`SELECT COUNT(1) AS count FROM tickets WHERE is_unread = 1`)
-  const subscribers = await safeCount(`SELECT COUNT(1) AS count FROM subscribers`)
-  const openChatTickets = await safeCount(`SELECT COUNT(1) AS count FROM tickets WHERE status IN ('open','pending')`)
-  const openCrmTickets = await safeCount(`SELECT COUNT(1) AS count FROM crm_tickets WHERE status IN ('open','in_progress')`)
-  const jobApplications = await safeCount(`SELECT COUNT(1) AS count FROM applications`)
+  /** One round-trip per query, but all independent — parallel cuts wall-clock vs 11 sequential awaits. */
+  const [
+    users,
+    messages,
+    posts,
+    activeChats,
+    unreadChat,
+    unreadTickets,
+    subscribers,
+    openChatTickets,
+    openCrmTickets,
+    jobApplications,
+  ] = await Promise.all([
+    safeCount(`SELECT COUNT(1) AS count FROM users`),
+    safeCount(`SELECT COUNT(1) AS count FROM messages`),
+    safeCount(`SELECT COUNT(1) AS count FROM posts`),
+    safeCount(`SELECT COUNT(1) AS count FROM conversations WHERE status IN ('open','in_progress')`),
+    safeCount(`SELECT COALESCE(SUM(admin_unread_count), 0) AS count FROM conversations`),
+    safeCount(`SELECT COUNT(1) AS count FROM tickets WHERE is_unread = 1`),
+    safeCount(`SELECT COUNT(1) AS count FROM subscribers`),
+    safeCount(`SELECT COUNT(1) AS count FROM tickets WHERE status IN ('open','pending')`),
+    safeCount(`SELECT COUNT(1) AS count FROM crm_tickets WHERE status IN ('open','in_progress')`),
+    safeCount(`SELECT COUNT(1) AS count FROM applications`),
+  ])
   return {
     users,
     messages,
