@@ -508,9 +508,10 @@ export default function AdminLayout() {
               </p>
             </div>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <div className="flex shrink-0 flex-row flex-wrap items-center justify-end gap-2 sm:gap-2.5">
+            {user ? <AdminHeaderClock /> : null}
             {user && can('notifications.view') ? (
-              <div className="relative" ref={notifWrapRef}>
+              <div className="relative shrink-0" ref={notifWrapRef}>
                 <button
                   type="button"
                   onClick={() => setNotifModalOpen((v) => !v)}
@@ -554,7 +555,6 @@ export default function AdminLayout() {
                 </div>
               </div>
             ) : null}
-            {user ? <AdminHeaderClock /> : null}
           </div>
         </header>
 
