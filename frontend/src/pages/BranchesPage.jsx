@@ -4,6 +4,8 @@ import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import SubPageHeader from '../components/SubPageHeader.jsx'
 import Footer from '../components/Footer.jsx'
+import luzonBranchImage from '../assets/luzon.png'
+import visminBranchImage from '../assets/vismin.jpg'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -17,13 +19,13 @@ const mainOffices = [
     name: 'Main Office VisMin',
     address: 'ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000',
     note: 'Amalgated Lending Inc. corporate address.',
-    image: getPlaceholderImage('al-vismin-davao'),
+    image: visminBranchImage,
   },
   {
     name: 'Main Office Luzon',
     address: '1220 Pedro Gil Street, Paco, Manila',
     note: 'Luzon headquarters.',
-    image: getPlaceholderImage('al-luzon-manila'),
+    image: luzonBranchImage,
   },
 ]
 
