@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { laravelRequest } from '../utils/lendingLaravelApi.js'
 
-const GRID_LIMIT = 6
+/** Max approved testimonials shown on the homepage grid. */
+const DISPLAY_LIMIT = 3
 
 function Stars({ value }) {
   return (
@@ -55,14 +56,14 @@ export default function CustomerFeedbackSection() {
   const [loadState, setLoadState] = useState('loading')
   const reduceMotion = useReducedMotion()
 
-  const gridItems = useMemo(() => items.slice(0, GRID_LIMIT), [items])
+  const gridItems = useMemo(() => items.slice(0, DISPLAY_LIMIT), [items])
 
   useEffect(() => {
     let cancelled = false
 
     const load = async () => {
       setLoadState('loading')
-      const { res } = await laravelRequest('/public/website/testimonials?limit=12', {
+      const { res } = await laravelRequest(`/public/website/testimonials?limit=${DISPLAY_LIMIT}`, {
         method: 'GET',
         headers: { Accept: 'application/json' },
       })
@@ -90,6 +91,7 @@ export default function CustomerFeedbackSection() {
           verified: !!(d.verified_borrower || d.verified),
         }))
         .filter((x) => x.comment.length > 0)
+        .slice(0, DISPLAY_LIMIT)
 
       setItems(mapped)
       setMeta({
@@ -119,7 +121,7 @@ export default function CustomerFeedbackSection() {
         : items.length > 0
           ? items.reduce((s, x) => s + x.rating, 0) / items.length
           : null
-    const reviews = items.slice(0, 8).map((it) => ({
+    const reviews = items.slice(0, DISPLAY_LIMIT).map((it) => ({
       '@type': 'Review',
       author: { '@type': 'Person', name: it.name },
       reviewRating: { '@type': 'Rating', ratingValue: it.rating, bestRating: 5, worstRating: 1 },

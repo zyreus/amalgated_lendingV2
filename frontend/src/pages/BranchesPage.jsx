@@ -6,6 +6,7 @@ import SubPageHeader from '../components/SubPageHeader.jsx'
 import Footer from '../components/Footer.jsx'
 import luzonBranchImage from '../assets/luzon.png'
 import visminBranchImage from '../assets/vismin.jpg'
+import manilaBranchImage from '../assets/manila.jpg'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -29,9 +30,23 @@ const mainOffices = [
   },
 ]
 
+/** Regional photos: Manila uses metro imagery; Visayas/Mindanao branches use VisMin. */
 const branches = [
-  'Davao City', 'Manila', 'Cebu', 'Cagayan de Oro',
-  'General Santos', 'Iloilo', 'Bacolod',
+  {
+    name: 'Amalgated Lending Inc. - Kidapawan branch',
+    image: visminBranchImage,
+    detail: 'A & S Landing Commercial Bldg., Brgy. Sudapin, Kidapawan City',
+  },
+  {
+    name: 'Amalgated Lending Inc. - Mangagoy Branch',
+    image: manilaBranchImage,
+    detail: 'M.Conpinco Building Espiritu St. Mangagoy, Bislig City Surigao Del Sur 8311',
+  },
+  {
+    name: 'Amalgated Lending Inc. - Lagao Branch',
+    image: visminBranchImage,
+    detail: 'Aradaza st. General Santos City',
+  },
 ]
 
 const serviceAreas = ['Mindanao', 'Visayas', 'Luzon', 'NCR']
@@ -99,9 +114,29 @@ export default function BranchesPage() {
           <p className="mt-2 text-sm text-black/70">Strategic locations across the Philippines.</p>
           <div ref={branchesRef} className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {branches.map((branch) => (
-              <article key={branch} className="branch-card overflow-hidden rounded-2xl border border-black/10 bg-white p-5 shadow-sm transition hover:shadow-md">
-                <h3 className="font-semibold text-black">{branch}</h3>
-                <p className="mt-2 text-sm text-black/70">Apply in person or contact us for details.</p>
+              <article
+                key={branch.name}
+                className="branch-card overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm transition hover:shadow-md"
+              >
+                <div className="aspect-[3/2] w-full overflow-hidden bg-black/5">
+                  <img
+                    src={branch.image}
+                    alt={`${branch.name} branch`}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                    decoding="async"
+                    onError={(e) => {
+                      e.target.onerror = null
+                      e.target.src = getPlaceholderImage(branch.name)
+                    }}
+                  />
+                </div>
+                <div className="p-5">
+                  <h3 className="font-semibold text-black">{branch.name}</h3>
+                  <p className="mt-2 text-sm text-black/70">
+                    {branch.detail ?? 'Apply in person or contact us for details.'}
+                  </p>
+                </div>
               </article>
             ))}
           </div>
