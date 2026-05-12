@@ -226,7 +226,8 @@ th{background:#f9fafb}
       setToast('Receipt uploaded. Waiting for confirmation.')
       setModalRow(null)
       setForm({ referenceNumber: '', paymentMethod: 'gcash', receiptFile: null })
-      await refreshDashboardSilent()
+      // Do not await: a second dashboard round-trip kept the button on "Uploading..." for seconds after upload succeeded.
+      void refreshDashboardSilent()
     } catch (err) {
       setError(err.message || 'Upload failed.')
     } finally {

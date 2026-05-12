@@ -104,6 +104,23 @@ function formatReceiptEmailStatus(status) {
   return map[s] || String(status)
 }
 
+/** Borrower address used for payment receipt mail + latest delivery status from EmailLog. */
+function ReceiptEmailCell({ payment }) {
+  const to = String(getBorrowerEmail(payment) || '').trim()
+  const status = formatReceiptEmailStatus(payment.receipt_email_status)
+  return (
+    <div className="flex max-w-[15rem] flex-col gap-0.5">
+      <span
+        className={`break-all text-xs ${to ? 'font-medium text-gray-900 dark:text-gray-100' : admin.textMuted}`}
+        title={to || 'No email on file for this borrower'}
+      >
+        {to || '—'}
+      </span>
+      <span className={`text-[10px] ${admin.textMuted}`}>{status}</span>
+    </div>
+  )
+}
+
 function getReceiptPublicUrl(payment) {
   const u = payment?.receipt_url
   if (u && String(u).trim()) return getLaravelStorageFileUrl(String(u).trim())
@@ -274,6 +291,7 @@ export default function PaymentsPage() {
       const borrowerEmail =
         p?.borrower?.email ||
         p?.borrower_email ||
+        p?.loan?.borrower?.email ||
         p?.email ||
         matchedBorrower?.email ||
         ''
@@ -533,9 +551,10 @@ export default function PaymentsPage() {
                   </div>
                 </div>
               ) : null}
-              <p className={`text-xs ${admin.textMuted}`}>
-                Receipt email: <span className="font-medium text-gray-800 dark:text-gray-200">{formatReceiptEmailStatus(p.receipt_email_status)}</span>
-              </p>
+              <div className={`text-xs ${admin.textMuted}`}>
+                <p className={`text-[10px] font-semibold uppercase tracking-wide ${admin.textMuted}`}>Receipt email</p>
+                <ReceiptEmailCell payment={p} />
+              </div>
               {pending ? (
                 <>
                 <button
@@ -654,7 +673,9 @@ export default function PaymentsPage() {
                   <td className={`${admin.tableCell} align-middle`}>
                     <ProofCell payment={p} />
                   </td>
-                  <td className={`${admin.tableCell} whitespace-nowrap text-xs`}>{formatReceiptEmailStatus(p.receipt_email_status)}</td>
+                  <td className={`${admin.tableCell} align-top text-xs`}>
+                    <ReceiptEmailCell payment={p} />
+                  </td>
                   <td className={`${admin.tableCell} max-w-[10rem] whitespace-normal text-xs`}>
                     <div className="flex flex-col gap-1">
                       {canAdjustFinal(p) ? (
