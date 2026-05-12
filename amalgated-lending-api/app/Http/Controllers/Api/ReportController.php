@@ -3,46 +3,87 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Loan;
 use App\Models\Payment;
+use App\Services\ActivityLogger;
+use App\Services\ReportSummaryService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class ReportController extends Controller
 {
-    public function summary(Request $request): JsonResponse
+    public function summary(Request $request, ReportSummaryService $reportSummary): JsonResponse
     {
-        $from = $request->query('from')
-            ? Carbon::parse($request->query('from'))->startOfDay()
-            : now()->subMonths(3)->startOfDay();
-        $to = $request->query('to')
-            ? Carbon::parse($request->query('to'))->endOfDay()
-            : now()->endOfDay();
-
-        $applications = Loan::query()->whereBetween('created_at', [$from, $to]);
-
-        $disbursed = Loan::query()
-            ->whereBetween('disbursed_at', [$from, $to])
-            ->whereIn('status', [Loan::STATUS_ONGOING, Loan::STATUS_COMPLETED]);
-
-        $collections = Payment::query()
-            ->whereBetween('paid_at', [$from, $to])
-            ->whereNotNull('paid_at');
+        $period = $reportSummary->resolveSummaryPeriod($request, false);
+        $summary = $reportSummary->summarize($period['from'], $period['to']);
 
         return response()->json([
             'ok' => true,
             'period' => [
-                'from' => $from->toIso8601String(),
-                'to' => $to->toIso8601String(),
+                'from' => $period['from']->toIso8601String(),
+                'to' => $period['to']->toIso8601String(),
             ],
-            'summary' => [
-                'applications_submitted' => (clone $applications)->count(),
-                'loans_disbursed' => (clone $disbursed)->count(),
-                'principal_disbursed' => round((float) (clone $disbursed)->sum('principal'), 2),
-                'collections' => round((float) $collections->sum('amount_paid'), 2),
-            ],
+            'summary' => $summary,
+        ]);
+    }
+
+    public function exportSummaryCsv(Request $request, ReportSummaryService $reportSummary, ActivityLogger $logger): Response
+    {
+        $period = $reportSummary->resolveSummaryPeriod($request, true);
+        $summary = $reportSummary->summarize($period['from'], $period['to']);
+        $csv = $reportSummary->buildFinancialSummaryCsv($period['from'], $period['to'], $summary);
+
+        $logger->log($request->user(), 'reports.export_summary_csv', null, [
+            'from' => $period['from']->toIso8601String(),
+            'to' => $period['to']->toIso8601String(),
+        ]);
+
+        $filename = 'financial-summary_'.$period['from']->format('Y-m-d').'_'.$period['to']->format('Y-m-d').'.csv';
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            'Cache-Control' => 'no-store, private',
+        ]);
+    }
+
+    /**
+     * @return Response|JsonResponse
+     */
+    public function exportSummaryPdf(Request $request, ReportSummaryService $reportSummary, ActivityLogger $logger)
+    {
+        $period = $reportSummary->resolveSummaryPeriod($request, true);
+        $summary = $reportSummary->summarize($period['from'], $period['to']);
+
+        try {
+            $binary = $reportSummary->renderFinancialSummaryPdf($period['from'], $period['to'], $summary);
+        } catch (Throwable $e) {
+            Log::error('reports.export_summary_pdf_failed', [
+                'message' => $e->getMessage(),
+                'exception' => $e::class,
+            ]);
+
+            return response()->json([
+                'ok' => false,
+                'message' => 'Could not generate the PDF report. Please try again later.',
+            ], 500);
+        }
+
+        $logger->log($request->user(), 'reports.export_summary_pdf', null, [
+            'from' => $period['from']->toIso8601String(),
+            'to' => $period['to']->toIso8601String(),
+        ]);
+
+        $filename = 'financial-summary_'.$period['from']->format('Y-m-d').'_'.$period['to']->format('Y-m-d').'.pdf';
+
+        return response($binary, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            'Cache-Control' => 'no-store, private',
         ]);
     }
 

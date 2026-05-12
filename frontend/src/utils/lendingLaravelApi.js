@@ -275,6 +275,78 @@ export async function laravelRequest(path, init = {}) {
 }
 
 /**
+ * Same base resolution as {@link laravelRequest}, but returns the response body as a Blob (CSV/PDF exports).
+ */
+export async function laravelRequestBlob(path, init = {}) {
+  const bases = laravelApiBases()
+  let lastRes = null
+  let lastNetworkError = null
+  const method = String(init.method || 'GET').toUpperCase()
+  const headers = { ...(init.headers || {}) }
+  let data
+  if (init.body != null && init.body !== '') {
+    if (typeof init.body === 'string') {
+      const ct = String(headers['Content-Type'] || headers['content-type'] || '').toLowerCase()
+      if (ct.includes('application/json')) {
+        try {
+          data = JSON.parse(init.body)
+        } catch {
+          data = init.body
+        }
+      } else {
+        data = init.body
+      }
+    } else {
+      data = init.body
+    }
+  }
+  for (const base of bases) {
+    const url = buildUrl(base, path)
+    try {
+      const response = await axios({
+        url,
+        method,
+        headers,
+        data: method === 'GET' || method === 'HEAD' ? undefined : data,
+        validateStatus: () => true,
+        responseType: 'blob',
+        signal: init.signal,
+        timeout: LARAVEL_REQUEST_TIMEOUT_MS,
+      })
+      const blob =
+        response.data instanceof Blob
+          ? response.data
+          : new Blob([response.data == null ? '' : response.data], {
+              type: response.headers['content-type'] || 'application/octet-stream',
+            })
+        const res = {
+        ok: response.status >= 200 && response.status < 300,
+        status: response.status,
+        headers: {
+          get: (name) => {
+            const h = response.headers
+            if (h && typeof h.get === 'function') {
+              return h.get(name)
+            }
+            const key = String(name || '').toLowerCase()
+            return h[key] ?? h[name] ?? null
+          },
+        },
+        blob,
+      }
+      lastRes = res
+      if (shouldRetryStatus(response.status)) continue
+      if (res.ok) rememberWorkingLaravelBase(base)
+      return { res, base, lastError: null }
+    } catch (e) {
+      lastNetworkError = e
+      continue
+    }
+  }
+  return { res: lastRes, base: null, lastError: lastNetworkError }
+}
+
+/**
  * Unauthenticated POST to /api/v1/... (forgot password, etc.).
  */
 export async function publicLaravelPost(path, body) {

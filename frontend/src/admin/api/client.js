@@ -1,5 +1,6 @@
 import {
   laravelRequest,
+  laravelRequestBlob,
   normalizeLaravelApiBase,
   formatLaravelUnreachableError,
 } from '../../utils/lendingLaravelApi.js'
@@ -106,6 +107,58 @@ export async function api(path, options = {}) {
   }
 
   return data
+}
+
+/**
+ * Authenticated GET returning a Blob (e.g. CSV/PDF). Parses JSON error bodies on failure.
+ *
+ * @param {string} path
+ * @param {RequestInit & { signal?: AbortSignal }} [options]
+ * @returns {Promise<Blob>}
+ */
+export async function apiBlob(path, options = {}) {
+  const rel = path.startsWith('/') ? path : `/${path}`
+  const headers = {
+    Accept: options.accept || '*/*',
+    ...options.headers,
+  }
+  const token = getToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  const { res, lastError } = await laravelRequestBlob(rel, { ...options, headers })
+  if (!res) {
+    const err = new Error(formatLaravelUnreachableError(lastError))
+    err.status = 0
+    throw err
+  }
+
+  if (res.status === 401 && !rel.includes('/admin/login')) {
+    setToken(null)
+    window.dispatchEvent(new CustomEvent('lending-admin-unauthorized'))
+  }
+
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`
+    const ct = (res.headers.get('content-type') || '').toLowerCase()
+    if (res.blob && ct.includes('application/json')) {
+      try {
+        const text = typeof res.blob.text === 'function' ? await res.blob.text() : ''
+        const data = text ? JSON.parse(text) : {}
+        msg = data.message || data.error || msg
+        if (!data.message && data.errors && typeof data.errors === 'object') {
+          const flat = Object.values(data.errors).flat()
+          if (flat.length) msg = flat.join(' ')
+        }
+      } catch {
+        /* keep msg */
+      }
+    }
+    const err = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg))
+    err.status = res.status
+    throw err
+  }
+
+  return res.blob
 }
 
 export { API_BASE }
