@@ -76,20 +76,38 @@ export default function BorrowerDashboardPage() {
   const [deletingDraftId, setDeletingDraftId] = useState(null)
   const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState(null)
 
-  const load = async () => {
+  const load = useCallback(async (signal) => {
     setLoading(true)
     setError('')
+    let dashOk = false
     try {
-      const [dashRes, docRes, lendRes] = await Promise.all([
-        borrowerApi('/borrower/dashboard'),
-        getBorrowerDocumentLoanApplications().catch(() => ({ data: [] })),
-        borrowerApi('/borrower/lending-applications').catch(() => ({
-          data: { general: [], general_drafts: [], travel: [] },
-        })),
-      ])
+      // Primary payload first: do not block the shell on document/lending requests.
+      // skip_payment_reminder_sync avoids an extra DB pass on every dashboard open (see API).
+      const dashRes = await borrowerApi('/borrower/dashboard?skip_payment_reminder_sync=1')
+      if (signal?.aborted) return
       setData(dashRes.data)
       const ph = dashRes?.data?.payment_history
       setHistoryRows(Array.isArray(ph) ? ph : [])
+      dashOk = true
+    } catch (err) {
+      if (!signal?.aborted) {
+        setError(err.message || 'Failed to load dashboard.')
+      }
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false)
+      }
+    }
+
+    if (!dashOk || signal?.aborted) return
+
+    void Promise.all([
+      getBorrowerDocumentLoanApplications().catch(() => ({ data: [] })),
+      borrowerApi('/borrower/lending-applications').catch(() => ({
+        data: { general: [], general_drafts: [], travel: [] },
+      })),
+    ]).then(([docRes, lendRes]) => {
+      if (signal?.aborted) return
       setDocumentApps(Array.isArray(docRes?.data) ? docRes.data : [])
       setLendingApps(
         lendRes?.data && typeof lendRes.data === 'object'
@@ -100,12 +118,8 @@ export default function BorrowerDashboardPage() {
             }
           : { general: [], general_drafts: [], travel: [] },
       )
-    } catch (err) {
-      setError(err.message || 'Failed to load dashboard.')
-    } finally {
-      setLoading(false)
-    }
-  }
+    })
+  }, [])
 
   /** Refresh dashboard payload only (no full-page skeleton; skips document/lending fetches). */
   const refreshDashboardSilent = useCallback(async () => {
@@ -120,8 +134,10 @@ export default function BorrowerDashboardPage() {
   }, [])
 
   useEffect(() => {
-    load()
-  }, [])
+    const ac = new AbortController()
+    load(ac.signal)
+    return () => ac.abort()
+  }, [load])
 
   const performDeleteGeneralDraft = async () => {
     const id = confirmDeleteDraftId

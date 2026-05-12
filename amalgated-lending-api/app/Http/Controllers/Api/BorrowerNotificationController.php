@@ -32,18 +32,14 @@ class BorrowerNotificationController extends Controller
     public static function syncPaymentRemindersForUser(User $user, ?Loan $primaryLoan = null): void
     {
         /**
-         * Cooldown short-circuit: a borrower polling the bell-icon ~every minute would otherwise
-         * re-run the entire payment reconcile + delete query each tick. We still always run when the
-         * dashboard explicitly passed a hot Loan model (real user-facing change) — only the cheap
-         * polling endpoints honor the cache.
+         * Cooldown for all callers (dashboard included): passing a primary loan used to bypass this
+         * and re-sync on every dashboard load, which dominated TTFB. Reminders may lag up to the TTL.
          */
-        if ($primaryLoan === null) {
-            $key = 'borrower_reminder_sync:'.$user->id;
-            if (Cache::get($key)) {
-                return;
-            }
-            Cache::put($key, 1, self::REMINDER_SYNC_TTL_SECONDS);
+        $key = 'borrower_reminder_sync:'.$user->id;
+        if (Cache::get($key)) {
+            return;
         }
+        Cache::put($key, 1, self::REMINDER_SYNC_TTL_SECONDS);
 
         $loan = $primaryLoan;
 
