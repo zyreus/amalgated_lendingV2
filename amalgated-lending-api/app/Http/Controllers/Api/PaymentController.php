@@ -395,19 +395,14 @@ class PaymentController extends Controller
         );
 
         /**
-         * Receipt email must reach the borrower without requiring `php artisan queue:work`.
-         * Default `QUEUE_CONNECTION=database` would leave {@see SendPaymentReceiptJob} stuck forever.
-         * Run the job synchronously after the HTTP response so the admin UI stays snappy.
+         * Send in-process: `afterResponse()` is unreliable under PHP-FPM (callback may never run).
+         * {@see SendPaymentReceiptJob} uses {@see TransactionalMailSender} so delivery does not depend on `queue:work`.
          */
-        $paymentId = (int) $payment->id;
-        $adminId = (int) $admin->id;
-        dispatch(function () use ($paymentId, $or, $adminId): void {
-            try {
-                Bus::dispatchSync(new SendPaymentReceiptJob($paymentId, $or, $adminId));
-            } catch (\Throwable $e) {
-                report($e);
-            }
-        })->afterResponse();
+        try {
+            Bus::dispatchSync(new SendPaymentReceiptJob((int) $payment->id, $or, (int) $admin->id));
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**

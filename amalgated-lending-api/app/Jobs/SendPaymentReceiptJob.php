@@ -8,16 +8,16 @@ use App\Models\Payment;
 use App\Services\PaymentReceiptPdfService;
 use App\Services\TransactionalMailSender;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
-class SendPaymentReceiptJob implements ShouldBeUnique, ShouldQueue
+class SendPaymentReceiptJob implements ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -37,16 +37,6 @@ class SendPaymentReceiptJob implements ShouldBeUnique, ShouldQueue
         $this->onQueue('notifications');
     }
 
-    public function uniqueId(): string
-    {
-        return 'payment_receipt_email:'.$this->paymentId.':'.$this->receiptNumber;
-    }
-
-    public function uniqueFor(): int
-    {
-        return 300;
-    }
-
     public static function dedupeKey(int $paymentId, string $receiptNumber): string
     {
         return 'payment_receipt:'.$paymentId.':'.trim($receiptNumber);
@@ -57,7 +47,7 @@ class SendPaymentReceiptJob implements ShouldBeUnique, ShouldQueue
         $dedupeKey = self::dedupeKey($this->paymentId, $this->receiptNumber);
 
         $payment = Payment::query()
-            ->with(['loan.borrower:id,name,email'])
+            ->with(['loan.borrower'])
             ->find($this->paymentId);
 
         if (! $payment || $payment->status !== Payment::STATUS_PAID) {
@@ -115,7 +105,15 @@ class SendPaymentReceiptJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $pdfPath = $pdfService->ensureOfficialPdf($payment, $this->confirmedByAdminId);
+        $pdfPath = null;
+        try {
+            $pdfPath = $pdfService->ensureOfficialPdf($payment, $this->confirmedByAdminId);
+        } catch (Throwable $e) {
+            Log::warning('Payment receipt PDF skipped; sending email without attachment.', [
+                'payment_id' => $payment->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
         $payment->refresh();
 
         $mailable = new PaymentReceiptMail($payment->fresh(['loan.borrower']));
