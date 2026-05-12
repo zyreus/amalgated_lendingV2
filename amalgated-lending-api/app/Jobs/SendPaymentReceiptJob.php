@@ -121,7 +121,7 @@ class SendPaymentReceiptJob implements ShouldBeUnique, ShouldQueue
         $mailable = new PaymentReceiptMail($payment->fresh(['loan.borrower']));
 
         $invoiceNumber = 'INV-'.str_pad((string) $payment->id, 6, '0', STR_PAD_LEFT);
-        $subject = 'Payment confirmed — '.$invoiceNumber.' ('.$this->receiptNumber.') — '.config('app.name', 'Amalgated Lending');
+        $subject = 'Payment confirmed — '.$invoiceNumber.' ('.$this->receiptNumber.') — '.config('app.name', 'Amalgated Lending Inc.');
 
         $brevoFiles = [];
         if ($pdfPath) {

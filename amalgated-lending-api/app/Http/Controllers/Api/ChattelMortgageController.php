@@ -285,7 +285,7 @@ class ChattelMortgageController extends Controller
         }
 
         $mailable = new LoanApplicationReceivedMail($loan, (string) $borrower->name);
-        $subject = 'We received your Chattel Mortgage application — Amalgated Lending';
+        $subject = 'We received your Chattel Mortgage application — Amalgated Lending Inc.';
 
         if ($this->brevo->isConfigured()) {
             try {

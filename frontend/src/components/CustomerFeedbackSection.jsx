@@ -131,7 +131,7 @@ export default function CustomerFeedbackSection() {
     return {
       '@context': 'https://schema.org',
       '@type': 'FinancialService',
-      name: 'Amalgated Lending',
+      name: 'Amalgated Lending Inc.',
       description: 'Borrower testimonials and reviews published with consent.',
       aggregateRating:
         count > 0 && avg != null
@@ -172,7 +172,7 @@ export default function CustomerFeedbackSection() {
             What our borrowers say
           </h2>
           <p className="mt-4 text-sm leading-relaxed text-brand-text/70 sm:text-base">
-            Real experiences from clients who trusted Amalgated Lending for personal, salary, and business financing.
+            Real experiences from clients who trusted Amalgated Lending Inc. for personal, salary, and business financing.
           </p>
           {loadState === 'loading' ? (
             <p className="mt-4 text-sm text-brand-text/55" aria-live="polite">

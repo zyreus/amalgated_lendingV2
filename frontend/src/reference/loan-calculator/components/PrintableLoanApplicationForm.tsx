@@ -26,7 +26,7 @@ const PrintableBody = forwardRef<HTMLDivElement, Props>(function PrintableBody({
       <style>{`@media print { @page { size: A4; margin: 14mm; } }`}</style>
       <div className="border-b border-black pb-4">
         <h1 className="text-2xl font-bold">Loan Application Form</h1>
-        <p className="mt-1 text-sm">Amalgated Lending Corporation</p>
+        <p className="mt-1 text-sm">Amalgated Lending Inc.</p>
       </div>
 
       <div className="mt-6 grid grid-cols-2 gap-6 text-sm">

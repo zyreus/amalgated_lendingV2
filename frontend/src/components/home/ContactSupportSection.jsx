@@ -28,7 +28,7 @@ export default function ContactSupportSection() {
         <div className="overflow-hidden rounded-2xl border border-black/10">
           <iframe
             src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3959.36126486874!2d125.6124840553452!3d7.084051134957256!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x32f96da651e42635%3A0x5bd7a84c2784dcf!2sAmalgated%20Capital%2C%20Inc.!5e0!3m2!1sen!2sph!4v1771920193547!5m2!1sen!2sph"
-            title="Amalgated Lending Davao Location"
+            title="Amalgated Lending Inc. Davao Location"
             width="100%"
             height="100%"
             style={{ border: 0, minHeight: '360px' }}

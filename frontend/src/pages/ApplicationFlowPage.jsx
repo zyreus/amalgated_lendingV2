@@ -14,7 +14,7 @@ export default function ApplicationFlowPage() {
   return (
     <div className="min-h-screen bg-brand-background-alt">
       <SeoMeta
-        title="Loan Application Process | Amalgated Lending"
+        title="Loan Application Process | Amalgated Lending Inc."
         description="Understand the complete application flow for personal and business loans in Davao and Mindanao."
         canonical="https://amalgatedlending.com/application-flow"
       />

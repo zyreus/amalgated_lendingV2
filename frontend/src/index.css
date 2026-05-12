@@ -7,7 +7,7 @@
 /* `dark:` variants are inert (`.dark` is never applied — app is light-only). */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Design system: red, black, white (Amalgated Lending) */
+/* Design system: red, black, white (Amalgated Lending Inc.) */
 @theme {
   --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-display: "Inter", system-ui, sans-serif;

@@ -251,7 +251,7 @@ export default function ContactPage() {
               allowFullScreen
               loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"
-              title="Amalgated Lending main office"
+              title="Amalgated Lending Inc. main office"
             />
           </div>
         </section>

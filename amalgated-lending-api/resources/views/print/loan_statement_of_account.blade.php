@@ -148,7 +148,7 @@
         </p>
     @endif
 
-    <div class="footer">Amalgated Lending — internal / borrower copy</div>
+    <div class="footer">Amalgated Lending Inc. — internal / borrower copy</div>
 </div>
 </body>
 </html>

@@ -30,7 +30,7 @@
 <div class="no-print"><a href="{{ url('/') }}">Home</a></div>
 <div class="sheet">
     <h1>Terms &amp; Conditions</h1>
-    <p class="sub">Travel Assistance Loan — Amalgated Lending</p>
+    <p class="sub">Travel Assistance Loan — Amalgated Lending Inc.</p>
 
     <p>By signing this application, you confirm that you have read and understood these terms. The lender may update procedures and requirements; approved terms will be stated in your loan agreement.</p>
 

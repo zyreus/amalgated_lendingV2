@@ -18,7 +18,7 @@ class FeedbackTestimonialApprovedMail extends Mailable
 
     public function build(): self
     {
-        return $this->subject('Thank you — your testimonial is live — '.config('app.name', 'Amalgated Lending'))
+        return $this->subject('Thank you — your testimonial is live — '.config('app.name', 'Amalgated Lending Inc.'))
             ->view('mail.feedback-testimonial-approved', [
                 'recipientName' => $this->recipientName,
                 'bodyLine' => $this->bodyLine,

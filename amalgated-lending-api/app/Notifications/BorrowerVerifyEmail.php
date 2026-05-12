@@ -28,7 +28,7 @@ class BorrowerVerifyEmail extends Notification implements ShouldQueue
         $hours = (int) config('services.borrower_verify.expires_hours', 168);
 
         return (new MailMessage)
-            ->subject('Verify your email - '.config('app.name', 'Amalgated Lending'))
+            ->subject('Verify your email - '.config('app.name', 'Amalgated Lending Inc.'))
             ->greeting('Hello '.trim((string) ($notifiable->name ?? 'Borrower')).',')
             ->line('Please verify your email address to secure your borrower portal access.')
             ->line("This link expires in {$hours} hour(s).")

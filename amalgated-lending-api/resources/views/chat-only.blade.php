@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Amalgated Lending Chat</title>
+    <title>Amalgated Lending Inc. Chat</title>
     <style>
         html, body {
             margin: 0;
@@ -35,11 +35,11 @@
 </head>
 <body>
 <main class="chat-shell">
-    <div class="chat-header">Amalgated Lending — Chat / CRM</div>
+    <div class="chat-header">Amalgated Lending Inc. — Chat / CRM</div>
     <iframe
         class="chat-frame"
         src="{{ env('CHAT_CRM_PATH', '/admin/chat-crm') }}"
-        title="Amalgated Lending Chat CRM"
+        title="Amalgated Lending Inc. Chat CRM"
     ></iframe>
 </main>
 </body>

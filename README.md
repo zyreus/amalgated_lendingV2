@@ -1,4 +1,4 @@
-# Amalgated Lending Deployment Guide
+# Amalgated Lending Inc. Deployment Guide
 
 This project has 3 deployable parts:
 - Frontend (`frontend` built into `dist`) -> `https://amalgatedlending.com`

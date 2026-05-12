@@ -1353,17 +1353,17 @@ export default function AdminChatDashboard({
 
   const openLeadEmailModal = (lead) => {
     setLeadEmailError('')
-    setLeadEmailSubject('Re: Your inquiry — Amalgated Lending')
+    setLeadEmailSubject('Re: Your inquiry — Amalgated Lending Inc.')
     const body = `Hello ${lead.name || 'there'},
 
-Thank you for reaching out to Amalgated Lending regarding your inquiry.
+Thank you for reaching out to Amalgated Lending Inc. regarding your inquiry.
 
 We appreciate your interest in our loan services. Our team has received your message and is currently reviewing your request. We will get back to you as soon as possible with the necessary details, assistance, or next steps regarding your application or concern.
 
 If you have any additional questions or require immediate assistance, please feel free to reply to this email.
 
 Kind regards,
-Amalgated Lending Team`
+Amalgated Lending Inc. Team`
     setLeadEmailBody(body)
     setLeadEmailModal(lead)
   }

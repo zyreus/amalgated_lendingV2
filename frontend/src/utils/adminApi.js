@@ -1,5 +1,5 @@
 /**
- * Amalgated Holdings–style admin/chat API resolution (ported for Amalgated Lending).
+ * Amalgated Holdings–style admin/chat API resolution (ported for Amalgated Lending Inc.).
  * Fixes wrong-port Node, Laravel vs Node mixups, and dev proxy ordering.
  *
  * @see Amalgated_Holdings/Amalgated_Holdings/src/utils/adminApi.js

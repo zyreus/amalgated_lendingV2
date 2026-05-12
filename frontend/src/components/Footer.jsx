@@ -24,7 +24,7 @@ export default function Footer() {
               decoding="async"
             />
             <div className="space-y-0.5">
-              <p className="text-sm font-semibold leading-none tracking-wide text-white">Amalgated Lending</p>
+              <p className="text-sm font-semibold leading-none tracking-wide text-white">Amalgated Lending Inc.</p>
               <p className="text-sm text-white/70">Trusted Lending Solutions in Davao & Mindanao.</p>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import AdminChatDashboard from '../../pages/AdminChatDashboard.jsx'
 import { useAdminApiAuth } from '../context/useAdminApiAuth.js'
 
-/** Official Amalgated Lending — red & white enterprise CRM. */
+/** Official Amalgated Lending Inc. — red & white enterprise CRM. */
 const CRM_THEME = {
   '--admin-bg': '#fafafa',
   '--admin-sidebar': '#ffffff',
@@ -23,7 +23,7 @@ const CRM_THEME = {
 }
 
 /**
- * Amalgated Lending — same Chat & CRM UI as Amalgated Holdings (AdminChatDashboard).
+ * Amalgated Lending Inc. — same Chat & CRM UI as Amalgated Holdings (AdminChatDashboard).
  * Requires Node chat API + Socket.IO (see VITE_CHAT_SERVER_URL).
  */
 export default function AdminChatCRM() {

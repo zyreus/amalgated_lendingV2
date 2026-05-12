@@ -220,7 +220,7 @@ export default function Header() {
         >
           <img
             src="/amalgated-lending-logo.png"
-            alt="Amalgated Lending"
+            alt="Amalgated Lending Inc."
             width={48}
             height={48}
             decoding="async"
@@ -229,7 +229,7 @@ export default function Header() {
           />
           <span className="flex min-w-0 flex-col border-l border-black/[0.08] pl-2.5 leading-tight sm:pl-3 dark:border-white/10">
             <span className="truncate text-[0.8125rem] font-bold tracking-tight text-brand-text sm:text-[0.9375rem] dark:text-white">
-              Amalgated Lending
+              Amalgated Lending Inc.
             </span>
             <span className="mt-0.5 truncate text-[10px] font-medium leading-snug text-brand-text/60 sm:text-[11px] dark:text-white/60">
               Trusted Lending · Davao &amp; Nationwide
@@ -490,7 +490,7 @@ export default function Header() {
                   </div>
                 </div>
                 <div className="overflow-hidden rounded-xl border border-black/10 dark:border-white/10">
-                  <iframe title="Amalgated Lending Davao office map" className="h-44 w-full border-0 sm:h-full sm:min-h-[200px]" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={MAP_EMBED_SRC} />
+                  <iframe title="Amalgated Lending Inc. Davao office map" className="h-44 w-full border-0 sm:h-full sm:min-h-[200px]" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={MAP_EMBED_SRC} />
                 </div>
               </div>
             </MegaPanel>

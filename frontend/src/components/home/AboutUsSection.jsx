@@ -10,7 +10,7 @@ export default function AboutUsSection() {
           <p className="section-title">About Us</p>
           <h2 className="mt-2 text-3xl font-semibold text-brand-text">A Davao-based lender focused on responsible growth.</h2>
           <p className="mt-3 text-sm leading-relaxed text-brand-text/75">
-            Amalgated Lending supports individuals, employees, and small business owners with practical financing
+            Amalgated Lending Inc. supports individuals, employees, and small business owners with practical financing
             options. Since 2015, our team has worked to make loan access more transparent, secure, and supportive
             for communities across Davao City, Davao del Sur, and nearby Mindanao areas.
           </p>

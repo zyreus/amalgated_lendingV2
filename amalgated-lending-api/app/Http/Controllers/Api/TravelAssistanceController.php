@@ -305,7 +305,7 @@ class TravelAssistanceController extends Controller
         }
 
         $mailable = new LoanApplicationReceivedMail($loan, (string) $borrower->name);
-        $subject = 'We received your Travel Assistance Loan application — Amalgated Lending';
+        $subject = 'We received your Travel Assistance Loan application — Amalgated Lending Inc.';
 
         if ($this->brevo->isConfigured()) {
             try {

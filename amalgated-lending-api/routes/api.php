@@ -59,7 +59,7 @@ use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
 /*
-| Amalgated Lending — REST API (JWT + dynamic RBAC)
+| Amalgated Lending Inc. — REST API (JWT + dynamic RBAC)
 */
 
 Route::prefix('v1')->group(function () {

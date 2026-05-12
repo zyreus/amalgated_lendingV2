@@ -323,14 +323,14 @@ export default function AdminLayout() {
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-md shadow-red-500/10 ring-1 ring-black/5">
                   <img
                     src={amalgatedLogo}
-                    alt="Amalgated Lending"
+                    alt="Amalgated Lending Inc."
                     className="h-full w-full object-contain p-0.5"
                     loading="eager"
                     decoding="async"
                   />
                 </div>
                 <div className={`min-w-0 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#DC2626]">Amalgated Lending</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#DC2626]">Amalgated Lending Inc.</p>
                   <p className="truncate text-base font-semibold tracking-tight text-gray-900">Admin</p>
                 </div>
               </div>

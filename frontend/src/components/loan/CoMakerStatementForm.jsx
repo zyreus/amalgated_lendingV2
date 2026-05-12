@@ -51,7 +51,7 @@ export default function CoMakerStatementForm({ value, onChange, prefillApplicant
       <div className={SECTION}>
         <p className="text-xs leading-relaxed text-slate-700">
           I agree to be the co-maker of the applicant named below for the requested loan amount. I understand that I may be jointly and solidarily liable
-          according to the terms approved by Amalgated Lending.
+          according to the terms approved by Amalgated Lending Inc.
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div>

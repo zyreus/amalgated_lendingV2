@@ -65,10 +65,10 @@ export function createEmptyDependent() {
 export const TRAVEL_TERMS_TEXT = `TERMS AND CONDITIONS — TRAVEL ASSISTANCE LOAN
 
 1. The borrower certifies that all information provided in this application is true and complete.
-2. Amalgated Lending Corporation may verify employment, identity, and collateral information with third parties.
+2. Amalgated Lending Inc. may verify employment, identity, and collateral information with third parties.
 3. Loan approval is subject to credit evaluation and internal policies; submission does not guarantee approval.
 4. Interest, fees, and repayment terms will be disclosed in the loan agreement upon approval.
-5. The borrower authorizes Amalgated Lending to process personal data in accordance with applicable privacy laws.
+5. The borrower authorizes Amalgated Lending Inc. to process personal data in accordance with applicable privacy laws.
 6. Failure to disclose material facts may result in denial or cancellation of the loan.
 7. Disbursement may require a designated bank account and completed KYC requirements.
 8. These terms supplement the formal loan agreement executed at release of proceeds.`

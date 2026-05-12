@@ -567,7 +567,7 @@
     </table>
 
     <p class="note">
-        I / We hereby certify that the information furnished on this application is correct. It is agreed that any information submitted herein may be verified and documents shall remain the property of Amalgated Lending whenever or not the loan is granted.
+        I / We hereby certify that the information furnished on this application is correct. It is agreed that any information submitted herein may be verified and documents shall remain the property of Amalgated Lending Inc. whenever or not the loan is granted.
     </p>
 
     <div class="signature-wrap">
@@ -592,7 +592,7 @@
     </div>
 
     <div class="footer">
-        Amalgated Lending Loan Application · <span class="page-number"></span>
+        Amalgated Lending Inc. Loan Application · <span class="page-number"></span>
     </div>
 </div>
 </body>

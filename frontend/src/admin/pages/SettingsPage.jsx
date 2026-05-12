@@ -6,7 +6,7 @@ import { AdminPageSkeleton } from '../../components/AppSkeletons.jsx'
 
 const DEFAULTS = {
   company: {
-    company_name: 'Amalgated Lending',
+    company_name: 'Amalgated Lending Inc.',
     logo_url: '',
     address: '',
     contact_number: '',
@@ -28,7 +28,7 @@ const DEFAULTS = {
     smtp_host: '',
     smtp_port: 587,
     smtp_user: '',
-    smtp_from_name: 'Amalgated Lending',
+    smtp_from_name: 'Amalgated Lending Inc.',
     smtp_from_email: '',
     template_loan_submitted_subject: 'Loan application submitted',
     template_loan_approved_subject: 'Your loan was approved',

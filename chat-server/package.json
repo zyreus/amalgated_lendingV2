@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Socket.IO + REST API for Amalgated Lending (chat, CRM, feedback, inquiries, lending applications). Copied from Amalgated Holdings server.js stack.",
+  "description": "Socket.IO + REST API for Amalgated Lending Inc. (chat, CRM, feedback, inquiries, lending applications). Copied from Amalgated Holdings server.js stack.",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js"

@@ -1,5 +1,5 @@
 /**
- * Amalgated Lending — AI "training" for visitor chat (Groq system context + keyword fallbacks).
+ * Amalgated Lending Inc. — AI "training" for visitor chat (Groq system context + keyword fallbacks).
  * Edit this file or set LENDING_AI_FAQ_PATH to a UTF-8 text file (appended to the FAQ block).
  */
 
@@ -13,11 +13,11 @@ export const LENDING_OFFICE =
   'ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000';
 
 export const LENDING_AI_APPEND = `
-Official role: You are the platform’s AI assistant for Amalgated Lending (Amalgated Lending Inc. / ALI) — website visitors, borrowers (general how-to only), and admins (procedural guidance only).
+Official role: You are the platform’s AI assistant for Amalgated Lending Inc. (ALI) — website visitors, borrowers (general how-to only), and admins (procedural guidance only).
 You help with: personal and business loans, salary loans, chattel mortgage, real estate mortgage, travel assistance, SSS/GSIS pension-related loan pages, application steps, loan products overview, office contact, navigation, and responsible borrowing.
 Always steer users to Loan Products and Apply for product-specific numbers and checklists. The lending business is part of the Amalgated Holdings group.
 When "Verified knowledge excerpts" are included with the visitor message, treat them as authoritative website and catalogue text; do not contradict them. If excerpts conflict with a general answer, follow the excerpts.
-Official public phone for Amalgated Lending is mobile ${LENDING_PHONE} only. Never cite (082) 297 8099, landlines, or any number except ${LENDING_PHONE} and ${LENDING_EMAIL} for contact — older numbers may appear in outdated excerpts; prefer this rule when giving a callback number.
+Official public phone for Amalgated Lending Inc. is mobile ${LENDING_PHONE} only. Never cite (082) 297 8099, landlines, or any number except ${LENDING_PHONE} and ${LENDING_EMAIL} for contact — older numbers may appear in outdated excerpts; prefer this rule when giving a callback number.
 Tone: professional, friendly, accurate, and concise (prefer short answers; add steps only when the user asks).
 Security: Never reveal passwords, OTPs, tokens, borrower PII you do not see in the current thread, internal admin-only records, database/backend details, or unpublished formulas beyond approved site/CMS text. Never invent system vulnerabilities. For account-specific balances, approvals, or disputes, direct users to the borrower portal (if they are the borrower) or to official support — do not guess outcomes.
 Admin users: You may describe generic workflows (e.g. reviewing applications, monitoring payments, running reports) but never expose confidential data, credentials, or internal identifiers.
@@ -59,7 +59,7 @@ Typical customer topics (answer in the user's language; stay within these guardr
 
 16) Off-topic — Politely redirect to lending, holdings contact, or applying.
 
-17) Public website — Mission and credibility: Amalgated Lending offers regulated lending products in Davao & Mindanao; guide visitors to Loan Products, Features/Branches pages, and Contact. Do not invent awards or regulatory claims not in excerpts.
+17) Public website — Mission and credibility: Amalgated Lending Inc. offers regulated lending products in Davao & Mindanao; guide visitors to Loan Products, Features/Branches pages, and Contact. Do not invent awards or regulatory claims not in excerpts.
 
 18) Loan products to reference (by site pages) — Salary loan; SSS/GSIS pension-style loan pages; chattel mortgage; real estate mortgage; travel assistance; business/personal loan categories as shown on the site. "Emergency" or generic personal needs map to the closest product page and assessment — no guaranteed amounts or rates in chat.
 
@@ -115,7 +115,7 @@ export function getLendingFallbackReply(userMessage, lang) {
 
   if (l === 'fil') {
     if (/apply|aplikasyon|loan|utang|salary|negosyo|personal|business|hiram/i.test(m)) {
-      return `Maaari kang mag-apply online sa Amalgated Lending website (Apply page). Kailangan ng valid ID, proof of income, at supporting documents. Susuriin ng team at makikipag-ugnay sa iyo — karaniwan sa loob ng 1–2 araw ng trabaho. Tulong: tumawag sa ${LENDING_PHONE}.`;
+      return `Maaari kang mag-apply online sa Amalgated Lending Inc. website (Apply page). Kailangan ng valid ID, proof of income, at supporting documents. Susuriin ng team at makikipag-ugnay sa iyo — karaniwan sa loob ng 1–2 araw ng trabaho. Tulong: tumawag sa ${LENDING_PHONE}.`;
     }
     if (/document|papeles|requirements|id\b|pantapat|collateral|sangla|kotse|bahay|lupa/i.test(m)) {
       return `Karaniwang humihingi ng valid government ID, proof of income, proof of address, at karagdagang dokumento depende sa loan product (lalo na kung may collateral). Kumpletuhin ang Apply form online; titingnan ng team kung ano pa ang kailangan. Tawagan ang ${LENDING_PHONE} kung may partikular kang produkto.`;
@@ -148,7 +148,7 @@ export function getLendingFallbackReply(userMessage, lang) {
       return `Opisina: ${LENDING_OFFICE}. Mobile: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}.`;
     }
     if (/hello|hi |^hi$|kumusta|tulong|help|magandang/i.test(m)) {
-      return `Kumusta! Tutulungan ka namin sa Amalgated Lending — personal, salary, business loans, at iba pa. Ano ang gusto mong malaman? Puwede mo ring gamitin ang mga quick option sa chat.`;
+      return `Kumusta! Tutulungan ka namin sa Amalgated Lending Inc. — personal, salary, business loans, at iba pa. Ano ang gusto mong malaman? Puwede mo ring gamitin ang mga quick option sa chat.`;
     }
     if (/salamat|thank/i.test(m)) {
       return `Walang anuman! Kung may iba ka pang tanong tungkol sa loan o application, sabihin lang.`;
@@ -158,7 +158,7 @@ export function getLendingFallbackReply(userMessage, lang) {
 
   if (l === 'es') {
     if (/apply|aplicación|loan|préstamo|salary|business|personal/i.test(m)) {
-      return `Puede aplicar en línea en el sitio de Amalgated Lending (página Apply). Suele necesitarse ID válido, comprobante de ingresos y documentos. Teléfono: ${LENDING_PHONE}.`;
+      return `Puede aplicar en línea en el sitio de Amalgated Lending Inc. (página Apply). Suele necesitarse ID válido, comprobante de ingresos y documentos. Teléfono: ${LENDING_PHONE}.`;
     }
     if (/documento|requisito|papel|garantía|colateral|vehículo|propiedad/i.test(m)) {
       return `Normalmente se pide ID oficial, comprobante de ingresos, comprobante de domicilio y documentos según el producto (p. ej. garantía inmobiliaria o vehículo). Complete el formulario Apply en línea; el equipo indicará si falta algo. ${LENDING_PHONE}.`;
@@ -170,13 +170,13 @@ export function getLendingFallbackReply(userMessage, lang) {
       return `Oficina principal: ${LENDING_OFFICE}. Móvil: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}.`;
     }
     if (/hola|buenos|ayuda|gracias por contactar/i.test(m)) {
-      return `Hola, le ayudamos con préstamos Amalgated Lending (personal, salarial, empresarial y más). ¿Qué necesita saber? También puede usar las opciones rápidas del chat.`;
+      return `Hola, le ayudamos con préstamos Amalgated Lending Inc. (personal, salarial, empresarial y más). ¿Qué necesita saber? También puede usar las opciones rápidas del chat.`;
     }
-    return `Gracias por tu mensaje. Para préstamos Amalgated Lending, llama al ${LENDING_PHONE} o usa la página Apply en el sitio.`;
+    return `Gracias por tu mensaje. Para préstamos Amalgated Lending Inc., llama al ${LENDING_PHONE} o usa la página Apply en el sitio.`;
   }
 
   if (/apply|application|how do i apply|apply for|loan application/i.test(m)) {
-    return `You can apply online through the Amalgated Lending website’s Apply page. You’ll typically need a valid ID, proof of income, and supporting documents. Our team reviews applications and usually contacts you within 1–2 business days. Need help? Call ${LENDING_PHONE}.`;
+    return `You can apply online through the Amalgated Lending Inc. website’s Apply page. You’ll typically need a valid ID, proof of income, and supporting documents. Our team reviews applications and usually contacts you within 1–2 business days. Need help? Call ${LENDING_PHONE}.`;
   }
   if (/document|paperwork|requirements|what do i need|valid id|collateral|chattel|mortgage|vehicle|property/i.test(m)) {
     return `Most applications need a valid government ID, proof of income, proof of address, and product-specific documents (for example collateral paperwork for chattel or real-estate loans). Complete the Apply form online—our team will tell you if anything else is needed. For a specific product, call ${LENDING_PHONE}.`;
@@ -224,10 +224,10 @@ export function getLendingFallbackReply(userMessage, lang) {
     return `For branch hours and appointments, please call ${LENDING_PHONE}.`;
   }
   if (/hello|hi |^hi$|hey|good morning|good afternoon|help\b/i.test(m)) {
-    return `Hello! I can help with Amalgated Lending — personal, salary, business loans, and more. What would you like to know? You can also use the quick options in this chat.`;
+    return `Hello! I can help with Amalgated Lending Inc. — personal, salary, business loans, and more. What would you like to know? You can also use the quick options in this chat.`;
   }
   if (/thank|thanks|salamat/i.test(m)) {
     return `You’re welcome! If you need anything else about loans or your application, just ask.`;
   }
-  return `I’m sorry, I couldn’t find that information here. For loan details, rates, or applications, contact ${LENDING_EMAIL} or call ${LENDING_PHONE}, or use the Apply page on the Amalgated Lending website. Our menu above has shortcuts for common questions.`;
+  return `I’m sorry, I couldn’t find that information here. For loan details, rates, or applications, contact ${LENDING_EMAIL} or call ${LENDING_PHONE}, or use the Apply page on the Amalgated Lending Inc. website. Our menu above has shortcuts for common questions.`;
 }

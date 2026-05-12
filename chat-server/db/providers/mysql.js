@@ -161,7 +161,7 @@ export async function ensureApplicationsTable() {
   }
 }
 
-/** Amalgated Lending — loan application forms (JSON payload). */
+/** Amalgated Lending Inc. — loan application forms (JSON payload). */
 export async function ensureLendingApplicationsTable() {
   await q(
     `CREATE TABLE IF NOT EXISTS lending_applications (

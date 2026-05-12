@@ -279,7 +279,7 @@
             </div>
         </div>
         <div class="signature">
-            <div class="label">Approved By (Amalgated Lending)</div>
+            <div class="label">Approved By (Amalgated Lending Inc.)</div>
             <div class="line"></div>
             <div class="small" style="margin-top: 6px;">
                 Officer: {{ $approval['approved_by'] ?? '—' }}<br>
@@ -290,10 +290,10 @@
 
     <p class="note">
         This Statement of Account is generated based on company-approved product rules and the current loan payment ledger.
-        For discrepancies, please contact Amalgated Lending for verification and correction.
+        For discrepancies, please contact Amalgated Lending Inc. for verification and correction.
     </p>
 
-    <div class="footer">Amalgated Lending — internal / borrower copy</div>
+    <div class="footer">Amalgated Lending Inc. — internal / borrower copy</div>
 </div>
 </body>
 </html>

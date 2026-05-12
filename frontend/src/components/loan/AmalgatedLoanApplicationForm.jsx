@@ -531,8 +531,8 @@ export default function AmalgatedLoanApplicationForm({
       <div className={`${SECTION} print:break-inside-avoid`}>
         <h3 className={H3}>Certification</h3>
         <p className="text-xs leading-relaxed text-slate-600">
-          I / we certify that the information furnished on this application is correct. It is agreed that Amalgated Lending may inquire into the correctness of the information submitted
-          herein, and that these documents shall remain the property of Amalgated Lending whether or not the loan is granted.
+          I / we certify that the information furnished on this application is correct. It is agreed that Amalgated Lending Inc. may inquire into the correctness of the information submitted
+          herein, and that these documents shall remain the property of Amalgated Lending Inc. whether or not the loan is granted.
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <div>

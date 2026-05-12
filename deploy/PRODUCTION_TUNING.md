@@ -1,4 +1,4 @@
-# Amalgated Lending — Production Performance Tuning
+# Amalgated Lending Inc. — Production Performance Tuning
 
 A senior-level checklist for getting the SPA + Laravel API production stack running fast,
 cool, and stable. Pair this with `deploy/apache/performance.conf`,

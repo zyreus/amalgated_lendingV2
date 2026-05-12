@@ -50,7 +50,7 @@ class SendBorrowerEmailVerificationJob implements ShouldQueue
 
         $link = BorrowerVerificationUrl::signedVerifyUrl($user);
         $mailable = new BorrowerVerifyEmailMail($user, $link);
-        $subject = 'Verify your email — '.config('app.name', 'Amalgated Lending');
+        $subject = 'Verify your email — '.config('app.name', 'Amalgated Lending Inc.');
 
         $result = $sender->sendHtmlMailable($mailable, $email, (string) $user->name, $subject, [
             'job' => __CLASS__,

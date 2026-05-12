@@ -208,7 +208,7 @@ const isAllowedChatOrigin = (origin) => {
         return true;
       }
     }
-    // Allow Amalgated Lending site variants behind Cloudflare/proxies.
+    // Allow Amalgated Lending Inc. site variants behind Cloudflare/proxies.
     if (hostname === 'amalgatedlending.com' || hostname.endsWith('.amalgatedlending.com')) return true;
     if (hostname === 'hrisdemo.agctek.co' || hostname.endsWith('.agctek.co')) return true;
   } catch {
@@ -688,7 +688,7 @@ app.post('/api/applications', uploadResume.single('resume'), async (req, res) =>
   }
 });
 
-// ── Amalgated Lending: loan applications (JSON) ──
+// ── Amalgated Lending Inc.: loan applications (JSON) ──
 function requireLendingAdminSecret(req, res, next) {
   const secret = process.env.LENDING_ADMIN_API_SECRET
   if (!secret || String(secret).trim().length < 8) {
@@ -905,7 +905,7 @@ When a "Lending assistant" section is included, follow it strictly and never inv
 
 // Static company/office info (aligned with amalgatedlending.com Contact page) for AI context
 const WEBSITE_KNOWLEDGE = `
-- Amalgated Lending (Amalgated Lending Inc.) — personal and business loans in Davao & Mindanao.
+- Amalgated Lending Inc. (ALI) — personal and business loans in Davao & Mindanao.
 - Address: ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000.
 - Mobile: 09190675095 (official callback — do not use or repeat any old landline such as (082) 297 8099).
 - Email: support@amalgatedlending.com.
@@ -1189,12 +1189,12 @@ function getHoldingsFallbackReply(userMessage, lang) {
   const addr =
     'ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000';
   if (l === 'fil') {
-    return `Salamat sa mensahe mo. Para sa Amalgated Holdings / Amalgated Lending, mobile ${phone}, email ${email}, o bisitahin ang amalgatedlending.com o amalgatedholdings.com.`
+    return `Salamat sa mensahe mo. Para sa Amalgated Holdings / Amalgated Lending Inc., mobile ${phone}, email ${email}, o bisitahin ang amalgatedlending.com o amalgatedholdings.com.`
   }
   if (/contact|phone|email|address|office|where|location/i.test(m)) {
-    return `Amalgated Lending — ${addr}. Mobile: ${phone}. Email: ${email}. Website: https://amalgatedlending.com (Holdings group: https://amalgatedholdings.com).`
+    return `Amalgated Lending Inc. — ${addr}. Mobile: ${phone}. Email: ${email}. Website: https://amalgatedlending.com (Holdings group: https://amalgatedholdings.com).`
   }
-  return `Thanks for reaching out. Amalgated Lending: mobile ${phone}, ${email}, https://amalgatedlending.com. Amalgated Holdings group: https://amalgatedholdings.com. How can I help you today?`
+  return `Thanks for reaching out. Amalgated Lending Inc.: mobile ${phone}, ${email}, https://amalgatedlending.com. Amalgated Holdings group: https://amalgatedholdings.com. How can I help you today?`
 }
 
 function optimizeReplyForProfile(reply, contentProfile) {
@@ -2370,7 +2370,7 @@ app.get('/api/admin/applications', requireAdmin, requirePermissionAny('manage_ap
   }
 });
 
-// ── Admin: Amalgated Lending (loan applications from lending site) ──
+// ── Admin: Amalgated Lending Inc. (loan applications from lending site) ──
 app.get('/api/admin/lending-applications', requireAdmin, requirePermissionAny('manage_applications', 'manage_settings'), async (req, res) => {
   try {
     const limit = Math.min(Math.max(Number(req.query.limit) || 300, 1), 500);
@@ -3468,7 +3468,7 @@ if (fs.existsSync(clientDir)) {
 
 function onChatListening() {
   writeChatActivePort(port);
-  console.log(`Amalgated Lending chat server listening on http://localhost:${port}`);
+  console.log(`Amalgated Lending Inc. chat server listening on http://localhost:${port}`);
 }
 
 function startListening(nextPort) {

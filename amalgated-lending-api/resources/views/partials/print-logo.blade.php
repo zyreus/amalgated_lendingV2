@@ -11,7 +11,7 @@
 
 <img
     src="{{ $logoSrc }}"
-    alt="Amalgated Lending logo"
+    alt="Amalgated Lending Inc. logo"
     class="brand-logo"
     style="width:54px;height:54px;display:block;object-fit:contain;"
 />

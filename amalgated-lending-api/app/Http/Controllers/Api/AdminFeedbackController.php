@@ -355,7 +355,7 @@ class AdminFeedbackController extends Controller
                 }
                 $body = 'Your review has been approved for public display on our website (where you gave consent). Thank you for sharing your experience'.($display !== '' ? ' — we may show you as “'.$display.'”.' : '.');
                 $mailable = new FeedbackTestimonialApprovedMail($name !== '' ? $name : 'Borrower', $body);
-                $subject = 'Thank you — testimonial approved — '.config('app.name', 'Amalgated Lending');
+                $subject = 'Thank you — testimonial approved — '.config('app.name', 'Amalgated Lending Inc.');
                 app(TransactionalMailSender::class)->sendHtmlMailable($mailable, $to, $name !== '' ? $name : $to, $subject, [
                     'flow' => 'feedback_testimonial_approved',
                     'feedback_ticket_id' => $t->id,

@@ -46,7 +46,7 @@ class BrevoMailService
 
         $payload = [
             'sender' => [
-                'name' => is_string($fromName) ? $fromName : 'Amalgated Lending',
+                'name' => is_string($fromName) ? $fromName : 'Amalgated Lending Inc.',
                 'email' => $fromEmail,
             ],
             'to' => [

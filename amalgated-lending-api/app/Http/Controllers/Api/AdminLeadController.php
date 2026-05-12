@@ -110,7 +110,7 @@ class AdminLeadController extends Controller
         }
 
         $leadName = trim((string) ($data['name'] ?? $lead?->name ?? '')) ?: 'there';
-        $senderName = (string) ($request->user()->name ?? 'Amalgated Lending');
+        $senderName = (string) ($request->user()->name ?? 'Amalgated Lending Inc.');
 
         try {
             if ($brevo->isConfigured()) {

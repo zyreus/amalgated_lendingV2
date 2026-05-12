@@ -7,8 +7,8 @@ export default function PrivacyPolicyPage() {
   return (
     <div className="flex min-h-screen flex-col bg-white">
       <SeoMeta
-        title="Privacy Policy | Amalgated Lending"
-        description="How Amalgated Lending collects, uses, secures, and protects personal information under the Data Privacy Act of 2012."
+        title="Privacy Policy | Amalgated Lending Inc."
+        description="How Amalgated Lending Inc. collects, uses, secures, and protects personal information under the Data Privacy Act of 2012."
         canonical="https://amalgatedlending.com/privacy-policy"
       />
       <SubPageHeader />

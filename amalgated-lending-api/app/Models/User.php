@@ -136,7 +136,7 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
                 $email = $this->getEmailForPasswordReset();
                 $url = $base.'/reset-password?token='.urlencode($token).'&email='.urlencode($email);
                 $name = trim((string) ($this->name ?? ''));
-                $appName = (string) config('app.name', 'Amalgated Lending');
+                $appName = (string) config('app.name', 'Amalgated Lending Inc.');
                 $greeting = $name !== '' ? 'Hi '.$name : 'Hello';
                 $html = '<p>'.e($greeting).',</p>'
                     .'<p>We received a request to reset your password for your '.e($appName).' borrower account.</p>'

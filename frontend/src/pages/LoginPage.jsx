@@ -44,7 +44,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-black px-4 py-10 text-white">
       <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0a0a0a] p-8 shadow-xl">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-500">Amalgated Lending</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-500">Amalgated Lending Inc.</p>
         <h1 className="mt-2 text-2xl font-semibold">Sign in</h1>
         <p className="mt-2 text-sm text-white/60">Sign in with your username/email and password.</p>
 

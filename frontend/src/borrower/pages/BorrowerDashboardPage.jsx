@@ -181,9 +181,9 @@ th{background:#f9fafb}
 </style>
 </head><body><div class="wrap">
 <div class="head">
-  <img class="logo" src="${brandLogoUrl}" alt="Amalgated Lending" />
+  <img class="logo" src="${brandLogoUrl}" alt="Amalgated Lending Inc." />
   <div>
-    <p class="title">Amalgated Lending Payment Invoice</p>
+    <p class="title">Amalgated Lending Inc. Payment Invoice</p>
     <p class="muted" style="margin:6px 0 0">Invoice #: ${invoiceNumber(payment)}</p>
   </div>
 </div>

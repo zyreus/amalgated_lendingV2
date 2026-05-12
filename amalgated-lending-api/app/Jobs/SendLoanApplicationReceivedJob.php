@@ -55,7 +55,7 @@ class SendLoanApplicationReceivedJob implements ShouldQueue
 
         $mailable = new LoanApplicationReceivedMail($loan, (string) $borrower->name);
         $loanRef = 'AL-'.str_pad((string) $loan->id, 7, '0', STR_PAD_LEFT);
-        $subject = 'Application received — '.$loanRef.' — '.config('app.name', 'Amalgated Lending');
+        $subject = 'Application received — '.$loanRef.' — '.config('app.name', 'Amalgated Lending Inc.');
 
         $ok = $sender->sendHtmlMailable($mailable, $email, (string) $borrower->name, $subject, [
             'job' => __CLASS__,

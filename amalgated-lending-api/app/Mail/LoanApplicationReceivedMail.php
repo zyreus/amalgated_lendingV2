@@ -29,7 +29,7 @@ class LoanApplicationReceivedMail extends Mailable
 
         $loanRef = 'AL-'.str_pad((string) $this->loan->id, 7, '0', STR_PAD_LEFT);
 
-        return $this->subject('Application received — '.$loanRef.' — '.config('app.name', 'Amalgated Lending'))
+        return $this->subject('Application received — '.$loanRef.' — '.config('app.name', 'Amalgated Lending Inc.'))
             ->view('mail.loan-application-received', [
                 'borrowerName' => $this->borrowerName,
                 'loanId' => $this->loan->id,

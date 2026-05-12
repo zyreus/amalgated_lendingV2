@@ -65,7 +65,7 @@ export default function FeaturesPage() {
         <div className="border-l-4 border-red-600 pl-4">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600">Features</p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-black sm:text-3xl">
-            Why Amalgated Lending
+            Why Amalgated Lending Inc.
           </h1>
         </div>
         <p className="mt-4 max-w-3xl text-[15px] leading-relaxed text-black/70">

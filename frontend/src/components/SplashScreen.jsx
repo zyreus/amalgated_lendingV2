@@ -57,7 +57,7 @@ export default function SplashScreen({ onDone }) {
           transition={{ duration: 0.5, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
         >
           <h1 className="text-center text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            Amalgated Lending
+            Amalgated Lending Inc.
           </h1>
           <motion.div
             className="h-0.5 w-16 rounded-full bg-[#dc2626] sm:w-20"

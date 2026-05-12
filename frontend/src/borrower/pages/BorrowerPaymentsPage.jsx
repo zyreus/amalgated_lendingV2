@@ -86,9 +86,9 @@ function buildInvoiceHtml(payment, user) {
   <div class="wrap">
     <div class="topbar">
       <div class="brand">
-        <img class="logo" src="${brandLogoUrl}" alt="Amalgated Lending" />
+        <img class="logo" src="${brandLogoUrl}" alt="Amalgated Lending Inc." />
         <div style="min-width:0">
-          <h1>Amalgated Lending</h1>
+          <h1>Amalgated Lending Inc.</h1>
           <p>Payment invoice / receipt</p>
         </div>
       </div>

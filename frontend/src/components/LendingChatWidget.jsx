@@ -20,27 +20,27 @@ const QUICK_OPTIONS = [
 const QUICK_PROMPTS = {
   en: {
     apply:
-      "I'd like a clear guide on how to apply for a loan with Amalgated Lending. Please explain: starting the Apply flow on the website, documents usually required, eligibility verification and underwriting, what happens after approval, and where to click next on amalgatedlending.com. Use only verified website / catalogue information.",
+      "I'd like a clear guide on how to apply for a loan with Amalgated Lending Inc. Please explain: starting the Apply flow on the website, documents usually required, eligibility verification and underwriting, what happens after approval, and where to click next on amalgatedlending.com. Use only verified website / catalogue information.",
     rates:
-      'How do interest rates, fees, and monthly amortization work for Amalgated Lending products? If exact figures depend on product and credit assessment, say so clearly and point me to the Apply page or Contact page — do not invent APRs or payment amounts.',
+      'How do interest rates, fees, and monthly amortization work for Amalgated Lending Inc. products? If exact figures depend on product and credit assessment, say so clearly and point me to the Apply page or Contact page — do not invent APRs or payment amounts.',
     products:
-      'What loan products does Amalgated Lending offer on amalgatedlending.com? Briefly describe categories such as salary loan, pension/SSS-related loans, chattel mortgage, real estate mortgage, travel assistance, and business lending — and tell me which site pages to open for details. Follow verified website excerpts when provided.',
+      'What loan products does Amalgated Lending Inc. offer on amalgatedlending.com? Briefly describe categories such as salary loan, pension/SSS-related loans, chattel mortgage, real estate mortgage, travel assistance, and business lending — and tell me which site pages to open for details. Follow verified website excerpts when provided.',
   },
   fil: {
     apply:
-      'Paano mag-apply ng loan sa Amalgated Lending? Ipaliwanag ang mga hakbang sa Apply page, karaniwang dokumento, proseso ng verification at underwriting, at susunod na gagawin. Gumamit lamang ng impormasyon mula sa website.',
+      'Paano mag-apply ng loan sa Amalgated Lending Inc.? Ipaliwanag ang mga hakbang sa Apply page, karaniwang dokumento, proseso ng verification at underwriting, at susunod na gagawin. Gumamit lamang ng impormasyon mula sa website.',
     rates:
-      'Paano gumagana ang interest rates, fees, at monthly amortization sa Amalgated Lending? Kung depende sa produkto at credit assessment, sabihin ito — huwag mag-imbento ng eksaktong porsyento o halaga.',
+      'Paano gumagana ang interest rates, fees, at monthly amortization sa Amalgated Lending Inc.? Kung depende sa produkto at credit assessment, sabihin ito — huwag mag-imbento ng eksaktong porsyento o halaga.',
     products:
-      'Ano ang mga loan product ng Amalgated Lending sa website? Maikling ilarawan (salary, pension/SSS, chattel, real estate mortgage, travel assistance, business) at saang pahina dapat magbasa.',
+      'Ano ang mga loan product ng Amalgated Lending Inc. sa website? Maikling ilarawan (salary, pension/SSS, chattel, real estate mortgage, travel assistance, business) at saang pahina dapat magbasa.',
   },
   es: {
     apply:
-      '¿Cómo solicito un préstamo en Amalgated Lending? Explique el flujo Apply en el sitio, documentos habituales, verificación y sus siguientes pasos. Use solo información del sitio web verificada.',
+      '¿Cómo solicito un préstamo en Amalgated Lending Inc.? Explique el flujo Apply en el sitio, documentos habituales, verificación y sus siguientes pasos. Use solo información del sitio web verificada.',
     rates:
-      '¿Cómo funcionan tasas, comisiones y amortización mensual en Amalgated Lending? Si depende del producto y evaluación crediticia, dígalo; no invente APR ni cuotas exactas.',
+      '¿Cómo funcionan tasas, comisiones y amortización mensual en Amalgated Lending Inc.? Si depende del producto y evaluación crediticia, dígalo; no invente APR ni cuotas exactas.',
     products:
-      '¿Qué productos de préstamo ofrece Amalgated Lending en amalgatedlending.com? Resuma (salario, pensión/SSS, prenda, hipoteca, viaje, negocio) y qué páginas abrir.',
+      '¿Qué productos de préstamo ofrece Amalgated Lending Inc. en amalgatedlending.com? Resuma (salario, pensión/SSS, prenda, hipoteca, viaje, negocio) y qué páginas abrir.',
   },
 }
 const CHAT_TIME_ZONE = 'Asia/Manila'
@@ -815,7 +815,7 @@ export default function LendingChatWidget() {
             )}
             <img src="/amalgated-lending-logo.png" alt="" className="h-9 w-9 rounded-full bg-white/20 object-contain p-0.5" />
             <div className="flex-1">
-              <p className="text-sm font-semibold">Amalgated Lending Assistant</p>
+              <p className="text-sm font-semibold">Amalgated Lending Inc. Assistant</p>
               <p className="text-xs leading-snug text-white/70">
                 {!socketConnected
                   ? 'Offline delivery — connects to staff inbox (enable chat server for AI streaming).'
@@ -845,7 +845,7 @@ export default function LendingChatWidget() {
               <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
                 <img src="/amalgated-lending-logo.png" alt="" className="h-16 w-16 rounded-full object-contain" />
                 <div>
-                  <p className="text-base font-semibold text-[#3A3F45]">Welcome to Amalgated Lending!</p>
+                  <p className="text-base font-semibold text-[#3A3F45]">Welcome to Amalgated Lending Inc.!</p>
                   <p className="mt-1 text-sm text-[#3A3F45]/80">How can we help you today?</p>
                 </div>
                 <div className="mt-2 flex w-full flex-col gap-2">

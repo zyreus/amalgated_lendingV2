@@ -9,7 +9,7 @@ export default function RoleDashboardPage({ title }) {
   return (
     <div className="min-h-screen bg-black px-6 py-10 text-white">
       <div className="mx-auto max-w-4xl rounded-2xl border border-white/10 bg-[#0a0a0a] p-6">
-        <p className="text-xs uppercase tracking-[0.2em] text-red-400">Amalgated Lending</p>
+        <p className="text-xs uppercase tracking-[0.2em] text-red-400">Amalgated Lending Inc.</p>
         <h1 className="mt-2 text-2xl font-semibold">{title}</h1>
         <p className="mt-2 text-sm text-white/60">
           Signed in as {user?.name || 'User'} ({user?.email || '—'}) · role: {user?.role || '—'}

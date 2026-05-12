@@ -37,7 +37,7 @@ function App() {
     {
       '@context': 'https://schema.org',
       '@type': 'FinancialService',
-      name: 'Amalgated Lending',
+      name: 'Amalgated Lending Inc.',
       url: webUrl,
       areaServed: ['Davao', 'Mindanao', 'Philippines'],
       address: {
@@ -51,7 +51,7 @@ function App() {
     {
       '@context': 'https://schema.org',
       '@type': 'Organization',
-      name: 'Amalgated Lending',
+      name: 'Amalgated Lending Inc.',
       url: webUrl,
       logo: `${webUrl}/amalgated-lending-logo.png`,
     },
@@ -101,7 +101,7 @@ function App() {
     <div className="min-h-screen bg-brand-background-alt text-brand-text">
       <ScrollProgressBar />
       <SeoMeta
-        title="Amalgated Lending | Trusted Loans in Davao & Mindanao"
+        title="Amalgated Lending Inc. | Trusted Loans in Davao & Mindanao"
         description="Apply for personal, business, salary, travel, and pension loans with transparent terms and secure processing."
         canonical={webUrl}
         image={`${webUrl}/amalgated-lending-logo.png`}
