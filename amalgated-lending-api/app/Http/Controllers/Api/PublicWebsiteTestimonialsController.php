@@ -30,7 +30,7 @@ class PublicWebsiteTestimonialsController extends Controller
         $limit = min(max((int) $request->query('limit', 12), 1), 24);
 
         $payload = Cache::remember(
-            'public_website_testimonials_v4_'.$limit,
+            'public_website_testimonials_v5_'.$limit,
             self::CACHE_TTL_SECONDS,
             fn () => $this->buildPayload($limit, false),
         );
@@ -56,7 +56,7 @@ class PublicWebsiteTestimonialsController extends Controller
         $limit = min(max((int) $request->query('limit', 12), 1), 24);
 
         $data = Cache::remember(
-            'public_feedback_testimonials_v4_'.$limit,
+            'public_feedback_testimonials_v5_'.$limit,
             self::CACHE_TTL_SECONDS,
             function () use ($limit) {
                 $full = $this->buildPayload($limit, false);
@@ -102,14 +102,12 @@ class PublicWebsiteTestimonialsController extends Controller
      */
     private function buildPayload(int $limit, bool $requireFeatured): array
     {
-        $minRating = max(1, min(5, (int) config('testimonials.min_rating', 4)));
-        $requireNamedDisplay = (bool) config('testimonials.require_named_display', true);
-
         $q = FeedbackTicket::query()
             ->select([
                 'id',
                 'borrower_id',
                 'full_name',
+                'email',
                 'public_author_label',
                 'loan_type',
                 'rating',
@@ -122,20 +120,7 @@ class PublicWebsiteTestimonialsController extends Controller
                 'updated_at',
             ])
             ->with(['borrower:id,name'])
-            ->whereRaw("LOWER(TRIM(COALESCE(publication_status, ''))) = ?", ['approved'])
-            ->where('consent_public_display', true)
-            ->whereNotNull('rating')
-            ->where('rating', '>=', $minRating)
-            ->whereNotNull('message')
-            ->where('message', '!=', '');
-
-        if ($requireNamedDisplay) {
-            $q->where(function ($w) {
-                $w->whereRaw("TRIM(COALESCE(public_author_label, '')) <> ''")
-                    ->orWhereRaw("TRIM(COALESCE(full_name, '')) <> ''")
-                    ->orWhereHas('borrower', fn ($b) => $b->whereRaw("TRIM(COALESCE(name, '')) <> ''"));
-            });
-        }
+            ->forPublicWebsiteHomepage();
 
         if ($requireFeatured) {
             $q->where('featured', true);
@@ -156,10 +141,14 @@ class PublicWebsiteTestimonialsController extends Controller
             $msg = Str::limit(trim(strip_tags((string) $t->message)), 320, '…');
             $verified = (bool) $t->verified_borrower;
 
+            $linkedBorrower = (bool) $t->borrower_id;
+            $customerTypeLabel = $linkedBorrower ? 'Borrower' : 'Customer';
+
             return [
                 'id' => $t->id,
-                'display_name' => $this->displayName($t->borrower, $t->public_author_label, $t->full_name),
-                'loan_type' => $t->loan_type ?: 'Borrower',
+                'display_name' => $this->displayName($t->borrower, $t->public_author_label, $t->full_name, $t->email),
+                'customer_type_label' => $customerTypeLabel,
+                'loan_type' => $t->loan_type ?: $customerTypeLabel,
                 'rating' => (int) $t->rating,
                 'message' => $msg,
                 'verified_borrower' => $verified,
@@ -181,7 +170,7 @@ class PublicWebsiteTestimonialsController extends Controller
         ];
     }
 
-    private function displayName(?User $borrower, ?string $publicLabel, ?string $ticketFullName = null): string
+    private function displayName(?User $borrower, ?string $publicLabel, ?string $ticketFullName = null, ?string $email = null): string
     {
         $label = trim((string) $publicLabel);
         if ($label !== '') {
@@ -192,11 +181,16 @@ class PublicWebsiteTestimonialsController extends Controller
             $name = trim((string) ($ticketFullName ?? ''));
         }
         if ($name === '') {
-            return 'Verified borrower';
+            $em = trim((string) ($email ?? ''));
+            if ($em !== '' && str_contains($em, '@')) {
+                return Str::before($em, '@');
+            }
+
+            return 'Customer';
         }
         $parts = preg_split('/\s+/u', $name, -1, PREG_SPLIT_NO_EMPTY);
         if (! $parts || count($parts) === 0) {
-            return 'Verified borrower';
+            return 'Customer';
         }
         if (count($parts) === 1) {
             return $parts[0];

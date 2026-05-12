@@ -35,7 +35,7 @@ function TestimonialCard({ item, index, reduceMotion }) {
           </span>
         ) : (
           <span className="shrink-0 rounded-full bg-gray-50 px-2.5 py-1 text-[11px] font-medium text-gray-500 ring-1 ring-gray-200/80">
-            Borrower
+            {item.roleLabel}
           </span>
         )}
       </div>
@@ -84,8 +84,9 @@ export default function CustomerFeedbackSection() {
       const mapped = rows
         .map((d) => ({
           id: `api-${d.id}`,
-          name: String(d.display_name || 'Verified borrower').trim() || 'Verified borrower',
-          loanType: String(d.loan_type || 'Borrower').trim() || 'Borrower',
+          name: String(d.display_name || 'Customer').trim() || 'Customer',
+          roleLabel: String(d.customer_type_label || d.loan_type || 'Customer').trim() || 'Customer',
+          loanType: String(d.loan_type || d.customer_type_label || 'Customer').trim() || 'Customer',
           rating: Math.min(5, Math.max(1, Number(d.rating) || 5)),
           comment: String(d.message || '').trim(),
           verified: !!(d.verified_borrower || d.verified),
@@ -197,7 +198,7 @@ export default function CustomerFeedbackSection() {
 
         {loadState === 'ready' && items.length === 0 ? (
           <div className="mx-auto mt-12 max-w-lg rounded-2xl border border-dashed border-black/15 bg-white/60 px-6 py-10 text-center text-sm text-brand-text/70">
-            <p className="font-medium text-brand-text">No published testimonials yet</p>
+            <p className="font-medium text-brand-text">No testimonials available yet.</p>
             <p className="mt-2 leading-relaxed">
               When the team approves feedback with borrower consent (and a clear name on the ticket), it appears here—
               usually within a few minutes. Featured items are listed first.

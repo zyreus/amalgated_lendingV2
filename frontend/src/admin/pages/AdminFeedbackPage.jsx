@@ -119,6 +119,9 @@ export default function AdminFeedbackPage() {
     risk_level: '',
     payment_status: '',
     include_archived: false,
+    pub_status: '',
+    audience: '',
+    featured_only: false,
   })
 
   const [items, setItems] = useState([])
@@ -150,13 +153,14 @@ export default function AdminFeedbackPage() {
     setListLoading(true)
     setError('')
     try {
-      const { include_archived, ...filterQuery } = filters
+      const { include_archived, featured_only, ...filterQuery } = filters
       const res = await api(
         `/feedbacks${buildQuery({
           quick,
           search: searchDebounced,
           ...filterQuery,
           ...(include_archived ? { include_archived: 1 } : {}),
+          ...(featured_only ? { featured_only: 1 } : {}),
           per_page: 20,
           page,
         })}`,
@@ -260,7 +264,11 @@ export default function AdminFeedbackPage() {
           body: JSON.stringify(body),
         })
         setSelected(res?.data || null)
-        setToast('Publication updated.')
+        if (path === '/approve') {
+          setToast('Feedback approved and published to website successfully.')
+        } else {
+          setToast('Publication updated.')
+        }
         await loadTicket(selectedId)
         await loadTickets()
       } catch (err) {
@@ -417,6 +425,44 @@ export default function AdminFeedbackPage() {
             <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-gray-800">
               <input
                 type="checkbox"
+                checked={!!filters.featured_only}
+                onChange={(e) => setFilters((p) => ({ ...p, featured_only: e.target.checked }))}
+                className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+              />
+              <span>Featured only</span>
+            </label>
+
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Publication</span>
+                <select
+                  value={filters.pub_status}
+                  onChange={(e) => setFilters((p) => ({ ...p, pub_status: e.target.value }))}
+                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm outline-none focus:ring-2 focus:ring-red-200"
+                >
+                  <option value="">All</option>
+                  <option value="pending">Pending</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Audience</span>
+                <select
+                  value={filters.audience}
+                  onChange={(e) => setFilters((p) => ({ ...p, audience: e.target.value }))}
+                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm outline-none focus:ring-2 focus:ring-red-200"
+                >
+                  <option value="">All</option>
+                  <option value="borrower">Borrower (linked)</option>
+                  <option value="customer">Customer (public)</option>
+                </select>
+              </label>
+            </div>
+
+            <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-gray-800">
+              <input
+                type="checkbox"
                 checked={!!filters.include_archived}
                 onChange={(e) => setFilters((p) => ({ ...p, include_archived: e.target.checked }))}
                 className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
@@ -445,6 +491,9 @@ export default function AdminFeedbackPage() {
                     risk_level: '',
                     payment_status: '',
                     include_archived: false,
+                    pub_status: '',
+                    audience: '',
+                    featured_only: false,
                   })
                   setQuick('all')
                 }}
@@ -510,6 +559,9 @@ export default function AdminFeedbackPage() {
                               Verified
                             </span>
                           ) : null}
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-700 ring-1 ring-gray-200">
+                            {row.borrower_id ? 'Borrower' : 'Customer'}
+                          </span>
                           <span className="ml-auto shrink-0 text-[10px] font-medium tabular-nums text-gray-400">{formatTimestamp(row.created_at)}</span>
                         </div>
                       </div>
@@ -604,6 +656,23 @@ export default function AdminFeedbackPage() {
                     Rejected: <span className="font-medium">{formatTimestamp(selected.rejected_at)}</span>
                   </p>
                 ) : null}
+                {selected.archived_at ? (
+                  <p className="mt-0.5 text-[11px] text-gray-600">
+                    Archived: <span className="font-medium">{formatTimestamp(selected.archived_at)}</span>
+                  </p>
+                ) : null}
+                <p className="mt-1.5 text-[11px] leading-relaxed text-gray-600">
+                  <span className="font-semibold text-gray-800">{selected.customer_type_label || (selected.contact?.borrower_id ? 'Borrower' : 'Customer')}</span>
+                  <span className="text-gray-400"> · </span>
+                  Public homepage:{' '}
+                  <span className={selected.public_site_live ? 'font-semibold text-emerald-700' : 'font-medium text-gray-600'}>
+                    {selected.public_site_live ? 'Visible (synced)' : 'Not visible'}
+                  </span>
+                  <span className="text-gray-400"> · </span>
+                  Consent {selected.consent_public_display ? 'on' : 'off'}
+                  <span className="text-gray-400"> · </span>
+                  Website flag {selected.website_visible ? 'on' : 'off'}
+                </p>
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:items-center">
                 <div className="flex flex-wrap justify-end gap-2 sm:justify-end">
@@ -619,7 +688,9 @@ export default function AdminFeedbackPage() {
             <div className="grid gap-5 xl:grid-cols-1">
               <div className="space-y-5">
                 <div className="rounded-xl border border-gray-200 bg-gradient-to-b from-white to-gray-50/80 p-5 shadow-sm ring-1 ring-black/[0.03]">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Customer</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                    {selected.customer_type_label === 'Borrower' ? 'Borrower' : 'Customer'} details
+                  </p>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-gray-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">
                       {selected.source || 'unknown'}

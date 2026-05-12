@@ -13,6 +13,7 @@ use Illuminate\Support\Str;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class AdminFeedbackController extends Controller
@@ -54,7 +55,28 @@ class AdminFeedbackController extends Controller
         }
 
         if (! $request->boolean('include_archived')) {
+            if (Schema::hasColumn('feedback_tickets', 'archived_at')) {
+                $q->whereNull('archived_at');
+            }
             $q->where('status', '!=', 'Archived');
+        }
+
+        if ($request->filled('pub_status')) {
+            $ps = strtolower(trim((string) $request->query('pub_status')));
+            if (in_array($ps, ['pending', 'approved', 'rejected'], true)) {
+                $q->whereRaw("LOWER(TRIM(COALESCE(publication_status, ''))) = ?", [$ps]);
+            }
+        }
+
+        $aud = strtolower(trim((string) $request->query('audience', '')));
+        if ($aud === 'borrower') {
+            $q->whereNotNull('borrower_id');
+        } elseif ($aud === 'customer') {
+            $q->whereNull('borrower_id');
+        }
+
+        if ($request->boolean('featured_only')) {
+            $q->where('featured', true);
         }
 
         if ($request->filled('rating_min')) {
@@ -100,6 +122,10 @@ class AdminFeedbackController extends Controller
         $q = FeedbackTicket::query()
             ->whereRaw("LOWER(TRIM(COALESCE(publication_status, ''))) = ?", ['approved'])
             ->where('featured', true);
+        if (Schema::hasColumn('feedback_tickets', 'archived_at')) {
+            $q->whereNull('archived_at');
+        }
+        $q->where('status', '!=', 'Archived');
         if ($exceptId !== null) {
             $q->where('id', '!=', $exceptId);
         }
@@ -147,6 +173,13 @@ class AdminFeedbackController extends Controller
         if (in_array($data['status'], ['Closed', 'Archived'], true)) {
             $ticket->closed_at = now();
         }
+        if (Schema::hasColumn('feedback_tickets', 'archived_at')) {
+            if ($data['status'] === 'Archived') {
+                $ticket->archived_at = $ticket->archived_at ?: now();
+            } else {
+                $ticket->archived_at = null;
+            }
+        }
         $ticket->save();
 
         // Keep legacy support_chat_feedback consistent when ticket came from it.
@@ -168,6 +201,8 @@ class AdminFeedbackController extends Controller
         $this->audit($request, $ticket, 'status.update', ['status' => $data['status']]);
 
         $this->upsertAnalytics($ticket);
+
+        PublicWebsiteTestimonialsController::forgetCaches();
 
         return response()->json(['ok' => true, 'data' => $this->presentTicket($ticket->fresh())]);
     }
@@ -260,18 +295,12 @@ class AdminFeedbackController extends Controller
         $this->ensureTicketsAvailable();
         $this->authorizeSensitive($request, $ticket);
 
-        $legacyId = $ticket->support_chat_feedback_id;
         $ticketId = $ticket->id;
 
         $this->audit($request, $ticket, 'ticket.delete', ['ticket_id' => $ticketId]);
         $ticket->delete();
 
         PublicWebsiteTestimonialsController::forgetCaches();
-
-        // If this ticket originated from legacy support feedback, remove it too.
-        if ($legacyId && DB::getSchemaBuilder()->hasTable('support_chat_feedback')) {
-            DB::table('support_chat_feedback')->where('id', $legacyId)->delete();
-        }
 
         return response()->json(['ok' => true]);
     }
@@ -534,6 +563,11 @@ class AdminFeedbackController extends Controller
 
         $latestApp = $applications->sortByDesc('id')->first();
 
+        $publicSiteLive = FeedbackTicket::query()
+            ->whereKey($ticket->id)
+            ->forPublicWebsiteHomepage()
+            ->exists();
+
         return [
             'id' => $ticket->id,
             'priority' => $ticket->priority,
@@ -548,6 +582,9 @@ class AdminFeedbackController extends Controller
             'publication_status' => $ticket->publication_status ?? 'pending',
             'publication_approved_at' => optional($ticket->publication_approved_at)?->toIso8601String(),
             'rejected_at' => optional($ticket->rejected_at)?->toIso8601String(),
+            'archived_at' => optional($ticket->archived_at)?->toIso8601String(),
+            'customer_type_label' => $ticket->borrower_id ? 'Borrower' : 'Customer',
+            'public_site_live' => $publicSiteLive,
             'featured' => (bool) ($ticket->featured ?? false),
             'source' => $ticket->source,
             'consent_public_display' => (bool) ($ticket->consent_public_display ?? false),

@@ -6,9 +6,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Schema;
 
 class FeedbackTicket extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'feedback_tickets';
 
     protected $fillable = [
@@ -46,6 +50,7 @@ class FeedbackTicket extends Model
         'publication_status',
         'publication_approved_at',
         'rejected_at',
+        'archived_at',
         'featured',
         'source',
         'consent_public_display',
@@ -65,6 +70,7 @@ class FeedbackTicket extends Model
         'verified_borrower' => 'boolean',
         'publication_approved_at' => 'datetime',
         'rejected_at' => 'datetime',
+        'archived_at' => 'datetime',
         'first_response_at' => 'datetime',
         'resolved_at' => 'datetime',
         'closed_at' => 'datetime',
@@ -107,5 +113,37 @@ class FeedbackTicket extends Model
     public function auditLogs(): HasMany
     {
         return $this->hasMany(FeedbackAuditLog::class, 'feedback_id')->latest('id');
+    }
+
+    /**
+     * Rows eligible for the public homepage testimonials API (approval + consent + visibility;
+     * verified_borrower is not part of this gate).
+     */
+    public function scopeForPublicWebsiteHomepage($query): void
+    {
+        $minRating = max(1, min(5, (int) config('testimonials.min_rating', 4)));
+        $requireNamedDisplay = (bool) config('testimonials.require_named_display', true);
+
+        $query
+            ->whereRaw("LOWER(TRIM(COALESCE(publication_status, ''))) = ?", ['approved'])
+            ->where('consent_public_display', true)
+            ->where('website_visible', true)
+            ->whereNotNull('rating')
+            ->where('rating', '>=', $minRating)
+            ->whereNotNull('message')
+            ->where('message', '!=', '');
+
+        if (Schema::hasColumn('feedback_tickets', 'archived_at')) {
+            $query->whereNull('archived_at');
+        }
+
+        if ($requireNamedDisplay) {
+            $query->where(function ($w) {
+                $w->whereRaw("TRIM(COALESCE(public_author_label, '')) <> ''")
+                    ->orWhereRaw("TRIM(COALESCE(full_name, '')) <> ''")
+                    ->orWhereHas('borrower', fn ($b) => $b->whereRaw("TRIM(COALESCE(name, '')) <> ''"))
+                    ->orWhereRaw("TRIM(COALESCE(email, '')) <> ''");
+            });
+        }
     }
 }
