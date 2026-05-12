@@ -6,7 +6,8 @@ import SubPageHeader from '../components/SubPageHeader.jsx'
 import Footer from '../components/Footer.jsx'
 import luzonBranchImage from '../assets/luzon.png'
 import visminBranchImage from '../assets/vismin.jpg'
-import manilaBranchImage from '../assets/manila.jpg'
+import mangagoyBranchImage from '../assets/mangagoy branch.jpg'
+import kidapawanBranchImage from '../assets/kidapawan.jpg'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -30,16 +31,16 @@ const mainOffices = [
   },
 ]
 
-/** Regional photos: Manila uses metro imagery; Visayas/Mindanao branches use VisMin. */
+/** Branch network photos: Kidapawan and Mangagoy use branch storefronts; Lagao uses VisMin regional photo. */
 const branches = [
   {
     name: 'Amalgated Lending Inc. - Kidapawan branch',
-    image: visminBranchImage,
+    image: kidapawanBranchImage,
     detail: 'A & S Landing Commercial Bldg., Brgy. Sudapin, Kidapawan City',
   },
   {
     name: 'Amalgated Lending Inc. - Mangagoy Branch',
-    image: manilaBranchImage,
+    image: mangagoyBranchImage,
     detail: 'M.Conpinco Building Espiritu St. Mangagoy, Bislig City Surigao Del Sur 8311',
   },
   {
