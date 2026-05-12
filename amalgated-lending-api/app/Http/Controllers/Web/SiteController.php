@@ -41,9 +41,10 @@ class SiteController extends Controller
              * Stale shells + fresh assets = intermittent React "Cannot read properties of null
              * (reading 'useContext')" and broken admin/borrower login.
              */
-            return response()
-                ->file($path, ['Content-Type' => 'text/html; charset=UTF-8'])
-                ->header('Cache-Control', 'no-cache, must-revalidate, max-age=0');
+            return response()->file($path, [
+                'Content-Type' => 'text/html; charset=UTF-8',
+                'Cache-Control' => 'no-cache, must-revalidate, max-age=0',
+            ]);
         }
 
         return view('welcome');
