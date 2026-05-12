@@ -20,6 +20,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 
 class PaymentController extends Controller
@@ -393,7 +394,20 @@ class PaymentController extends Controller
             ]
         );
 
-        SendPaymentReceiptJob::dispatch($payment->id, $or, (int) $admin->id)->afterCommit()->afterResponse();
+        /**
+         * Receipt email must reach the borrower without requiring `php artisan queue:work`.
+         * Default `QUEUE_CONNECTION=database` would leave {@see SendPaymentReceiptJob} stuck forever.
+         * Run the job synchronously after the HTTP response so the admin UI stays snappy.
+         */
+        $paymentId = (int) $payment->id;
+        $adminId = (int) $admin->id;
+        dispatch(function () use ($paymentId, $or, $adminId): void {
+            try {
+                Bus::dispatchSync(new SendPaymentReceiptJob($paymentId, $or, $adminId));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        })->afterResponse();
     }
 
     /**

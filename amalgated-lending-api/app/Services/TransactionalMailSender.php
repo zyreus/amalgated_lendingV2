@@ -62,15 +62,17 @@ class TransactionalMailSender
         }
 
         try {
-            Mail::to($trimmed)->queue($mailable);
+            // Send immediately so transactional flows (e.g. payment receipts) do not depend on a
+            // second queue worker for `Mail::queue` when Brevo is unavailable.
+            Mail::to($trimmed)->send($mailable);
 
-            return ['ok' => true, 'detail' => 'queued'];
+            return ['ok' => true, 'detail' => 'laravel_smtp'];
         } catch (\Throwable $e) {
-            Log::error('Default mail queue failed.', [
+            Log::error('Default mail send failed.', [
                 'subject' => $subject,
                 'error' => $e->getMessage(),
             ]);
-            $this->notifications->recordFailure('system', null, 'email', $e, array_merge($failureMeta, ['stage' => 'laravel_queue']));
+            $this->notifications->recordFailure('system', null, 'email', $e, array_merge($failureMeta, ['stage' => 'laravel_mail']));
 
             return ['ok' => false, 'detail' => $e->getMessage()];
         }
