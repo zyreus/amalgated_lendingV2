@@ -74,6 +74,9 @@ class BorrowerLoanApplicationWizardController extends Controller
         $rows = LoanApplication::query()
             ->where('user_id', $user->id)
             ->whereIn('loan_type', array_keys(config('amalgated_loans.general_loan_types')))
+            ->with([
+                'loanProduct:id,slug,code,name,interest_rate,max_term,max_amount,collateral_type,requirements',
+            ])
             ->orderByDesc('id')
             ->limit(50)
             ->get()

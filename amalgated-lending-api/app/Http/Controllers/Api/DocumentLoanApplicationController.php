@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Support\PublicStorageUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -200,16 +201,34 @@ class DocumentLoanApplicationController extends Controller
         $user = $request->user();
         $rows = DocumentLoanApplication::query()
             ->where('user_id', $user->id)
-            ->with(['loanProduct'])
+            ->with([
+                'loanProduct:id,name,slug',
+                'uploadedDocuments.loanRequirement:id,loan_product_id,requirement_name,sort_order',
+                'user:id,name,email,phone',
+            ])
             ->orderByDesc('id')
             ->limit(50)
             ->get();
 
+        $productIds = $rows->pluck('loan_product_id')->unique()->filter()->values()->all();
+        $reqByProduct = collect();
+        if ($productIds !== []) {
+            $reqByProduct = LoanRequirement::query()
+                ->whereIn('loan_product_id', $productIds)
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get()
+                ->groupBy('loan_product_id');
+        }
+
         return response()->json([
             'ok' => true,
-            'data' => $rows->map(fn (DocumentLoanApplication $a) => $this->serializeApplication(
-                $a->fresh(['loanProduct', 'uploadedDocuments.loanRequirement'])
-            )),
+            'data' => $rows->map(function (DocumentLoanApplication $a) use ($reqByProduct) {
+                /** @var Collection<int, LoanRequirement> $pre */
+                $pre = $reqByProduct->get($a->loan_product_id, collect());
+
+                return $this->serializeApplication($a, $pre);
+            }),
         ]);
     }
 
@@ -638,15 +657,26 @@ class DocumentLoanApplicationController extends Controller
         abort(response()->json(['ok' => false, 'message' => 'Unauthorized.'], 403));
     }
 
-    private function serializeApplication(DocumentLoanApplication $app): array
+    /**
+     * @param  Collection<int, LoanRequirement>|null  $requirementsPreloaded  When listing many applications, pass per-product requirements to avoid N+1 queries.
+     */
+    private function serializeApplication(DocumentLoanApplication $app, ?Collection $requirementsPreloaded = null): array
     {
-        $app->loadMissing(['loanProduct', 'uploadedDocuments', 'user']);
+        $app->loadMissing([
+            'loanProduct:id,name,slug',
+            'uploadedDocuments.loanRequirement:id,loan_product_id,requirement_name,sort_order',
+            'user:id,name,email,phone',
+        ]);
 
-        $reqs = LoanRequirement::query()
-            ->where('loan_product_id', $app->loan_product_id)
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->get();
+        if ($requirementsPreloaded !== null) {
+            $reqs = $requirementsPreloaded;
+        } else {
+            $reqs = LoanRequirement::query()
+                ->where('loan_product_id', $app->loan_product_id)
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get();
+        }
 
         $byReq = $app->uploadedDocuments->keyBy('loan_requirement_id');
 

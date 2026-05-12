@@ -21,7 +21,10 @@ class LoanApplicationController extends Controller
     public function index(IndexLoanApplicationRequest $request): JsonResponse
     {
         $user = $request->user();
-        $q = LoanApplication::query()->with(['loanProduct', 'borrower:id,name,email']);
+        $q = LoanApplication::query()->with([
+            'loanProduct',
+            'borrower:id,name,email',
+        ]);
 
         if (! $this->canViewAll($request)) {
             $q->where('user_id', $user->id);

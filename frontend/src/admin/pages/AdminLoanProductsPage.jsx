@@ -3,6 +3,7 @@ import { api } from '../api/client.js'
 import { useToast } from '../context/ToastContext.jsx'
 import { useAdminApiAuth } from '../context/useAdminApiAuth.js'
 import { admin } from '../components/AdminUi.jsx'
+import ConfirmModal from '../components/ConfirmModal.jsx'
 import { SkeletonLine } from '../../components/AppSkeletons.jsx'
 
 const emptyForm = {
@@ -48,6 +49,8 @@ export default function AdminLoanProductsPage() {
   const [modal, setModal] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
+  /** { id, name } when delete confirmation modal is open */
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   const load = useCallback(async () => {
     if (!allowed) return
@@ -163,14 +166,15 @@ export default function AdminLoanProductsPage() {
     }
   }
 
-  const remove = async (id) => {
-    if (!window.confirm('Delete this loan product?')) return
+  const performDelete = async () => {
+    if (!deleteTarget?.id) return
     try {
-      await api(`/admin/loan-products/${id}`, { method: 'DELETE' })
-      showToast('Deleted.', 'success')
-      load()
+      await api(`/admin/loan-products/${deleteTarget.id}`, { method: 'DELETE' })
+      showToast('Loan product deleted.', 'success')
+      await load()
     } catch (e) {
-      showToast(e.message, 'error')
+      showToast(e.message || 'Could not delete loan product.', 'error')
+      throw e
     }
   }
 
@@ -234,7 +238,7 @@ export default function AdminLoanProductsPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => remove(r.id)}
+                      onClick={() => setDeleteTarget({ id: r.id, name: r.name || r.slug || `Product #${r.id}` })}
                       className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition duration-200 hover:bg-red-700 hover:shadow-lg"
                     >
                       Delete
@@ -281,7 +285,7 @@ export default function AdminLoanProductsPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => remove(r.id)}
+                          onClick={() => setDeleteTarget({ id: r.id, name: r.name || r.slug || `Product #${r.id}` })}
                           className="w-full rounded-lg border border-gray-200 bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 dark:border-red-900 sm:w-auto"
                         >
                           Delete
@@ -303,6 +307,21 @@ export default function AdminLoanProductsPage() {
           </>
         )}
       </div>
+
+      <ConfirmModal
+        open={deleteTarget != null}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete loan product?"
+        description={
+          deleteTarget
+            ? `This will permanently remove “${deleteTarget.name}”. Active loans or applications that reference this product may be affected. This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        tone="danger"
+        onConfirm={performDelete}
+      />
 
       {modal ? (
         <div className={admin.modalOverlay}>

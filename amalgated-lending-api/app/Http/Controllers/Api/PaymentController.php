@@ -71,9 +71,15 @@ class PaymentController extends Controller
 
     public function forUser(Request $request, User $user): JsonResponse
     {
-        $loanIds = Loan::where('borrower_id', $user->id)->pluck('id');
-        $payments = Payment::whereIn('loan_id', $loanIds)
-            ->with('loan')
+        $loanIds = Loan::query()->where('borrower_id', $user->id)->pluck('id');
+        $payments = Payment::query()
+            ->whereIn('loan_id', $loanIds)
+            ->with([
+                'loan' => fn ($rel) => $rel->select([
+                    'id', 'borrower_id', 'term_months', 'outstanding_balance', 'status', 'principal',
+                ]),
+                'loan.borrower:id,name,email',
+            ])
             ->orderByDesc('due_date')
             ->paginate((int) $request->query('per_page', 15));
 

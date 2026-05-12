@@ -149,6 +149,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/navigation', [NavigationController::class, 'index']);
 
         Route::middleware('permission:dashboard.view')->group(function () {
+            Route::get('/dashboard/overview', [DashboardController::class, 'overview']);
             Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
             Route::get('/dashboard/charts', [DashboardController::class, 'charts']);
         });

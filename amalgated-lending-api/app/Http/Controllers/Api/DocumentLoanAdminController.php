@@ -12,15 +12,23 @@ class DocumentLoanAdminController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $q = DocumentLoanApplication::query()->with(['user', 'loanProduct']);
+        $q = DocumentLoanApplication::query()->with([
+            'user:id,name,email,phone',
+            'loanProduct:id,name,slug',
+        ]);
 
         if ($request->filled('status')) {
             $q->where('status', $request->query('status'));
         }
         if ($search = trim((string) $request->query('search', ''))) {
-            $q->whereHas('user', function ($w) use ($search) {
-                $w->where('name', 'like', '%'.$search.'%')
-                    ->orWhere('email', 'like', '%'.$search.'%');
+            $like = '%'.$search.'%';
+            $q->whereIn('user_id', function ($sub) use ($like) {
+                $sub->select('id')
+                    ->from('users')
+                    ->where(function ($w) use ($like) {
+                        $w->where('name', 'like', $like)
+                            ->orWhere('email', 'like', $like);
+                    });
             });
         }
 

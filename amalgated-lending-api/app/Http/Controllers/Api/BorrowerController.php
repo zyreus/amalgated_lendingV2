@@ -148,7 +148,7 @@ class BorrowerController extends Controller
 
         $q = User::query()
             ->withCount($withCount)
-            ->with(['roles']);
+            ->with(['roles:id,name,slug']);
         // Admin borrower list should show applicants / actual borrowers only.
         // Co-maker-only accounts stay accessible through the applicant's borrower detail / loan detail.
         // Include users with identity-verification history so portal checks are visible in Admin > Borrowers.

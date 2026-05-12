@@ -161,9 +161,10 @@ export default function AdminLayout() {
   }, [location.pathname])
 
   useEffect(() => {
-    if (!user) return
+    if (!user) return undefined
     let disposed = false
     let currentSocket = null
+    let scheduleId = null
     const targets = adminSocketUrls()
 
     const onVisitorMessage = (payload) => {
@@ -203,7 +204,12 @@ export default function AdminLayout() {
     const connectWithFallback = (index) => {
       if (disposed || index >= targets.length) return
       const target = targets[index]
-      const socket = io(target, { transports: ['websocket', 'polling'] })
+      const socket = io(target, {
+        transports: ['websocket', 'polling'],
+        timeout: 8000,
+        reconnectionAttempts: 2,
+        reconnectionDelay: 800,
+      })
       currentSocket = socket
       socket.on('connect', () => {
         if (disposed) return
@@ -221,9 +227,28 @@ export default function AdminLayout() {
       })
     }
 
-    connectWithFallback(0)
+    let usedIdleCallback = false
+    const startSocket = () => {
+      if (disposed) return
+      connectWithFallback(0)
+    }
+
+    if (typeof window.requestIdleCallback === 'function') {
+      scheduleId = window.requestIdleCallback(startSocket, { timeout: 4000 })
+      usedIdleCallback = true
+    } else {
+      scheduleId = window.setTimeout(startSocket, 1200)
+    }
+
     return () => {
       disposed = true
+      if (scheduleId != null) {
+        if (usedIdleCallback && typeof window.cancelIdleCallback === 'function') {
+          window.cancelIdleCallback(scheduleId)
+        } else {
+          window.clearTimeout(scheduleId)
+        }
+      }
       currentSocket?.off('chat:newMessage', onVisitorMessage)
       currentSocket?.off('feedback:refresh')
       currentSocket?.removeAllListeners()
