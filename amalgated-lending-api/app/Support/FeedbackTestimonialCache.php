@@ -18,6 +18,8 @@ final class FeedbackTestimonialCache
                     'public_website_testimonials_v2_'.$i,
                     'public_feedback_testimonials_v3_'.$i,
                     'public_website_testimonials_v3_'.$i,
+                    'public_feedback_testimonials_v4_'.$i,
+                    'public_website_testimonials_v4_'.$i,
                 ] as $key
             ) {
                 Cache::forget($key);

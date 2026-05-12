@@ -118,9 +118,11 @@ export default function AdminFeedbackPage() {
     location: '',
     risk_level: '',
     payment_status: '',
+    include_archived: false,
   })
 
   const [items, setItems] = useState([])
+  const [featuredSlots, setFeaturedSlots] = useState({ used: 0, max: 3 })
   const [unreadCount, setUnreadCount] = useState(0)
   const [selectedId, setSelectedId] = useState(null)
   const [selected, setSelected] = useState(null)
@@ -148,17 +150,24 @@ export default function AdminFeedbackPage() {
     setListLoading(true)
     setError('')
     try {
+      const { include_archived, ...filterQuery } = filters
       const res = await api(
         `/feedbacks${buildQuery({
           quick,
           search: searchDebounced,
-          ...filters,
+          ...filterQuery,
+          ...(include_archived ? { include_archived: 1 } : {}),
           per_page: 20,
           page,
         })}`,
       )
       const payload = res?.data
       const pageRows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
+      setFeaturedSlots(
+        payload?.featured_slots && typeof payload.featured_slots === 'object'
+          ? { used: Number(payload.featured_slots.used) || 0, max: Number(payload.featured_slots.max) || 3 }
+          : { used: 0, max: 3 },
+      )
       setItems(pageRows)
       setPageMeta({
         current_page: Number(payload?.current_page) || 1,
@@ -405,6 +414,16 @@ export default function AdminFeedbackPage() {
               </label>
             </div>
 
+            <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-gray-800">
+              <input
+                type="checkbox"
+                checked={!!filters.include_archived}
+                onChange={(e) => setFilters((p) => ({ ...p, include_archived: e.target.checked }))}
+                className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+              />
+              <span>Show archived tickets</span>
+            </label>
+
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -425,6 +444,7 @@ export default function AdminFeedbackPage() {
                     location: '',
                     risk_level: '',
                     payment_status: '',
+                    include_archived: false,
                   })
                   setQuick('all')
                 }}
@@ -574,6 +594,16 @@ export default function AdminFeedbackPage() {
                     <span className="ml-1.5 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">Featured</span>
                   ) : null}
                 </p>
+                {selected.publication_approved_at ? (
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    Website approval: <span className="font-medium text-gray-700">{formatTimestamp(selected.publication_approved_at)}</span>
+                  </p>
+                ) : null}
+                {selected.rejected_at ? (
+                  <p className="mt-0.5 text-[11px] text-rose-600">
+                    Rejected: <span className="font-medium">{formatTimestamp(selected.rejected_at)}</span>
+                  </p>
+                ) : null}
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:items-center">
                 <div className="flex flex-wrap justify-end gap-2 sm:justify-end">
@@ -654,11 +684,11 @@ export default function AdminFeedbackPage() {
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Public website testimonials</p>
                   <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
-                    Approved items with borrower consent appear on the homepage in{' '}
-                    <span className="font-semibold text-gray-700">Customer feedback</span> (“What our borrowers say”).
-                    Use <span className="font-semibold text-gray-700">Feature</span> to pin them higher in the list.
-                    Keep rating at least the site minimum (usually 4★) and a short message; the name on the ticket or linked
-                    borrower is used on the site. Cached updates can take a few minutes.
+                    Approved items with borrower consent appear on the homepage (max three). Order:{' '}
+                    <span className="font-semibold text-gray-700">featured</span> first, then highest rating, then most recently approved.
+                    Up to <span className="font-semibold text-gray-700">three</span> items can be featured at once (
+                    <span className="tabular-nums">{featuredSlots.used}</span> / {featuredSlots.max} used).
+                    Archive hides tickets from the default inbox (enable “Show archived” in Filters to find them).
                   </p>
                 </div>
                 <label className="flex cursor-pointer items-start gap-3 text-sm text-gray-800">
@@ -705,7 +735,11 @@ export default function AdminFeedbackPage() {
                   </button>
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={
+                      busy ||
+                      String(selected.publication_status || '').toLowerCase() !== 'approved' ||
+                      (!selected.featured && featuredSlots.used >= featuredSlots.max)
+                    }
                     onClick={() => onPublicationAction('/feature', {})}
                     className="h-10 w-full min-w-0 rounded-lg border border-amber-200 bg-amber-50 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-60"
                   >

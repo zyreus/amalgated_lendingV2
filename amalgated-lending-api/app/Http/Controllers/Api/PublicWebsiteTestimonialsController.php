@@ -9,6 +9,7 @@ use App\Support\FeedbackTestimonialCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -17,8 +18,8 @@ class PublicWebsiteTestimonialsController extends Controller
     private const CACHE_TTL_SECONDS = 300;
 
     /**
-     * Homepage / marketing: approved + consent + min rating (+ optional display name rules).
-     * Featured rows sort first; “Feature” in admin is optional prominence, not required to appear.
+     * Homepage: approved + consent + min rating. Ordering: featured first, then highest rating,
+     * then most recently approved (or updated).
      */
     public function website(Request $request): JsonResponse
     {
@@ -29,7 +30,7 @@ class PublicWebsiteTestimonialsController extends Controller
         $limit = min(max((int) $request->query('limit', 12), 1), 24);
 
         $payload = Cache::remember(
-            'public_website_testimonials_v3_'.$limit,
+            'public_website_testimonials_v4_'.$limit,
             self::CACHE_TTL_SECONDS,
             fn () => $this->buildPayload($limit, false),
         );
@@ -55,7 +56,7 @@ class PublicWebsiteTestimonialsController extends Controller
         $limit = min(max((int) $request->query('limit', 12), 1), 24);
 
         $data = Cache::remember(
-            'public_feedback_testimonials_v3_'.$limit,
+            'public_feedback_testimonials_v4_'.$limit,
             self::CACHE_TTL_SECONDS,
             function () use ($limit) {
                 $full = $this->buildPayload($limit, false);
@@ -115,6 +116,7 @@ class PublicWebsiteTestimonialsController extends Controller
                 'message',
                 'verified_borrower',
                 'featured',
+                'publication_approved_at',
                 'source',
                 'created_at',
                 'updated_at',
@@ -144,7 +146,8 @@ class PublicWebsiteTestimonialsController extends Controller
 
         $rows = $q
             ->orderByDesc('featured')
-            ->orderByDesc('updated_at')
+            ->orderByDesc('rating')
+            ->orderByDesc(DB::raw('COALESCE(publication_approved_at, updated_at, created_at)'))
             ->orderByDesc('id')
             ->limit($limit)
             ->get();
@@ -161,6 +164,7 @@ class PublicWebsiteTestimonialsController extends Controller
                 'message' => $msg,
                 'verified_borrower' => $verified,
                 'verified' => $verified,
+                'featured' => (bool) $t->featured,
                 'source' => $t->source ?: 'chatbot',
                 'submitted_at' => optional($t->created_at)?->toIso8601String(),
                 'updated_at' => optional($t->updated_at)?->toIso8601String(),

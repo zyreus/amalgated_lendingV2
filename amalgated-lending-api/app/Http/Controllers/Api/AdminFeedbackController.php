@@ -53,6 +53,10 @@ class AdminFeedbackController extends Controller
             }
         }
 
+        if (! $request->boolean('include_archived')) {
+            $q->where('status', '!=', 'Archived');
+        }
+
         if ($request->filled('rating_min')) {
             $q->where('rating', '>=', (int) $request->query('rating_min'));
         }
@@ -78,12 +82,41 @@ class AdminFeedbackController extends Controller
         }
 
         $perPage = min(max((int) $request->query('per_page', 25), 5), 100);
-        $rows = $q->orderByDesc('id')->paginate($perPage);
+        $paginator = $q->orderByDesc('id')->paginate($perPage);
+        $payload = $paginator->toArray();
+        $payload['featured_slots'] = [
+            'used' => $this->countApprovedFeaturedTickets(),
+            'max' => 3,
+        ];
 
-        return response()->json([
-            'ok' => true,
-            'data' => $rows,
-        ]);
+        return response()->json(['ok' => true, 'data' => $payload]);
+    }
+
+    /**
+     * Approved + featured testimonials shown on the public homepage (max 3).
+     */
+    private function countApprovedFeaturedTickets(?int $exceptId = null): int
+    {
+        $q = FeedbackTicket::query()
+            ->whereRaw("LOWER(TRIM(COALESCE(publication_status, ''))) = ?", ['approved'])
+            ->where('featured', true);
+        if ($exceptId !== null) {
+            $q->where('id', '!=', $exceptId);
+        }
+
+        return (int) $q->count();
+    }
+
+    private function assertFeaturedSlotAvailable(FeedbackTicket $ticket): ?JsonResponse
+    {
+        if (! $ticket->featured && $this->countApprovedFeaturedTickets($ticket->id) >= 3) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Maximum of 3 featured testimonials are allowed. Unfeature another approved item first.',
+            ], 422);
+        }
+
+        return null;
     }
 
     public function show(FeedbackTicket $ticket): JsonResponse
@@ -171,6 +204,14 @@ class AdminFeedbackController extends Controller
             $data['message'] = $clean;
         }
 
+        $wasFeatured = (bool) $ticket->featured;
+        if (array_key_exists('featured', $data) && $data['featured'] && ! $wasFeatured) {
+            $limitResp = $this->assertFeaturedSlotAvailable($ticket);
+            if ($limitResp instanceof JsonResponse) {
+                return $limitResp;
+            }
+        }
+
         $before = $ticket->only(array_keys($data));
         foreach ($data as $k => $v) {
             $ticket->{$k} = $v;
@@ -245,8 +286,17 @@ class AdminFeedbackController extends Controller
             'featured' => 'sometimes|boolean',
         ]);
 
+        if (($data['featured'] ?? false) === true) {
+            $limitResp = $this->assertFeaturedSlotAvailable($ticket);
+            if ($limitResp instanceof JsonResponse) {
+                return $limitResp;
+            }
+        }
+
         $ticket->publication_status = 'approved';
         $ticket->website_visible = true;
+        $ticket->publication_approved_at = now();
+        $ticket->rejected_at = null;
         if (array_key_exists('consent_public_display', $data)) {
             $ticket->consent_public_display = (bool) $data['consent_public_display'];
         }
@@ -297,6 +347,8 @@ class AdminFeedbackController extends Controller
         $ticket->publication_status = 'rejected';
         $ticket->website_visible = false;
         $ticket->featured = false;
+        $ticket->rejected_at = now();
+        $ticket->publication_approved_at = null;
         $ticket->save();
 
         $this->audit($request, $ticket, 'publication.reject', []);
@@ -311,6 +363,13 @@ class AdminFeedbackController extends Controller
         $this->authorizeSensitive($request, $ticket);
 
         abort_unless($ticket->publication_status === 'approved', 422, 'Approve the testimonial before featuring.');
+
+        if (! $ticket->featured) {
+            $limitResp = $this->assertFeaturedSlotAvailable($ticket);
+            if ($limitResp instanceof JsonResponse) {
+                return $limitResp;
+            }
+        }
 
         $ticket->featured = true;
         $ticket->save();
@@ -487,6 +546,8 @@ class AdminFeedbackController extends Controller
             'website_visible' => (bool) ($ticket->website_visible ?? false),
             'public_author_label' => $ticket->public_author_label,
             'publication_status' => $ticket->publication_status ?? 'pending',
+            'publication_approved_at' => optional($ticket->publication_approved_at)?->toIso8601String(),
+            'rejected_at' => optional($ticket->rejected_at)?->toIso8601String(),
             'featured' => (bool) ($ticket->featured ?? false),
             'source' => $ticket->source,
             'consent_public_display' => (bool) ($ticket->consent_public_display ?? false),
