@@ -5,9 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Payment extends Model
 {
+    use SoftDeletes;
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_PAID = 'paid';
@@ -37,6 +40,15 @@ class Payment extends Model
         'external_ref',
         'reference_number',
         'official_receipt_number',
+        'acknowledgement_receipt_number',
+        'receipt_issued_by',
+        'receipt_issued_role',
+        'receipt_issued_at',
+        'verified_by',
+        'verified_at',
+        'approved_by',
+        'approved_at',
+        'recorded_by',
         'notes',
         'is_final_payment',
         'original_amount_due',
@@ -61,6 +73,9 @@ class Payment extends Model
         'submitted_at' => 'datetime',
         'adjusted_at' => 'datetime',
         'confirmation_date' => 'datetime',
+        'receipt_issued_at' => 'datetime',
+        'verified_at' => 'datetime',
+        'approved_at' => 'datetime',
     ];
 
     public function loan(): BelongsTo
@@ -86,5 +101,35 @@ class Payment extends Model
     public function paymentReceipts(): HasMany
     {
         return $this->hasMany(PaymentReceipt::class);
+    }
+
+    public function receiptIssuedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'receipt_issued_by');
+    }
+
+    public function verifiedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    public function approvedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function recordedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'recorded_by');
+    }
+
+    public function receiptAudits(): HasMany
+    {
+        return $this->hasMany(PaymentReceiptAudit::class);
+    }
+
+    public function isPaid(): bool
+    {
+        return strtolower((string) $this->status) === self::STATUS_PAID;
     }
 }

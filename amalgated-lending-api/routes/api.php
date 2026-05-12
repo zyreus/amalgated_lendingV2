@@ -3,16 +3,18 @@
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\AdminAuthController;
 use App\Http\Controllers\Api\AdminChatController;
+use App\Http\Controllers\Api\AdminChatKnowledgeController;
 use App\Http\Controllers\Api\AdminFeedbackController;
 use App\Http\Controllers\Api\AdminLeadController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BorrowerAuthController;
-use App\Http\Controllers\Api\BorrowerEmailVerificationController;
 use App\Http\Controllers\Api\BorrowerController;
+use App\Http\Controllers\Api\BorrowerEmailVerificationController;
 use App\Http\Controllers\Api\BorrowerLendingSignatureController;
 use App\Http\Controllers\Api\BorrowerLoanApplicationWizardController;
 use App\Http\Controllers\Api\BorrowerNotificationController;
 use App\Http\Controllers\Api\BorrowerPortalController;
+use App\Http\Controllers\Api\ChatbotFeedbackController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\ChattelMortgageController;
 use App\Http\Controllers\Api\CmsController;
@@ -21,7 +23,6 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DocumentLoanAdminController;
 use App\Http\Controllers\Api\DocumentLoanApplicationController;
 use App\Http\Controllers\Api\FaceRecognitionController;
-use App\Http\Controllers\Api\AdminChatKnowledgeController;
 use App\Http\Controllers\Api\HealthCheckController;
 use App\Http\Controllers\Api\InternalChatRagController;
 use App\Http\Controllers\Api\LivenessController;
@@ -40,11 +41,10 @@ use App\Http\Controllers\Api\PrintableFormAdminController;
 use App\Http\Controllers\Api\PrintableFormBorrowerController;
 use App\Http\Controllers\Api\PublicChatController;
 use App\Http\Controllers\Api\PublicFeedbackSubmitController;
-use App\Http\Controllers\Api\PublicWebsiteTestimonialsController;
-use App\Http\Controllers\Api\ChatbotFeedbackController;
 use App\Http\Controllers\Api\PublicFileController;
 use App\Http\Controllers\Api\PublicInquiryController;
 use App\Http\Controllers\Api\PublicLeadController;
+use App\Http\Controllers\Api\PublicWebsiteTestimonialsController;
 use App\Http\Controllers\Api\RealEstateMortgageController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RoleController;
@@ -221,12 +221,20 @@ Route::prefix('v1')->group(function () {
 
         Route::middleware('permission:reports.view')->group(function () {
             Route::get('/reports/summary', [ReportController::class, 'summary']);
+            Route::get('/reports/payments/ledger', [ReportController::class, 'paymentLedger']);
+        });
+
+        Route::middleware('permission:payments.export')->group(function () {
+            Route::get('/payments/export', [PaymentController::class, 'exportCsv']);
         });
 
         Route::middleware('permission:payments.manage')->group(function () {
             Route::get('/payments', [PaymentController::class, 'index']);
             Route::put('/payments/{payment}', [PaymentController::class, 'record']);
             Route::patch('/payments/{payment}/status', [PaymentController::class, 'updateStatus']);
+            Route::patch('/payments/{payment}/verify', [PaymentController::class, 'verify']);
+            Route::patch('/payments/{payment}/receipts', [PaymentController::class, 'patchReceipts']);
+            Route::get('/payments/{payment}/receipt-audits', [PaymentController::class, 'receiptAudits']);
             Route::get('/users/{user}/payment-history', [PaymentController::class, 'forUser']);
 
             Route::middleware('permission:payments.adjust_final')->group(function () {

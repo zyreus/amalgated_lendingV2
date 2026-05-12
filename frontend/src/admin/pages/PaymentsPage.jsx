@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { api } from '../api/client.js'
+import { api, getToken, API_BASE } from '../api/client.js'
+import { useAdminApiAuth } from '../context/useAdminApiAuth.js'
 import { useToast } from '../context/ToastContext.jsx'
 import { admin, TableSkeletonRows, EmptyTableRow } from '../components/AdminUi.jsx'
 import ConfirmModal from '../components/ConfirmModal.jsx'
@@ -179,6 +180,7 @@ function hasBorrowerPaymentEvidence(payment) {
 
 export default function PaymentsPage() {
   const { showToast } = useToast()
+  const { can } = useAdminApiAuth()
   const [searchParams] = useSearchParams()
   const [data, setData] = useState(null)
   const [borrowersData, setBorrowersData] = useState([])
@@ -198,6 +200,23 @@ export default function PaymentsPage() {
   const [borrowerNameFilter, setBorrowerNameFilter] = useState('')
   const [loanNumberFilter, setLoanNumberFilter] = useState('')
   const [loanSearchDebounced, setLoanSearchDebounced] = useState('')
+  const [orFilter, setOrFilter] = useState('')
+  const [arFilter, setArFilter] = useState('')
+  const [orArDebounced, setOrArDebounced] = useState({ or: '', ar: '' })
+  const [apiStatus, setApiStatus] = useState('')
+  const [approvalStatus, setApprovalStatus] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('')
+  const [showPaidInLoanFilter, setShowPaidInLoanFilter] = useState(false)
+  const [confirmOr, setConfirmOr] = useState('')
+  const [confirmAr, setConfirmAr] = useState('')
+  const [confirmAutoMint, setConfirmAutoMint] = useState(true)
+  const [receiptEdit, setReceiptEdit] = useState(null)
+  const [receiptOrInput, setReceiptOrInput] = useState('')
+  const [receiptArInput, setReceiptArInput] = useState('')
+  const [receiptSaving, setReceiptSaving] = useState(false)
+  const [receiptAuditFor, setReceiptAuditFor] = useState(null)
+  const [receiptAuditRows, setReceiptAuditRows] = useState([])
+  const [receiptAuditLoading, setReceiptAuditLoading] = useState(false)
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -205,6 +224,13 @@ export default function PaymentsPage() {
     }, 350)
     return () => window.clearTimeout(t)
   }, [loanNumberFilter])
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setOrArDebounced({ or: orFilter.trim(), ar: arFilter.trim() })
+    }, 400)
+    return () => window.clearTimeout(t)
+  }, [orFilter, arFilter])
 
   const loadBorrowers = async () => {
     try {
@@ -215,12 +241,28 @@ export default function PaymentsPage() {
     }
   }
 
+  const buildPaymentsQuery = useCallback(() => {
+    const qs = new URLSearchParams({ per_page: '300' })
+    if (loanSearchDebounced) qs.set('loan_search', loanSearchDebounced)
+    if (orArDebounced.or) qs.set('official_receipt_q', orArDebounced.or)
+    if (orArDebounced.ar) qs.set('acknowledgement_receipt_q', orArDebounced.ar)
+    if (apiStatus) qs.set('status', apiStatus)
+    if (approvalStatus) qs.set('approval_status', approvalStatus)
+    if (paymentMethod) qs.set('payment_method', paymentMethod)
+    return qs
+  }, [
+    loanSearchDebounced,
+    orArDebounced.or,
+    orArDebounced.ar,
+    apiStatus,
+    approvalStatus,
+    paymentMethod,
+  ])
+
   const loadPayments = async () => {
     setLoading(true)
     try {
-      const qs = new URLSearchParams({ per_page: '200' })
-      if (loanSearchDebounced) qs.set('loan_search', loanSearchDebounced)
-      const paymentsRes = await api(`/payments?${qs.toString()}`)
+      const paymentsRes = await api(`/payments?${buildPaymentsQuery().toString()}`)
       setData(paymentsRes.data)
     } catch (e) {
       showToast(e.message, 'error')
@@ -231,14 +273,12 @@ export default function PaymentsPage() {
 
   const loadPaymentsSilent = useCallback(async () => {
     try {
-      const qs = new URLSearchParams({ per_page: '200' })
-      if (loanSearchDebounced) qs.set('loan_search', loanSearchDebounced)
-      const paymentsRes = await api(`/payments?${qs.toString()}`)
+      const paymentsRes = await api(`/payments?${buildPaymentsQuery().toString()}`)
       setData(paymentsRes.data)
     } catch (e) {
       showToast(e.message, 'error')
     }
-  }, [loanSearchDebounced, showToast])
+  }, [buildPaymentsQuery, showToast])
 
   useEffect(() => {
     void loadBorrowers()
@@ -251,7 +291,7 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     void loadPayments()
-  }, [loanSearchDebounced])
+  }, [loanSearchDebounced, orArDebounced.or, orArDebounced.ar, apiStatus, approvalStatus, paymentMethod])
 
   const rows = useMemo(() => {
     const byId = new Map()
@@ -295,12 +335,18 @@ export default function PaymentsPage() {
         p?.email ||
         matchedBorrower?.email ||
         ''
+      const officerName = p?.loan?.assigned_officer?.name || p?.assigned_officer_name || '—'
+      const collectorName = p?.recorded_by_name || '—'
       return {
         ...p,
         borrowerName: String(borrowerName || '—'),
         loanNumber: String(loanNumber || ''),
         borrowerEmail: String(borrowerEmail || ''),
         paymentRef: getPaymentReference(p),
+        officerName: String(officerName || '—'),
+        collectorName: String(collectorName || '—'),
+        orNumber: String(p?.official_receipt_number || '').trim(),
+        arNumber: String(p?.acknowledgement_receipt_number || '').trim(),
       }
     })
   }, [data, borrowersData])
@@ -332,14 +378,101 @@ export default function PaymentsPage() {
 
     const loanQ = loanNumberFilter.trim()
     if (loanQ) {
-      next = next.filter((p) => paymentMatchesLoanSearch(p, loanQ) && hasOutstandingBalance(p))
+      next = next.filter(
+        (p) => paymentMatchesLoanSearch(p, loanQ) && (showPaidInLoanFilter || hasOutstandingBalance(p)),
+      )
     }
 
     return next
-  }, [rows, borrowerFilter, borrowerNameFilter, loanNumberFilter])
+  }, [rows, borrowerFilter, borrowerNameFilter, loanNumberFilter, showPaidInLoanFilter])
 
   const openConfirmModal = (payment) => {
     setConfirmTarget(payment)
+    setConfirmOr(String(payment?.official_receipt_number || '').trim())
+    setConfirmAr(String(payment?.acknowledgement_receipt_number || '').trim())
+    setConfirmAutoMint(true)
+  }
+
+  const openReceiptEditModal = (p) => {
+    setReceiptEdit(p)
+    setReceiptOrInput(String(p?.official_receipt_number || '').trim())
+    setReceiptArInput(String(p?.acknowledgement_receipt_number || '').trim())
+  }
+
+  const saveReceiptEdit = async () => {
+    if (!receiptEdit?.id) return
+    if (!receiptOrInput.trim() && !receiptArInput.trim()) {
+      showToast('Enter at least one receipt number.', 'error')
+      return
+    }
+    setReceiptSaving(true)
+    try {
+      const body = {}
+      if (receiptOrInput.trim()) body.official_receipt_number = receiptOrInput.trim()
+      if (receiptArInput.trim()) body.acknowledgement_receipt_number = receiptArInput.trim()
+      await api(`/payments/${receiptEdit.id}/receipts`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      })
+      showToast('Receipt numbers saved.', 'success')
+      setReceiptEdit(null)
+      await loadPaymentsSilent()
+    } catch (e) {
+      showToast(e.message || 'Could not save receipt numbers.', 'error')
+    } finally {
+      setReceiptSaving(false)
+    }
+  }
+
+  const verifyPaymentRow = async (p) => {
+    try {
+      await api(`/payments/${p.id}/verify`, { method: 'PATCH', body: '{}' })
+      showToast('Payment verified.', 'success')
+      await loadPaymentsSilent()
+    } catch (e) {
+      showToast(e.message || 'Verification failed.', 'error')
+    }
+  }
+
+  const openReceiptAuditModal = async (p) => {
+    setReceiptAuditFor(p)
+    setReceiptAuditLoading(true)
+    setReceiptAuditRows([])
+    try {
+      const res = await api(`/payments/${p.id}/receipt-audits`)
+      setReceiptAuditRows(Array.isArray(res?.data) ? res.data : [])
+    } catch (e) {
+      showToast(e.message || 'Could not load receipt audit trail.', 'error')
+      setReceiptAuditFor(null)
+    } finally {
+      setReceiptAuditLoading(false)
+    }
+  }
+
+  const downloadPaymentsExport = async () => {
+    try {
+      const qs = buildPaymentsQuery()
+      const rel = `/payments/export?${qs.toString()}`
+      const token = getToken()
+      const prefix = String(API_BASE || '/api/v1').replace(/\/$/, '')
+      const url = `${window.location.origin}${prefix}${rel.startsWith('/') ? rel : `/${rel}`}`
+      const res = await fetch(url, {
+        headers: { Accept: 'text/csv', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      })
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '')
+        throw new Error(errText || `Export failed (${res.status})`)
+      }
+      const blob = await res.blob()
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = 'payments-export.csv'
+      a.click()
+      URL.revokeObjectURL(a.href)
+      showToast('Export downloaded.', 'success')
+    } catch (e) {
+      showToast(e.message || 'Export failed.', 'error')
+    }
   }
 
   const canAdjustFinal = (p) =>
@@ -406,11 +539,21 @@ export default function PaymentsPage() {
       showToast('Borrower must submit payment first before confirmation.', 'error')
       return
     }
+    if (!confirmAutoMint && !confirmOr.trim() && !confirmAr.trim()) {
+      showToast('Provide at least an OR number or an AR number, or enable auto-generate.', 'error')
+      return
+    }
     setConfirmingId(confirmTarget.id)
     try {
+      const body = {
+        status: 'paid',
+        auto_mint_receipt_numbers: confirmAutoMint,
+      }
+      if (confirmOr.trim()) body.official_receipt_number = confirmOr.trim()
+      if (confirmAr.trim()) body.acknowledgement_receipt_number = confirmAr.trim()
       const res = await api(`/payments/${confirmTarget.id}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'paid' }),
+        body: JSON.stringify(body),
       })
       if (res.receipt_email_sent) {
         const em = res.last_payment_receipt_email
@@ -445,13 +588,24 @@ export default function PaymentsPage() {
 
   return (
     <div className="w-full min-w-0 space-y-6">
-      <div>
-        <h1 className={admin.pageTitle}>Payments &amp; collections</h1>
-        <p className={admin.pageSubtitle}>Installments and recorded payments.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className={admin.pageTitle}>Payments &amp; collections</h1>
+          <p className={admin.pageSubtitle}>Installments, OR/AR receipt control, and verification workflow.</p>
+        </div>
+        {can('payments.export') ? (
+          <button
+            type="button"
+            onClick={() => void downloadPaymentsExport()}
+            className={`shrink-0 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50 dark:border-[#374151] dark:text-gray-100 dark:hover:bg-white/5`}
+          >
+            Export CSV
+          </button>
+        ) : null}
       </div>
 
       <div className={`${admin.cardNoHover} p-4`}>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <label className="block">
             <span className={`text-xs font-medium ${admin.textMuted}`}>Borrower account</span>
             <select
@@ -485,7 +639,75 @@ export default function PaymentsPage() {
               className={`mt-1 w-full ${admin.input}`}
             />
           </label>
+          <label className="block">
+            <span className={`text-xs font-medium ${admin.textMuted}`}>Search OR no.</span>
+            <input
+              value={orFilter}
+              onChange={(e) => setOrFilter(e.target.value)}
+              placeholder="Official receipt"
+              className={`mt-1 w-full ${admin.input} font-mono uppercase`}
+            />
+          </label>
+          <label className="block">
+            <span className={`text-xs font-medium ${admin.textMuted}`}>Search AR no.</span>
+            <input
+              value={arFilter}
+              onChange={(e) => setArFilter(e.target.value)}
+              placeholder="Acknowledgement receipt"
+              className={`mt-1 w-full ${admin.input} font-mono uppercase`}
+            />
+          </label>
+          <label className="block">
+            <span className={`text-xs font-medium ${admin.textMuted}`}>Payment status</span>
+            <select
+              value={apiStatus}
+              onChange={(e) => setApiStatus(e.target.value)}
+              className={`mt-1 w-full ${admin.input}`}
+            >
+              <option value="">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="partial">Partial</option>
+              <option value="paid">Paid</option>
+              <option value="overdue">Overdue</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className={`text-xs font-medium ${admin.textMuted}`}>Workflow</span>
+            <select
+              value={approvalStatus}
+              onChange={(e) => setApprovalStatus(e.target.value)}
+              className={`mt-1 w-full ${admin.input}`}
+            >
+              <option value="">Any</option>
+              <option value="missing_receipts">Paid · missing both OR &amp; AR</option>
+              <option value="verified">Verified</option>
+              <option value="pending">Pending queue</option>
+              <option value="paid">Paid only</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className={`text-xs font-medium ${admin.textMuted}`}>Payment method</span>
+            <select
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              className={`mt-1 w-full ${admin.input}`}
+            >
+              <option value="">Any method</option>
+              <option value="cash">Cash</option>
+              <option value="bank_transfer">Bank transfer</option>
+              <option value="gcash">GCash</option>
+            </select>
+          </label>
         </div>
+        <label className={`mt-3 flex cursor-pointer items-center gap-2 text-xs ${admin.textMuted}`}>
+          <input
+            type="checkbox"
+            checked={showPaidInLoanFilter}
+            onChange={(e) => setShowPaidInLoanFilter(e.target.checked)}
+            className="rounded border-gray-300"
+          />
+          When filtering by loan number, include paid installments (read-only ledger view)
+        </label>
         {borrowerFilter ? (
           <p className={`mt-2 text-xs ${admin.textMuted}`}>
             Showing pending payments for <span className="font-semibold">{borrowerFilter}</span>.
@@ -493,8 +715,8 @@ export default function PaymentsPage() {
         ) : null}
         {loanNumberFilter.trim() ? (
           <p className={`mt-2 text-xs ${admin.textMuted}`}>
-            Showing unpaid installments (due balance) for loans matching{' '}
-            <span className="font-mono font-semibold">{loanNumberFilter.trim()}</span>.
+            Loan filter: loans matching <span className="font-mono font-semibold">{loanNumberFilter.trim()}</span>
+            {showPaidInLoanFilter ? ' (including paid installments).' : ' (unpaid installments only — tick checkbox above to include paid).'}
           </p>
         ) : null}
       </div>
@@ -543,6 +765,21 @@ export default function PaymentsPage() {
                   </span>
                 ) : null}
               </div>
+              <div className="mt-1 grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <p className={`${admin.textMuted}`}>OR no.</p>
+                  <p className="font-mono text-gray-900 dark:text-gray-100">{p.orNumber || '—'}</p>
+                </div>
+                <div>
+                  <p className={`${admin.textMuted}`}>AR no.</p>
+                  <p className="font-mono text-gray-900 dark:text-gray-100">{p.arNumber || '—'}</p>
+                </div>
+              </div>
+              <p className={`text-[11px] ${admin.textMuted}`}>
+                Officer: <span className="font-medium text-gray-800 dark:text-gray-200">{p.officerName}</span>
+                {' · '}
+                Collector: <span className="font-medium text-gray-800 dark:text-gray-200">{p.collectorName}</span>
+              </p>
               {p.receipt_path || getReceiptPublicUrl(p) ? (
                 <div className="mt-2">
                   <p className={`text-[10px] font-semibold uppercase tracking-wide ${admin.textMuted}`}>Payment proof</p>
@@ -584,10 +821,34 @@ export default function PaymentsPage() {
                 ) : null}
                 <button
                   type="button"
+                  onClick={() => void openReceiptAuditModal(p)}
+                  className="rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-semibold text-gray-800 dark:border-[#374151] dark:text-gray-200"
+                >
+                  Receipt log
+                </button>
+                {pending && hasBorrowerPaymentEvidence(p) && can('payments.verify') ? (
+                  <button
+                    type="button"
+                    onClick={() => void verifyPaymentRow(p)}
+                    className="rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-950/30 dark:text-emerald-200"
+                  >
+                    Verify
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => openReceiptEditModal(p)}
+                  disabled={p.is_receipt_locked && !can('payments.override_locked')}
+                  className="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sky-500/40 dark:bg-sky-950/30 dark:text-sky-200"
+                >
+                  OR / AR
+                </button>
+                <button
+                  type="button"
                   onClick={() => void openAuditModal(p)}
                   className="rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-semibold text-gray-800 dark:border-[#374151] dark:text-gray-200"
                 >
-                  Audit trail
+                  Final adj. audit
                 </button>
               </div>
                   </>
@@ -599,9 +860,9 @@ export default function PaymentsPage() {
       </div>
 
       {/* Desktop table (lg+) */}
-      <div className={`hidden lg:block ${admin.tableWrap}`}>
-        <table className={`${admin.tableBase} ${admin.tableText} ${admin.tableMin900}`}>
-          <thead>
+      <div className={`hidden lg:block max-h-[calc(100vh-12rem)] overflow-auto ${admin.tableWrap}`}>
+        <table className={`${admin.tableBase} ${admin.tableText} min-w-[1180px]`}>
+          <thead className="sticky top-0 z-10 bg-gray-50 shadow-sm dark:bg-[#0b1220]">
             <tr className={admin.thead}>
               <th className={admin.tableCell}>Borrower account</th>
               <th className={admin.tableCell}>Loan</th>
@@ -612,18 +873,23 @@ export default function PaymentsPage() {
               <th className={admin.tableCell}>Remaining</th>
               <th className={admin.tableCell}>Paid</th>
               <th className={admin.tableCell}>Status</th>
+              <th className={admin.tableCell}>OR no.</th>
+              <th className={admin.tableCell}>AR no.</th>
+              <th className={admin.tableCell}>Officer</th>
+              <th className={admin.tableCell}>Collector</th>
+              <th className={admin.tableCell}>Verified</th>
               <th className={admin.tableCell}>Reference</th>
               <th className={admin.tableCell}>Proof</th>
               <th className={admin.tableCell}>Receipt email</th>
-              <th className={admin.tableCell}>Final / Audit</th>
+              <th className={admin.tableCell}>Tools</th>
               <th className={admin.tableCell}>Action</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <TableSkeletonRows cols={14} rows={5} />
+              <TableSkeletonRows cols={19} rows={5} />
             ) : filteredRows.length === 0 ? (
-              <EmptyTableRow colSpan={14} message="No payments found." />
+              <EmptyTableRow colSpan={19} message="No payments found." />
             ) : (
               filteredRows.map((p) => (
                 <tr key={p.id} className={admin.tbodyRow}>
@@ -665,7 +931,29 @@ export default function PaymentsPage() {
                           Adjusted final
                         </span>
                       ) : null}
+                      {p.is_receipt_locked ? (
+                        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-800 dark:bg-slate-600/40 dark:text-slate-100">
+                          Locked
+                        </span>
+                      ) : null}
                     </span>
+                  </td>
+                  <td className={`${admin.tableCell} max-w-[7rem] truncate font-mono text-xs`} title={p.orNumber || ''}>
+                    {p.orNumber || '—'}
+                  </td>
+                  <td className={`${admin.tableCell} max-w-[7rem] truncate font-mono text-xs`} title={p.arNumber || ''}>
+                    {p.arNumber || '—'}
+                  </td>
+                  <td className={`${admin.tableCell} max-w-[7rem] truncate text-xs`}>{p.officerName}</td>
+                  <td className={`${admin.tableCell} max-w-[7rem] truncate text-xs`}>{p.collectorName}</td>
+                  <td className={`${admin.tableCell} whitespace-nowrap text-xs`}>
+                    {p.verified_by_name ? (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-100">
+                        Yes
+                      </span>
+                    ) : (
+                      '—'
+                    )}
                   </td>
                   <td className={`${admin.tableCell} max-w-[12rem] break-words font-mono text-xs`}>
                     {p.paymentRef || '—'}
@@ -676,7 +964,7 @@ export default function PaymentsPage() {
                   <td className={`${admin.tableCell} align-top text-xs`}>
                     <ReceiptEmailCell payment={p} />
                   </td>
-                  <td className={`${admin.tableCell} max-w-[10rem] whitespace-normal text-xs`}>
+                  <td className={`${admin.tableCell} max-w-[12rem] whitespace-normal text-xs`}>
                     <div className="flex flex-col gap-1">
                       {canAdjustFinal(p) ? (
                         <button
@@ -689,10 +977,34 @@ export default function PaymentsPage() {
                       ) : null}
                       <button
                         type="button"
+                        onClick={() => void openReceiptAuditModal(p)}
+                        className="rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-semibold text-gray-800 hover:bg-gray-50 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/5"
+                      >
+                        Receipt log
+                      </button>
+                      {pending && hasBorrowerPaymentEvidence(p) && can('payments.verify') ? (
+                        <button
+                          type="button"
+                          onClick={() => void verifyPaymentRow(p)}
+                          className="rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-900 hover:bg-emerald-100 dark:border-emerald-500/40 dark:bg-emerald-950/30 dark:text-emerald-200"
+                        >
+                          Verify
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => openReceiptEditModal(p)}
+                        disabled={p.is_receipt_locked && !can('payments.override_locked')}
+                        className="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-900 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sky-500/40 dark:bg-sky-950/30 dark:text-sky-200"
+                      >
+                        OR / AR
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => void openAuditModal(p)}
                         className="rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-semibold text-gray-800 hover:bg-gray-50 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/5"
                       >
-                        Audit trail
+                        Final adj. audit
                       </button>
                     </div>
                   </td>
@@ -757,6 +1069,48 @@ export default function PaymentsPage() {
                 </div>
               ) : null}
               <p><span className="font-medium">Borrower email:</span> {getBorrowerEmail(confirmTarget) || 'Not available'}</p>
+            </div>
+            <div className="mt-4 space-y-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-[#1F2937] dark:bg-[#111827]/80">
+              <p className={`text-xs font-semibold uppercase tracking-wide ${admin.textMuted}`}>Receipt numbers</p>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
+                <input
+                  type="checkbox"
+                  checked={confirmAutoMint}
+                  onChange={(e) => setConfirmAutoMint(e.target.checked)}
+                  className="rounded border-gray-300"
+                />
+                Auto-generate missing OR/AR (OR-YYYY-###### / AR-YYYY-######)
+              </label>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className={`text-xs font-medium ${admin.textMuted}`}>Official receipt (OR)</span>
+                  <input
+                    value={confirmOr}
+                    onChange={(e) => setConfirmOr(e.target.value)}
+                    className={`mt-1 w-full font-mono uppercase ${admin.input}`}
+                    placeholder="Leave blank to auto-fill when enabled"
+                  />
+                </label>
+                <label className="block">
+                  <span className={`text-xs font-medium ${admin.textMuted}`}>Acknowledgement (AR)</span>
+                  <input
+                    value={confirmAr}
+                    onChange={(e) => setConfirmAr(e.target.value)}
+                    className={`mt-1 w-full font-mono uppercase ${admin.input}`}
+                    placeholder="Leave blank to auto-fill when enabled"
+                  />
+                </label>
+              </div>
+              {!confirmAutoMint ? (
+                <p className={`text-xs ${admin.textMuted}`}>
+                  When auto-generate is off, enter at least one receipt number (OR only, AR only, or both).
+                </p>
+              ) : (
+                <p className={`text-xs ${admin.textMuted}`}>
+                  Auto-generate fills both numbers only when both fields would otherwise be empty. You can still type
+                  just an OR or just an AR and leave the other blank.
+                </p>
+              )}
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button
@@ -920,6 +1274,121 @@ export default function PaymentsPage() {
             </div>
             <div className="mt-4 flex justify-end">
               <button type="button" className={admin.btnSecondary} onClick={() => setAuditFor(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {receiptEdit ? (
+        <div
+          className={admin.modalOverlay}
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setReceiptEdit(null)
+          }}
+        >
+          <div
+            className={`${admin.modalCard} max-w-md`}
+            role="dialog"
+            aria-modal="true"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Receipt numbers</h3>
+            <p className={`mt-1 text-sm ${admin.textMuted}`}>
+              Payment #{receiptEdit.id} · {receiptEdit.borrowerName}
+              {receiptEdit.is_receipt_locked ? (
+                <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-900 dark:bg-amber-500/20 dark:text-amber-100">
+                  Locked — override role required to edit
+                </span>
+              ) : null}
+            </p>
+            <div className="mt-4 space-y-3">
+              <label className="block">
+                <span className={`text-xs font-medium ${admin.textMuted}`}>Official receipt (OR)</span>
+                <input
+                  value={receiptOrInput}
+                  onChange={(e) => setReceiptOrInput(e.target.value)}
+                  className={`mt-1 w-full font-mono uppercase ${admin.input}`}
+                />
+              </label>
+              <label className="block">
+                <span className={`text-xs font-medium ${admin.textMuted}`}>Acknowledgement (AR)</span>
+                <input
+                  value={receiptArInput}
+                  onChange={(e) => setReceiptArInput(e.target.value)}
+                  className={`mt-1 w-full font-mono uppercase ${admin.input}`}
+                />
+              </label>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" className={admin.btnSecondary} onClick={() => setReceiptEdit(null)} disabled={receiptSaving}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={admin.btnPrimary}
+                disabled={receiptSaving}
+                onClick={() => void saveReceiptEdit()}
+              >
+                {receiptSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {receiptAuditFor ? (
+        <div
+          className={admin.modalOverlay}
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setReceiptAuditFor(null)
+          }}
+        >
+          <div
+            className={`${admin.modalCard} max-w-2xl`}
+            role="dialog"
+            aria-modal="true"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Receipt audit log</h3>
+            <p className={`mt-1 text-sm ${admin.textMuted}`}>
+              Payment #{receiptAuditFor.id} · Loan {paymentLoanId(receiptAuditFor) ? `#${paymentLoanId(receiptAuditFor)}` : '—'}
+            </p>
+            <div className={`mt-4 max-h-80 overflow-y-auto text-sm ${admin.textMuted}`}>
+              {receiptAuditLoading ? (
+                <p>Loading…</p>
+              ) : receiptAuditRows.length === 0 ? (
+                <p>No receipt events logged yet.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {receiptAuditRows.map((a) => (
+                    <li
+                      key={a.id}
+                      className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-[#374151] dark:bg-[#0F172A]/50"
+                    >
+                      <p className="font-medium text-gray-900 dark:text-gray-100">{a.action}</p>
+                      <p className="mt-1 font-mono text-xs text-gray-800 dark:text-gray-200">
+                        OR {a.official_receipt_number || '—'} · AR {a.acknowledgement_receipt_number || '—'}
+                      </p>
+                      <p className="mt-1 text-xs">
+                        {a.created_at ? new Date(a.created_at).toLocaleString() : '—'} ·{' '}
+                        {a.user?.name || a.user?.email || 'System'}
+                      </p>
+                      {a.meta ? (
+                        <pre className="mt-2 max-h-24 overflow-auto rounded bg-black/5 p-2 text-[10px] dark:bg-white/5">
+                          {JSON.stringify(a.meta, null, 2)}
+                        </pre>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button type="button" className={admin.btnSecondary} onClick={() => setReceiptAuditFor(null)}>
                 Close
               </button>
             </div>

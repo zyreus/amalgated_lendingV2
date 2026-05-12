@@ -15,6 +15,7 @@ class PaymentListResource extends JsonResource
         $isFinal = (bool) ($this->is_final_payment ?? false) || ($term > 0 && (int) $this->installment_no === $term);
 
         $invoicePath = $this->invoice_pdf_path ?? null;
+        $statusLower = strtolower((string) $this->status);
 
         return [
             'id' => $this->id,
@@ -22,6 +23,16 @@ class PaymentListResource extends JsonResource
             'borrower_id' => $this->loan?->borrower_id,
             'installment_no' => $this->installment_no,
             'official_receipt_number' => $this->official_receipt_number,
+            'acknowledgement_receipt_number' => $this->acknowledgement_receipt_number,
+            'receipt_issued_at' => optional($this->receipt_issued_at)?->toIso8601String(),
+            'receipt_issued_by_name' => $this->receiptIssuedByUser?->name,
+            'receipt_issued_role' => $this->receipt_issued_role,
+            'verified_at' => optional($this->verified_at)?->toIso8601String(),
+            'verified_by_name' => $this->verifiedByUser?->name,
+            'approved_at' => optional($this->approved_at)?->toIso8601String(),
+            'approved_by_name' => $this->approvedByUser?->name,
+            'recorded_by_name' => $this->recordedByUser?->name,
+            'is_receipt_locked' => $statusLower === 'paid',
             'invoice_pdf_path' => $invoicePath,
             'invoice_pdf_url' => $invoicePath ? PublicStorageUrl::apiUrl((string) $invoicePath) : null,
             'confirmation_date' => optional($this->confirmation_date)?->toIso8601String(),
@@ -41,7 +52,6 @@ class PaymentListResource extends JsonResource
             'paid_at' => optional($this->paid_at)?->toIso8601String(),
             'source' => $this->source,
             'reference_number' => $this->reference_number,
-            'reference_no' => $this->reference_no,
             'payment_method' => $this->payment_method,
             'receipt_path' => $this->receipt_path,
             'receipt_url' => $this->receipt_path ? PublicStorageUrl::apiUrl($this->receipt_path) : null,
@@ -55,6 +65,11 @@ class PaymentListResource extends JsonResource
                     'loan_number' => $this->loan?->loan_number,
                     'status' => $this->loan?->status,
                     'term_months' => (int) ($this->loan?->term_months ?? 0),
+                    'assigned_officer' => $this->loan?->assignedOfficer ? [
+                        'id' => $this->loan->assignedOfficer->id,
+                        'name' => $this->loan->assignedOfficer->name,
+                        'email' => $this->loan->assignedOfficer->email,
+                    ] : null,
                     'borrower' => [
                         'id' => $this->loan?->borrower?->id,
                         'name' => $this->loan?->borrower?->name,

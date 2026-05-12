@@ -26,6 +26,9 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Assign loan officer', 'slug' => 'loans.assign', 'group_name' => 'Loans'],
             ['name' => 'Manage payments', 'slug' => 'payments.manage', 'group_name' => 'Payments'],
             ['name' => 'Adjust final loan payment', 'slug' => 'payments.adjust_final', 'group_name' => 'Payments'],
+            ['name' => 'Verify borrower payments', 'slug' => 'payments.verify', 'group_name' => 'Payments'],
+            ['name' => 'Override locked payment records', 'slug' => 'payments.override_locked', 'group_name' => 'Payments'],
+            ['name' => 'Export payments (CSV)', 'slug' => 'payments.export', 'group_name' => 'Payments'],
             ['name' => 'View borrowers', 'slug' => 'borrowers.view', 'group_name' => 'Borrowers'],
             ['name' => 'Delete borrowers', 'slug' => 'borrowers.delete', 'group_name' => 'Borrowers'],
             ['name' => 'View reports', 'slug' => 'reports.view', 'group_name' => 'Reports'],
@@ -53,7 +56,7 @@ class DatabaseSeeder extends Seeder
 
         $bySlug = Permission::whereIn('slug', [
             'dashboard.view', 'loans.view', 'loans.approve', 'loans.assign', 'borrowers.view',
-            'payments.manage', 'notifications.view', 'reports.view',
+            'payments.manage', 'payments.verify', 'payments.export', 'notifications.view', 'reports.view',
         ])->pluck('id')->all();
         Role::updateOrCreate(
             ['slug' => 'loan-officer'],
@@ -64,14 +67,14 @@ class DatabaseSeeder extends Seeder
             ['slug' => 'collector'],
             ['name' => 'Collector', 'description' => 'Collections and payment recording.']
         )->permissions()->sync(Permission::whereIn('slug', [
-            'dashboard.view', 'loans.view', 'borrowers.view', 'payments.manage', 'notifications.view',
+            'dashboard.view', 'loans.view', 'borrowers.view', 'payments.manage', 'payments.export', 'notifications.view',
         ])->pluck('id')->all());
 
         Role::updateOrCreate(
             ['slug' => 'accountant'],
             ['name' => 'Accountant', 'description' => 'Financial reporting and payment oversight.']
         )->permissions()->sync(Permission::whereIn('slug', [
-            'dashboard.view', 'loans.view', 'payments.manage', 'reports.view', 'notifications.view',
+            'dashboard.view', 'loans.view', 'payments.manage', 'payments.export', 'reports.view', 'notifications.view',
         ])->pluck('id')->all());
 
         Role::updateOrCreate(
