@@ -251,7 +251,6 @@ Route::prefix('v1')->group(function () {
 
         Route::middleware('permission:dashboard.view')->group(function () {
             Route::get('/feedbacks', [AdminFeedbackController::class, 'index']);
-            Route::get('/feedbacks/staff', [AdminFeedbackController::class, 'staffList']);
             Route::get('/feedbacks/reporting/summary', [AdminFeedbackController::class, 'reportingSummary']);
             Route::get('/feedbacks/{ticket}', [AdminFeedbackController::class, 'show']);
             Route::patch('/feedbacks/{ticket}/status', [AdminFeedbackController::class, 'updateStatus']);

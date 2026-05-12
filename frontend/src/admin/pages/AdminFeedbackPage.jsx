@@ -11,9 +11,6 @@ const QUICK_TABS = [
   { id: 'low_rating', label: 'Low Rating' },
 ]
 
-const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent', 'Legal Concern', 'Escalated Case']
-const STATUSES = ['New', 'Read', 'Replied', 'Pending', 'In Progress', 'Escalated', 'Resolved', 'Closed', 'Archived']
-
 function formatTimestamp(ts) {
   if (!ts) return '—'
   const date = new Date(ts)
@@ -113,10 +110,7 @@ export default function AdminFeedbackPage() {
   const [searchDebounced, setSearchDebounced] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [filters, setFilters] = useState({
-    priority: '',
-    status: '',
     department: '',
-    assigned_staff: '',
     date_from: '',
     date_to: '',
     rating_min: '',
@@ -133,7 +127,6 @@ export default function AdminFeedbackPage() {
   const [page, setPage] = useState(1)
   const [pageMeta, setPageMeta] = useState({ last_page: 1, total: 0, current_page: 1 })
 
-  const [staffOptions, setStaffOptions] = useState([])
   const [busy, setBusy] = useState(false)
   const [listLoading, setListLoading] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -141,16 +134,6 @@ export default function AdminFeedbackPage() {
   const [toast, setToast] = useState('')
   /** { id, subject } when delete confirmation modal is open */
   const [deleteConfirm, setDeleteConfirm] = useState(null)
-
-  const loadStaff = useCallback(async () => {
-    try {
-      const res = await api('/feedbacks/staff')
-      const rows = Array.isArray(res?.data) ? res.data : []
-      setStaffOptions(rows)
-    } catch {
-      setStaffOptions([])
-    }
-  }, [])
 
   useEffect(() => {
     const t = window.setTimeout(() => setSearchDebounced(searchInput.trim()), 400)
@@ -210,10 +193,6 @@ export default function AdminFeedbackPage() {
       setDetailLoading(false)
     }
   }, [])
-
-  useEffect(() => {
-    loadStaff()
-  }, [loadStaff])
 
   useEffect(() => {
     loadTickets()
@@ -336,7 +315,7 @@ export default function AdminFeedbackPage() {
   const workflowAside = selectedId && selected
   const asidePlaceholder =
     !selectedId
-      ? 'Select a ticket from the inbox to manage classification, SLA, publication, and VIP flags.'
+      ? 'Select a ticket from the inbox to manage publication and website visibility.'
       : detailLoading
         ? 'Loading ticket details…'
         : 'Workflow controls appear once this ticket is available.'
@@ -370,89 +349,42 @@ export default function AdminFeedbackPage() {
             />
           </label>
 
-          <div className="flex w-full flex-wrap items-center gap-2">
+          <div className="grid w-full grid-cols-4 gap-2">
             {QUICK_TABS.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setQuick(tab.id)}
-                className={`inline-flex h-9 items-center justify-center rounded-lg px-3 text-xs font-semibold transition ${
+                className={`inline-flex h-9 min-w-0 items-center justify-center rounded-lg px-2 text-center text-[11px] font-semibold leading-tight transition sm:px-3 sm:text-xs ${
                   quick === tab.id ? 'bg-red-600 text-white shadow-sm' : 'border border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
                 }`}
               >
                 {tab.label}
               </button>
             ))}
-            <span className="ml-auto flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setFiltersOpen((v) => !v)}
-                className={`inline-flex h-9 items-center justify-center rounded-lg px-3 text-xs font-semibold transition ${
-                  filtersOpen ? 'bg-gray-900 text-white' : 'border border-gray-200 bg-white text-gray-800 hover:bg-gray-50'
-                }`}
-              >
-                Filters
-              </button>
-              <button
-                type="button"
-                disabled={listLoading}
-                onClick={() => loadTickets()}
-                className="inline-flex h-9 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-800 transition hover:bg-gray-50 disabled:opacity-60"
-              >
-                Refresh
-              </button>
-            </span>
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((v) => !v)}
+              className={`inline-flex h-9 min-w-0 items-center justify-center rounded-lg px-2 text-center text-[11px] font-semibold leading-tight transition sm:px-3 sm:text-xs ${
+                filtersOpen ? 'bg-gray-900 text-white' : 'border border-gray-200 bg-white text-gray-800 hover:bg-gray-50'
+              }`}
+            >
+              Filters
+            </button>
+            <button
+              type="button"
+              disabled={listLoading}
+              onClick={() => loadTickets()}
+              className="inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-gray-200 bg-white px-2 text-center text-[11px] font-semibold leading-tight text-gray-800 transition hover:bg-gray-50 disabled:opacity-60 sm:px-3 sm:text-xs"
+            >
+              Refresh
+            </button>
           </div>
         </div>
 
         {filtersOpen ? (
           <div className="shrink-0 border-b border-gray-100 bg-gray-50/90 px-5 py-4">
             <div className="grid gap-2 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Priority</span>
-                <select
-                  value={filters.priority}
-                  onChange={(e) => setFilters((p) => ({ ...p, priority: e.target.value }))}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm outline-none focus:ring-2 focus:ring-red-200"
-                >
-                  <option value="">All</option>
-                  {PRIORITIES.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Status</span>
-                <select
-                  value={filters.status}
-                  onChange={(e) => setFilters((p) => ({ ...p, status: e.target.value }))}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm outline-none focus:ring-2 focus:ring-red-200"
-                >
-                  <option value="">All</option>
-                  {STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Assigned Staff</span>
-                <select
-                  value={filters.assigned_staff}
-                  onChange={(e) => setFilters((p) => ({ ...p, assigned_staff: e.target.value }))}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm outline-none focus:ring-2 focus:ring-red-200"
-                >
-                  <option value="">Any</option>
-                  {staffOptions.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
               <label className="block">
                 <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Date from</span>
                 <input
@@ -485,10 +417,7 @@ export default function AdminFeedbackPage() {
                 type="button"
                 onClick={() => {
                   setFilters({
-                    priority: '',
-                    status: '',
                     department: '',
-                    assigned_staff: '',
                     date_from: '',
                     date_to: '',
                     rating_min: '',
@@ -701,81 +630,7 @@ export default function AdminFeedbackPage() {
       >
         {workflowAside ? (
           <>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Status & assignment</p>
-
-            <div className="mt-4 grid min-h-0 flex-1 auto-rows-min gap-3">
-              <label className="block">
-                <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Priority</span>
-                <select
-                  value={selected.priority || 'Medium'}
-                  onChange={(e) => onPatchTicket({ priority: e.target.value })}
-                  disabled={busy}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-red-200 disabled:opacity-60"
-                >
-                  {PRIORITIES.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block">
-                <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Status</span>
-                <select
-                  value={selected.status || 'New'}
-                  onChange={(e) => onSetStatus(e.target.value)}
-                  disabled={busy}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-red-200 disabled:opacity-60"
-                >
-                  {STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block">
-                <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Assign to staff</span>
-                <select
-                  value={selected.assigned_staff?.id || ''}
-                  onChange={(e) => onPatchTicket({ assigned_staff_id: e.target.value ? Number(e.target.value) : null })}
-                  disabled={busy}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-red-200 disabled:opacity-60"
-                >
-                  <option value="">Unassigned</option>
-                  {staffOptions.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block min-w-0">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Follow-up</span>
-                  <input
-                    type="datetime-local"
-                    value={selected.follow_up_at ? new Date(selected.follow_up_at).toISOString().slice(0, 16) : ''}
-                    onChange={(e) => onPatchTicket({ follow_up_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
-                    disabled={busy}
-                    className="h-10 w-full min-w-0 rounded-lg border border-gray-200 bg-white px-2 text-sm outline-none transition focus:ring-2 focus:ring-red-200 disabled:opacity-60"
-                  />
-                </label>
-                <label className="block min-w-0">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Resolution deadline</span>
-                  <input
-                    type="datetime-local"
-                    value={selected.resolution_deadline_at ? new Date(selected.resolution_deadline_at).toISOString().slice(0, 16) : ''}
-                    onChange={(e) => onPatchTicket({ resolution_deadline_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
-                    disabled={busy}
-                    className="h-10 w-full min-w-0 rounded-lg border border-gray-200 bg-white px-2 text-sm outline-none transition focus:ring-2 focus:ring-red-200 disabled:opacity-60"
-                  />
-                </label>
-              </div>
-
+            <div className="grid min-h-0 flex-1 auto-rows-min gap-3">
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -799,11 +654,11 @@ export default function AdminFeedbackPage() {
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Public website testimonials</p>
                   <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
-                    Published items appear on the homepage in <span className="font-semibold text-gray-700">Customer feedback</span>{' '}
-                    (“What our borrowers say”). Use <span className="font-semibold text-gray-700">Approve</span> and{' '}
-                    <span className="font-semibold text-gray-700">Feature</span>, turn on borrower consent, and keep rating at
-                    least the site minimum (usually 4★) with a short message. The borrower name on the ticket counts if
-                    display name is left blank. Cached updates can take a few minutes.
+                    Approved items with borrower consent appear on the homepage in{' '}
+                    <span className="font-semibold text-gray-700">Customer feedback</span> (“What our borrowers say”).
+                    Use <span className="font-semibold text-gray-700">Feature</span> to pin them higher in the list.
+                    Keep rating at least the site minimum (usually 4★) and a short message; the name on the ticket or linked
+                    borrower is used on the site. Cached updates can take a few minutes.
                   </p>
                 </div>
                 <label className="flex cursor-pointer items-start gap-3 text-sm text-gray-800">
@@ -830,7 +685,12 @@ export default function AdminFeedbackPage() {
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => onPublicationAction('/approve', {})}
+                    onClick={() =>
+                      onPublicationAction('/approve', {
+                        consent_public_display: !!selected.consent_public_display,
+                        featured: !!selected.featured,
+                      })
+                    }
                     className="h-10 w-full min-w-0 rounded-lg bg-emerald-600 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
                   >
                     Approve
@@ -867,81 +727,6 @@ export default function AdminFeedbackPage() {
                   className="h-10 w-full rounded-lg border border-sky-200 bg-sky-50 text-sm font-semibold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
                 >
                   {selected.verified_borrower ? 'Verified borrower' : 'Mark verified borrower'}
-                </button>
-                <label className="block">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Display name (optional)</span>
-                  <input
-                    key={`author-${selectedId}`}
-                    type="text"
-                    maxLength={120}
-                    defaultValue={selected.public_author_label || ''}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim()
-                      const prev = (selected.public_author_label || '').trim()
-                      if (v === prev) return
-                      onPatchTicket({ public_author_label: v || null })
-                    }}
-                    disabled={busy}
-                    placeholder="e.g. Maria L."
-                    className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-red-200 disabled:opacity-60"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Loan type (public)</span>
-                  <input
-                    key={`loantype-${selectedId}`}
-                    type="text"
-                    maxLength={96}
-                    defaultValue={selected.loan_type || ''}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim()
-                      const prev = (selected.loan_type || '').trim()
-                      if (v === prev) return
-                      onPatchTicket({ loan_type: v || null })
-                    }}
-                    disabled={busy}
-                    placeholder="e.g. Salary loan"
-                    className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none transition focus:ring-2 focus:ring-red-200 disabled:opacity-60"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Admin notes</span>
-                  <textarea
-                    key={`notes-${selectedId}`}
-                    rows={4}
-                    defaultValue={selected.admin_notes || ''}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim()
-                      const prev = String(selected.admin_notes || '').trim()
-                      if (v === prev) return
-                      onPatchTicket({ admin_notes: v || null })
-                    }}
-                    disabled={busy}
-                    className="min-h-[5.5rem] w-full resize-y rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:ring-2 focus:ring-red-200 disabled:opacity-60"
-                  />
-                </label>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onPatchTicket({ is_sensitive: !selected.is_sensitive })}
-                  className={`h-10 w-full min-w-0 rounded-lg text-sm font-semibold transition ${
-                    selected.is_sensitive ? 'bg-purple-700 text-white hover:bg-purple-800' : 'border border-gray-200 bg-white text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  Sensitive
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onPatchTicket({ is_vip: !selected.is_vip })}
-                  className={`h-10 w-full min-w-0 rounded-lg text-sm font-semibold transition ${
-                    selected.is_vip ? 'bg-yellow-500 text-black hover:bg-yellow-400' : 'border border-gray-200 bg-white text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  VIP
                 </button>
               </div>
             </div>

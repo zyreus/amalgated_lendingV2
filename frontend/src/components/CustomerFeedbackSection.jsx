@@ -59,7 +59,8 @@ export default function CustomerFeedbackSection() {
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
+
+    const load = async () => {
       setLoadState('loading')
       const { res } = await laravelRequest('/public/website/testimonials?limit=12', {
         method: 'GET',
@@ -96,9 +97,17 @@ export default function CustomerFeedbackSection() {
         rating_value: ratingValue != null ? Number(ratingValue) : null,
       })
       setLoadState('ready')
-    })()
+    }
+
+    void load()
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void load()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       cancelled = true
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [])
 
@@ -188,8 +197,8 @@ export default function CustomerFeedbackSection() {
           <div className="mx-auto mt-12 max-w-lg rounded-2xl border border-dashed border-black/15 bg-white/60 px-6 py-10 text-center text-sm text-brand-text/70">
             <p className="font-medium text-brand-text">No published testimonials yet</p>
             <p className="mt-2 leading-relaxed">
-              When the team approves and features feedback with borrower consent (and a clear name on the ticket), it
-              appears here—usually within a few minutes.
+              When the team approves feedback with borrower consent (and a clear name on the ticket), it appears here—
+              usually within a few minutes. Featured items are listed first.
             </p>
           </div>
         ) : (

@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\FeedbackAnalytics;
 use App\Models\FeedbackAuditLog;
 use App\Models\FeedbackTicket;
-use App\Models\User;
 use App\Mail\FeedbackTestimonialApprovedMail;
 use App\Services\TransactionalMailSender;
 use App\Support\SupportChatPresenter;
@@ -146,12 +145,7 @@ class AdminFeedbackController extends Controller
         $this->authorizeSensitive($request, $ticket);
 
         $data = $request->validate([
-            'priority' => 'nullable|string|max:24',
-            'status' => 'nullable|string|max:32',
-            'assigned_staff_id' => 'nullable|integer|exists:users,id',
             'department' => 'nullable|string|max:64',
-            'follow_up_at' => 'nullable|date',
-            'resolution_deadline_at' => 'nullable|date',
             'is_sensitive' => 'nullable|boolean',
             'is_vip' => 'nullable|boolean',
             'website_visible' => 'nullable|boolean',
@@ -180,14 +174,6 @@ class AdminFeedbackController extends Controller
         $before = $ticket->only(array_keys($data));
         foreach ($data as $k => $v) {
             $ticket->{$k} = $v;
-        }
-
-        // Lightweight automation scaffolding.
-        if (isset($data['priority'])) {
-            $p = strtolower((string) $data['priority']);
-            if (in_array($p, ['urgent', 'legal concern', 'escalated case'], true)) {
-                $ticket->resolution_deadline_at = $ticket->resolution_deadline_at ?: now()->addDays(2);
-            }
         }
 
         $ticket->save();
@@ -369,27 +355,6 @@ class AdminFeedbackController extends Controller
             'assignedStaff',
             'analytics',
         ]);
-    }
-
-    public function staffList(Request $request): JsonResponse
-    {
-        $search = trim((string) $request->query('search', ''));
-
-        $q = User::query()
-            ->select(['id', 'name', 'email', 'role'])
-            ->where(function ($w) {
-                $w->whereIn('role', ['admin', 'loan_officer', 'collector', 'accountant'])
-                    ->orWhereHas('roles', fn ($r) => $r->whereIn('slug', ['super-admin', 'admin-staff', 'loan-officer', 'collector', 'accountant']));
-            });
-
-        if ($search !== '') {
-            $s = '%'.$search.'%';
-            $q->where(fn ($w) => $w->where('name', 'like', $s)->orWhere('email', 'like', $s));
-        }
-
-        $rows = $q->orderBy('name')->limit(50)->get();
-
-        return response()->json(['ok' => true, 'data' => $rows]);
     }
 
     public function reportingSummary(Request $request): JsonResponse

@@ -9,15 +9,19 @@ use Illuminate\Support\Facades\Cache;
  */
 final class FeedbackTestimonialCache
 {
-    private const LEGACY_PREFIX = 'public_feedback_testimonials_v2_';
-
-    private const WEBSITE_PREFIX = 'public_website_testimonials_v2_';
-
     public static function forgetAll(): void
     {
         for ($i = 1; $i <= 24; $i++) {
-            Cache::forget(self::LEGACY_PREFIX.$i);
-            Cache::forget(self::WEBSITE_PREFIX.$i);
+            foreach (
+                [
+                    'public_feedback_testimonials_v2_'.$i,
+                    'public_website_testimonials_v2_'.$i,
+                    'public_feedback_testimonials_v3_'.$i,
+                    'public_website_testimonials_v3_'.$i,
+                ] as $key
+            ) {
+                Cache::forget($key);
+            }
         }
     }
 }

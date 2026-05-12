@@ -17,7 +17,8 @@ class PublicWebsiteTestimonialsController extends Controller
     private const CACHE_TTL_SECONDS = 300;
 
     /**
-     * Homepage / marketing: approved + featured + consent + rating.
+     * Homepage / marketing: approved + consent + min rating (+ optional display name rules).
+     * Featured rows sort first; “Feature” in admin is optional prominence, not required to appear.
      */
     public function website(Request $request): JsonResponse
     {
@@ -28,14 +29,15 @@ class PublicWebsiteTestimonialsController extends Controller
         $limit = min(max((int) $request->query('limit', 12), 1), 24);
 
         $payload = Cache::remember(
-            'public_website_testimonials_v2_'.$limit,
+            'public_website_testimonials_v3_'.$limit,
             self::CACHE_TTL_SECONDS,
-            fn () => $this->buildPayload($limit, true),
+            fn () => $this->buildPayload($limit, false),
         );
 
         return response()
             ->json($payload)
-            ->header('Cache-Control', 'public, max-age=120');
+            ->header('Cache-Control', 'private, no-cache, no-store, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache');
     }
 
     /**
@@ -46,16 +48,17 @@ class PublicWebsiteTestimonialsController extends Controller
         if (! Schema::hasTable('feedback_tickets')) {
             return response()
                 ->json(['ok' => true, 'data' => []])
-                ->header('Cache-Control', 'public, max-age=120');
+                ->header('Cache-Control', 'private, no-cache, no-store, must-revalidate, max-age=0')
+                ->header('Pragma', 'no-cache');
         }
 
         $limit = min(max((int) $request->query('limit', 12), 1), 24);
 
         $data = Cache::remember(
-            'public_feedback_testimonials_v2_'.$limit,
+            'public_feedback_testimonials_v3_'.$limit,
             self::CACHE_TTL_SECONDS,
             function () use ($limit) {
-                $full = $this->buildPayload($limit, true);
+                $full = $this->buildPayload($limit, false);
 
                 return collect($full['data'] ?? [])->map(static function (array $row) {
                     return [
@@ -71,7 +74,8 @@ class PublicWebsiteTestimonialsController extends Controller
 
         return response()
             ->json(['ok' => true, 'data' => $data])
-            ->header('Cache-Control', 'public, max-age=120');
+            ->header('Cache-Control', 'private, no-cache, no-store, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache');
     }
 
     public static function forgetCaches(): void
@@ -87,10 +91,12 @@ class PublicWebsiteTestimonialsController extends Controller
                 'meta' => ['review_count' => 0, 'rating_value' => null],
                 'data' => [],
             ])
-            ->header('Cache-Control', 'public, max-age=60');
+            ->header('Cache-Control', 'private, no-cache, no-store, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache');
     }
 
     /**
+     * @param  bool  $requireFeatured  When true, only rows with featured=true (narrow listings).
      * @return array{ok: true, meta: array{review_count: int, rating_value: float|null}, data: array<int, array<string, mixed>>}
      */
     private function buildPayload(int $limit, bool $requireFeatured): array
@@ -108,12 +114,13 @@ class PublicWebsiteTestimonialsController extends Controller
                 'rating',
                 'message',
                 'verified_borrower',
+                'featured',
                 'source',
                 'created_at',
                 'updated_at',
             ])
             ->with(['borrower:id,name'])
-            ->where('publication_status', 'approved')
+            ->whereRaw("LOWER(TRIM(COALESCE(publication_status, ''))) = ?", ['approved'])
             ->where('consent_public_display', true)
             ->whereNotNull('rating')
             ->where('rating', '>=', $minRating)
@@ -132,13 +139,16 @@ class PublicWebsiteTestimonialsController extends Controller
             $q->where('featured', true);
         }
 
+        $reviewCount = (clone $q)->count();
+        $ratingValueAll = (clone $q)->avg('rating');
+
         $rows = $q
+            ->orderByDesc('featured')
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
             ->limit($limit)
             ->get();
 
-        $avg = $rows->avg('rating');
         $items = $rows->map(function (FeedbackTicket $t) {
             $msg = Str::limit(trim(strip_tags((string) $t->message)), 320, '…');
             $verified = (bool) $t->verified_borrower;
@@ -160,8 +170,8 @@ class PublicWebsiteTestimonialsController extends Controller
         return [
             'ok' => true,
             'meta' => [
-                'review_count' => count($items),
-                'rating_value' => $avg !== null ? round((float) $avg, 2) : null,
+                'review_count' => $reviewCount,
+                'rating_value' => $ratingValueAll !== null ? round((float) $ratingValueAll, 2) : null,
             ],
             'data' => $items,
         ];
