@@ -7,6 +7,7 @@ use App\Jobs\SendBorrowerEmailVerificationJob;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\AuthSecurityRecorder;
 use App\Support\PublicStorageUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -84,27 +85,35 @@ class BorrowerAuthController extends Controller
         ], 201);
     }
 
-    public function login(Request $request, ActivityLogger $logger): JsonResponse
+    public function login(Request $request, ActivityLogger $logger, AuthSecurityRecorder $security): JsonResponse
     {
         $data = $request->validate([
             'username' => 'required|string',
             'password' => 'required|string',
         ]);
 
-        $user = $this->resolveUser($data['username']);
+        $login = trim($data['username']);
+        $user = $this->resolveUser($login);
         if (! $user || ! Hash::check($data['password'], (string) $user->password)) {
+            $security->recordFailure('borrower_api', $login);
+
             return response()->json(['ok' => false, 'message' => 'Invalid username or password.'], 401);
         }
         if (! $user->is_active) {
+            $security->recordFailure('borrower_api', $login, ['reason' => 'inactive']);
+
             return response()->json(['ok' => false, 'message' => 'Account is deactivated.'], 403);
         }
         if (! $user->canUseBorrowerPortal()) {
+            $security->recordFailure('borrower_api', $login, ['reason' => 'not_borrower']);
+
             return response()->json(['ok' => false, 'message' => 'Only borrower accounts can use borrower login.'], 403);
         }
 
         $token = auth('api')->login($user);
         $authUser = auth('api')->user();
         $logger->log($authUser, 'auth.borrower_login');
+        $security->recordSuccess('borrower_api', $authUser);
 
         return response()->json([
             'ok' => true,
@@ -127,6 +136,7 @@ class BorrowerAuthController extends Controller
                 'profile_photo_url' => $authUser->profile_photo_path
                     ? PublicStorageUrl::apiUrl($authUser->profile_photo_path)
                     : ($authUser->id_document_path ? PublicStorageUrl::apiUrl($authUser->id_document_path) : null),
+                'timezone' => $authUser->timezone,
             ],
         ]);
     }
@@ -156,13 +166,16 @@ class BorrowerAuthController extends Controller
                 'profile_photo_url' => $user->profile_photo_path
                     ? PublicStorageUrl::apiUrl($user->profile_photo_path)
                     : ($user->id_document_path ? PublicStorageUrl::apiUrl($user->id_document_path) : null),
+                'timezone' => $user->timezone,
             ],
         ]);
     }
 
-    public function logout(Request $request, ActivityLogger $logger): JsonResponse
+    public function logout(Request $request, ActivityLogger $logger, AuthSecurityRecorder $security): JsonResponse
     {
-        $logger->log($request->user(), 'auth.borrower_logout');
+        $user = $request->user();
+        $logger->log($user, 'auth.borrower_logout');
+        $security->recordLogout('borrower_api', $user);
         auth('api')->logout();
 
         return response()->json(['ok' => true]);

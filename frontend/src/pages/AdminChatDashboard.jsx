@@ -4,6 +4,7 @@ import { io } from 'socket.io-client'
 import { adminSocketUrls, chatFetch, chatJson, getLendingChatSecret, hasChatServerAuth } from '../utils/adminChatApi.js'
 import { api as adminApi, getToken as getAdminToken } from '../admin/api/client.js'
 import { downloadCsv } from '../admin/utils/export.js'
+import { chatOutgoingReceiptLabel, formatChatTime, formatCrmLog, getResolvedDisplayTimeZone } from '../utils/timestamps.js'
 
 const STATUS_BADGE = {
   open: 'bg-amber-500/15 text-[color:var(--admin-warn-text)] ring-1 ring-amber-500/25',
@@ -86,7 +87,6 @@ const TICKET_STATUS = {
   pending: 'Pending',
   closed: 'Closed',
 }
-const CHAT_TIME_ZONE = 'Asia/Manila'
 /** Fixed locale so date + time + AM/PM stay consistent across admin browsers. */
 const CHAT_DATETIME_LOCALE = 'en-PH'
 const CHAT_POLL_MS = 8000
@@ -150,20 +150,24 @@ function getInitials(name) {
 }
 
 /**
- * Visitor CRM list, message bubbles, leads — one instant formatted entirely in PHT
- * (avoids mixing local calendar date with Manila-only clock, which skewed rows near midnight).
+ * CRM list + logs: UTC from API → user-resolved IANA zone (profile / browser).
  */
 function fmtDate(d) {
   const date = d instanceof Date ? d : new Date(d)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleString(CHAT_DATETIME_LOCALE, {
-    timeZone: CHAT_TIME_ZONE,
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
+  return formatCrmLog(date, {
+    locale: CHAT_DATETIME_LOCALE,
+    timeZone: getResolvedDisplayTimeZone(),
+  })
+}
+
+/** Message bubble clock line (compact). */
+function fmtChatTime(d) {
+  const date = d instanceof Date ? d : new Date(d)
+  if (Number.isNaN(date.getTime())) return ''
+  return formatChatTime(date, {
+    locale: CHAT_DATETIME_LOCALE,
+    timeZone: getResolvedDisplayTimeZone(),
   })
 }
 
@@ -3513,7 +3517,12 @@ Amalgated Lending Inc. Team`
                         isUser ? 'pl-1' : 'pr-1 text-right'
                       }`}
                     >
-                      {fmtDate(msg.created_at)}
+                      <span>{fmtChatTime(msg.sent_at || msg.created_at)}</span>
+                      {!isUser && chatOutgoingReceiptLabel(msg, 'staff') ? (
+                        <span className="ml-1.5 font-medium text-[color:var(--admin-muted)]">
+                          · {chatOutgoingReceiptLabel(msg, 'staff')}
+                        </span>
+                      ) : null}
                     </p>
                   </div>
                 </div>
@@ -3560,7 +3569,7 @@ Amalgated Lending Inc. Team`
                         isBorrower ? 'pl-1' : 'pr-1 text-right'
                       }`}
                     >
-                      {msg.created_at ? fmtDate(msg.created_at) : ''}
+                      {msg.created_at ? fmtChatTime(msg.created_at) : ''}
                     </p>
                   </div>
                 </div>

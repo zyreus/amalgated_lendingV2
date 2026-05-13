@@ -221,8 +221,7 @@ Route::prefix('v1')->group(function () {
 
         Route::middleware('permission:reports.view')->group(function () {
             Route::get('/reports/summary', [ReportController::class, 'summary']);
-            Route::get('/reports/export/csv', [ReportController::class, 'exportSummaryCsv']);
-            Route::get('/reports/export/pdf', [ReportController::class, 'exportSummaryPdf']);
+            Route::post('/reports/print-log', [ReportController::class, 'logPrint']);
             Route::get('/reports/payments/ledger', [ReportController::class, 'paymentLedger']);
         });
 

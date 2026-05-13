@@ -18,6 +18,7 @@ use App\Services\FinalPaymentAdjustmentService;
 use App\Services\LoanPaymentBalanceService;
 use App\Services\NotificationCenter;
 use App\Services\PaymentReceiptComplianceService;
+use App\Services\PaymentReceiptMutationService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -34,6 +35,7 @@ class PaymentController extends Controller
         private LoanPaymentBalanceService $loanPaymentBalances,
         private FinalPaymentAdjustmentService $finalPaymentAdjustments,
         private PaymentReceiptComplianceService $receiptCompliance,
+        private PaymentReceiptMutationService $receiptMutation,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -500,53 +502,14 @@ class PaymentController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($payment, $incomingOr, $incomingAr, $user): void {
-                $p = Payment::query()->whereKey($payment->getKey())->lockForUpdate()->firstOrFail();
-                $origOr = trim((string) ($p->official_receipt_number ?? ''));
-                $origAr = trim((string) ($p->acknowledgement_receipt_number ?? ''));
-
-                if ($p->isPaid() && ! $this->canOverrideLocked($user)) {
-                    throw ValidationException::withMessages([
-                        'payment' => ['This payment is locked after approval. Receipt numbers cannot be changed without override permission.'],
-                    ]);
-                }
-
-                if ($incomingOr !== null) {
-                    $this->receiptCompliance->assertUniqueOfficialReceipt($incomingOr, (int) $p->id);
-                    $p->official_receipt_number = $incomingOr;
-                }
-                if ($incomingAr !== null) {
-                    $this->receiptCompliance->assertUniqueAcknowledgementReceipt($incomingAr, (int) $p->id);
-                    $p->acknowledgement_receipt_number = $incomingAr;
-                }
-
-                $this->receiptCompliance->validateReceiptFormat(
-                    $this->receiptCompliance->normalize($p->official_receipt_number),
-                    $this->receiptCompliance->normalize($p->acknowledgement_receipt_number),
-                    false
-                );
-
-                $this->maybeStampReceiptIssuance(
-                    $p,
-                    $user,
-                    $origOr,
-                    $origAr,
-                    trim((string) ($p->official_receipt_number ?? '')),
-                    trim((string) ($p->acknowledgement_receipt_number ?? ''))
-                );
-
-                $p->recorded_by = $user->id;
-                $p->save();
-
-                $this->logReceiptAudit(
-                    $p,
-                    $user,
-                    $p->isPaid() ? PaymentReceiptAudit::ACTION_OVERRIDE_UPDATE : PaymentReceiptAudit::ACTION_UPDATED,
-                    (string) ($p->official_receipt_number ?? ''),
-                    (string) ($p->acknowledgement_receipt_number ?? ''),
-                    ['context' => 'payments.patch_receipts']
-                );
-            });
+            $payment = $this->receiptMutation->updateReceiptsFromStaff(
+                $payment,
+                $user,
+                $data,
+                'payments.patch_receipts',
+                true,
+                false
+            );
         } catch (ValidationException $e) {
             $this->logReceiptAudit(
                 $payment,
@@ -564,7 +527,7 @@ class PaymentController extends Controller
             ], 422);
         }
 
-        $payment->refresh()->loadMissing([
+        $payment->loadMissing([
             'loan.borrower',
             'recordedByUser',
             'receiptIssuedByUser',
@@ -603,6 +566,7 @@ class PaymentController extends Controller
                 'amount_due',
                 'amount_paid',
                 'status',
+                'receipt_status',
                 'payment_method',
                 'official_receipt_number',
                 'acknowledgement_receipt_number',
@@ -625,6 +589,7 @@ class PaymentController extends Controller
                         $p->amount_due,
                         $p->amount_paid,
                         $p->status,
+                        $p->receipt_status,
                         $p->payment_method,
                         $p->official_receipt_number,
                         $p->acknowledgement_receipt_number,
@@ -821,6 +786,42 @@ class PaymentController extends Controller
             $q->where('status', Payment::STATUS_PENDING);
         } elseif ($request->query('approval_status') === 'paid') {
             $q->where('status', Payment::STATUS_PAID);
+        }
+
+        if ($request->filled('receipt_status')) {
+            $q->where('receipt_status', (string) $request->query('receipt_status'));
+        }
+
+        if ($request->filled('receipt_document_coverage')) {
+            $cov = (string) $request->query('receipt_document_coverage');
+            if ($cov === 'or_only') {
+                $q->where(function ($w): void {
+                    $w->whereNotNull('official_receipt_number')->where('official_receipt_number', '!=', '')
+                        ->where(function ($x): void {
+                            $x->whereNull('acknowledgement_receipt_number')->orWhere('acknowledgement_receipt_number', '');
+                        });
+                });
+            } elseif ($cov === 'ar_only') {
+                $q->where(function ($w): void {
+                    $w->whereNotNull('acknowledgement_receipt_number')->where('acknowledgement_receipt_number', '!=', '')
+                        ->where(function ($x): void {
+                            $x->whereNull('official_receipt_number')->orWhere('official_receipt_number', '');
+                        });
+                });
+            } elseif ($cov === 'both') {
+                $q->where(function ($w): void {
+                    $w->whereNotNull('official_receipt_number')->where('official_receipt_number', '!=', '')
+                        ->whereNotNull('acknowledgement_receipt_number')->where('acknowledgement_receipt_number', '!=', '');
+                });
+            } elseif ($cov === 'none') {
+                $q->where(function ($w): void {
+                    $w->where(function ($x): void {
+                        $x->whereNull('official_receipt_number')->orWhere('official_receipt_number', '');
+                    })->where(function ($x): void {
+                        $x->whereNull('acknowledgement_receipt_number')->orWhere('acknowledgement_receipt_number', '');
+                    });
+                });
+            }
         }
 
         return $q;

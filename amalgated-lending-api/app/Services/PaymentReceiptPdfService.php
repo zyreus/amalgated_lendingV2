@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Payment;
 use App\Models\PaymentReceipt;
+use App\Support\PaymentReceiptVerificationQr;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 use Illuminate\Support\Facades\File;
@@ -88,13 +89,19 @@ class PaymentReceiptPdfService
 
         $logoDataUri = $this->logoDataUri();
 
+        $orTrim = trim((string) ($payment->official_receipt_number ?? ''));
+        $arTrim = trim((string) ($payment->acknowledgement_receipt_number ?? ''));
+        $verifyPayload = 'AMALGATED|PID:'.$payment->id.'|OR:'.($orTrim !== '' ? $orTrim : '—').'|AR:'.($arTrim !== '' ? $arTrim : '—');
+
         return [
             'payment' => $payment,
             'loan' => $loan,
             'borrower' => $borrower,
             'borrowerName' => $borrower?->name ?? 'Borrower',
             'loanNumber' => $loanNumber,
-            'officialOr' => trim((string) ($payment->official_receipt_number ?? '')),
+            'officialOr' => $orTrim,
+            'acknowledgementAr' => $arTrim,
+            'receiptQrDataUri' => PaymentReceiptVerificationQr::dataUri($verifyPayload),
             'invoiceNumber' => 'INV-'.str_pad((string) $payment->id, 6, '0', STR_PAD_LEFT),
             'amountPaid' => number_format((float) $payment->amount_paid, 2),
             'amountDue' => number_format((float) $payment->amount_due, 2),

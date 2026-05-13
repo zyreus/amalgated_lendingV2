@@ -51,6 +51,9 @@ class AdminLeadController extends Controller
                 'attachment_name' => $m->attachment_name,
                 'attachment_url' => $m->attachment_path ? PublicStorageUrl::apiUrl($m->attachment_path) : null,
                 'admin_name' => $m->adminUser?->name,
+                'sent_at' => optional($m->sent_at)?->toIso8601String(),
+                'delivered_at' => optional($m->delivered_at)?->toIso8601String(),
+                'read_at' => optional($m->read_at)?->toIso8601String(),
                 'created_at' => optional($m->created_at)?->toIso8601String(),
             ];
         });
@@ -172,6 +175,9 @@ class AdminLeadController extends Controller
                 'attachment_name' => $m->attachment_name,
                 'attachment_url' => $m->attachment_path ? PublicStorageUrl::apiUrl($m->attachment_path) : null,
                 'admin_name' => $m->adminUser?->name,
+                'sent_at' => optional($m->sent_at)?->toIso8601String(),
+                'delivered_at' => optional($m->delivered_at)?->toIso8601String(),
+                'read_at' => optional($m->read_at)?->toIso8601String(),
                 'created_at' => optional($m->created_at)?->toIso8601String(),
             ];
         });
@@ -221,6 +227,9 @@ class AdminLeadController extends Controller
                 'attachment_name' => $msg->attachment_name,
                 'attachment_url' => $msg->attachment_path ? PublicStorageUrl::apiUrl($msg->attachment_path) : null,
                 'admin_name' => $request->user()->name,
+                'sent_at' => optional($msg->sent_at)?->toIso8601String(),
+                'delivered_at' => optional($msg->delivered_at)?->toIso8601String(),
+                'read_at' => optional($msg->read_at)?->toIso8601String(),
                 'created_at' => optional($msg->created_at)?->toIso8601String(),
             ],
         ], 201);

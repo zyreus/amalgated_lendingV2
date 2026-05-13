@@ -33,11 +33,17 @@ class Message extends Model
         'parent_message_id',
         'stream_request_key',
         'metadata',
+        'sent_at',
+        'delivered_at',
+        'read_at',
     ];
 
     protected $casts = [
         'is_ai_generated' => 'boolean',
         'metadata' => 'array',
+        'sent_at' => 'datetime',
+        'delivered_at' => 'datetime',
+        'read_at' => 'datetime',
     ];
 
     protected static function booted(): void

@@ -13,11 +13,28 @@ class ActivityLogger
     {
     }
 
-    public function log(?User $user, string $action, ?Model $subject = null, array $properties = []): ActivityLog
-    {
+    public function log(
+        ?User $user,
+        string $action,
+        ?Model $subject = null,
+        array $properties = [],
+        ?string $module = null,
+        int|string|null $recordId = null,
+    ): ActivityLog {
+        $resolvedModule = $module ?? ($subject ? $subject->getTable() : null);
+        $resolvedRecordId = $recordId ?? ($subject ? $subject->getKey() : null);
+        if (is_string($resolvedRecordId) && ctype_digit($resolvedRecordId)) {
+            $resolvedRecordId = (int) $resolvedRecordId;
+        }
+        if (! is_int($resolvedRecordId)) {
+            $resolvedRecordId = null;
+        }
+
         return ActivityLog::create([
             'user_id' => $user?->id,
             'action' => $action,
+            'module' => $resolvedModule,
+            'record_id' => $resolvedRecordId,
             'subject_type' => $subject ? $subject->getMorphClass() : null,
             'subject_id' => $subject?->getKey(),
             'properties' => $properties ?: null,

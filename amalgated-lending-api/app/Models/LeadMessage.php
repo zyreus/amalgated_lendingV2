@@ -14,7 +14,25 @@ class LeadMessage extends Model
         'message',
         'attachment_path',
         'attachment_name',
+        'sent_at',
+        'delivered_at',
+        'read_at',
     ];
+
+    protected $casts = [
+        'sent_at' => 'datetime',
+        'delivered_at' => 'datetime',
+        'read_at' => 'datetime',
+    ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $m): void {
+            if ($m->sent_at === null) {
+                $m->sent_at = now();
+            }
+        });
+    }
 
     public function lead(): BelongsTo
     {

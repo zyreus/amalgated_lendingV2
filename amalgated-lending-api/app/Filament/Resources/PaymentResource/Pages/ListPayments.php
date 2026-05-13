@@ -13,6 +13,13 @@ class ListPayments extends ListRecords
     protected function getTableQuery(): Builder
     {
         return parent::getTableQuery()
-            ->with(['loan.borrower', 'loan.assignedOfficer', 'recordedByUser', 'verifiedByUser', 'approvedByUser']);
+            ->with([
+                'loan.borrower',
+                'loan.assignedOfficer',
+                'recordedByUser',
+                'verifiedByUser',
+                'approvedByUser',
+                'receiptIssuedByUser',
+            ]);
     }
 }

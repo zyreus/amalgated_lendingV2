@@ -30,6 +30,9 @@ class MessageResource extends JsonResource
                 'name' => $this->sender?->name,
                 'email' => $this->sender?->email,
             ]),
+            'sent_at' => $this->sent_at?->toIso8601String(),
+            'delivered_at' => $this->delivered_at?->toIso8601String(),
+            'read_at' => $this->read_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

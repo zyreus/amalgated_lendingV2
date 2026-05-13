@@ -21,6 +21,16 @@ class Payment extends Model
 
     public const STATUS_WAIVED = 'waived';
 
+    public const RECEIPT_STATUS_PENDING = 'pending';
+
+    public const RECEIPT_STATUS_PARTIAL_RECEIPT = 'partial_receipt';
+
+    public const RECEIPT_STATUS_FULLY_RECEIPTED = 'fully_receipted';
+
+    public const RECEIPT_STATUS_VERIFIED = 'verified';
+
+    public const RECEIPT_STATUS_APPROVED = 'approved';
+
     protected $fillable = [
         'loan_id',
         'installment_no',
@@ -31,6 +41,7 @@ class Payment extends Model
         'amount_paid',
         'penalty_amount',
         'paid_at',
+        'reminder_sent_at',
         'submitted_at',
         'status',
         'source',
@@ -48,6 +59,8 @@ class Payment extends Model
         'verified_at',
         'approved_by',
         'approved_at',
+        'rejected_at',
+        'receipt_status',
         'recorded_by',
         'notes',
         'is_final_payment',
@@ -70,12 +83,14 @@ class Payment extends Model
         'original_amount_due' => 'decimal:2',
         'is_final_payment' => 'boolean',
         'paid_at' => 'datetime',
+        'reminder_sent_at' => 'datetime',
         'submitted_at' => 'datetime',
         'adjusted_at' => 'datetime',
         'confirmation_date' => 'datetime',
         'receipt_issued_at' => 'datetime',
         'verified_at' => 'datetime',
         'approved_at' => 'datetime',
+        'rejected_at' => 'datetime',
     ];
 
     public function loan(): BelongsTo

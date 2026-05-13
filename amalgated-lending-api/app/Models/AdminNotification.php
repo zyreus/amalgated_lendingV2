@@ -19,6 +19,8 @@ class AdminNotification extends Model
         'data',
         'delivery_channels',
         'read_at',
+        'sent_at',
+        'delivered_at',
         'dismissed_globally_at',
     ];
 
@@ -26,6 +28,8 @@ class AdminNotification extends Model
         'data' => 'array',
         'delivery_channels' => 'array',
         'read_at' => 'datetime',
+        'sent_at' => 'datetime',
+        'delivered_at' => 'datetime',
         'dismissed_globally_at' => 'datetime',
     ];
 

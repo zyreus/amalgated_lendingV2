@@ -25,6 +25,9 @@ class ChatMessage extends Model
         'is_feedback',
         'dedupe_key',
         'meta',
+        'sent_at',
+        'delivered_at',
+        'read_at',
     ];
 
     protected $casts = [
@@ -32,6 +35,9 @@ class ChatMessage extends Model
         'is_from_admin' => 'boolean',
         'is_feedback' => 'boolean',
         'meta' => 'array',
+        'sent_at' => 'datetime',
+        'delivered_at' => 'datetime',
+        'read_at' => 'datetime',
     ];
 
     public function adminUser(): BelongsTo

@@ -2,7 +2,14 @@
 
 namespace App\Providers;
 
+use App\Models\ChatMessage;
+use App\Models\Message;
+use App\Models\Payment;
+use App\Observers\ChatMessageObserver;
+use App\Observers\MessageObserver;
+use App\Observers\PaymentObserver;
 use App\Services\ActivityLogger;
+use App\Services\AuthSecurityRecorder;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\URL;
@@ -19,6 +26,10 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(ActivityLogger::class, function ($app) {
             return new ActivityLogger($app['request']);
+        });
+
+        $this->app->bind(AuthSecurityRecorder::class, function ($app) {
+            return new AuthSecurityRecorder($app['request']);
         });
     }
 
@@ -43,5 +54,9 @@ class AppServiceProvider extends ServiceProvider
 
             return $base.'/reset-password?token='.urlencode($token).'&email='.urlencode($user->getEmailForPasswordReset());
         });
+
+        Payment::observe(PaymentObserver::class);
+        ChatMessage::observe(ChatMessageObserver::class);
+        Message::observe(MessageObserver::class);
     }
 }

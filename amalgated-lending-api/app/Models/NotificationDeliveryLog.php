@@ -17,9 +17,13 @@ class NotificationDeliveryLog extends Model
         'status',
         'detail',
         'meta',
+        'sent_at',
+        'delivered_at',
     ];
 
     protected $casts = [
         'meta' => 'array',
+        'sent_at' => 'datetime',
+        'delivered_at' => 'datetime',
     ];
 }

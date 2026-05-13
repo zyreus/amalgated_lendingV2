@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\AuthSecurityRecorder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -18,21 +19,28 @@ class AdminAuthController extends Controller
         return $secret !== '' ? $secret : null;
     }
 
-    public function login(Request $request, ActivityLogger $logger): JsonResponse
+    public function login(Request $request, ActivityLogger $logger, AuthSecurityRecorder $security): JsonResponse
     {
         $data = $request->validate([
             'username' => 'required|string',
             'password' => 'required|string',
         ]);
 
-        $user = $this->resolveUser($data['username']);
+        $login = trim($data['username']);
+        $user = $this->resolveUser($login);
         if (! $user || ! Hash::check($data['password'], (string) $user->password)) {
+            $security->recordFailure('admin_api', $login);
+
             return response()->json(['ok' => false, 'message' => 'Invalid username or password.'], 401);
         }
         if (! $user->is_active) {
+            $security->recordFailure('admin_api', $login, ['reason' => 'inactive']);
+
             return response()->json(['ok' => false, 'message' => 'Account is deactivated.'], 403);
         }
         if (! $user->canAccessAdminPortal()) {
+            $security->recordFailure('admin_api', $login, ['reason' => 'not_staff']);
+
             return response()->json(['ok' => false, 'message' => 'Only staff accounts can use admin login.'], 403);
         }
 
@@ -41,6 +49,7 @@ class AdminAuthController extends Controller
         $authUser = auth('api')->user();
         $authUser->load(['roles.permissions']);
         $logger->log($authUser, 'auth.admin_login');
+        $security->recordSuccess('admin_api', $authUser);
 
         return response()->json([
             'ok' => true,
@@ -66,9 +75,11 @@ class AdminAuthController extends Controller
         ]);
     }
 
-    public function logout(Request $request, ActivityLogger $logger): JsonResponse
+    public function logout(Request $request, ActivityLogger $logger, AuthSecurityRecorder $security): JsonResponse
     {
-        $logger->log($request->user(), 'auth.admin_logout');
+        $user = $request->user();
+        $logger->log($user, 'auth.admin_logout');
+        $security->recordLogout('admin_api', $user);
         auth('api')->logout();
 
         return response()->json(['ok' => true]);

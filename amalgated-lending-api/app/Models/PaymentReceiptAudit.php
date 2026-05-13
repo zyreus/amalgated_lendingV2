@@ -17,6 +17,8 @@ class PaymentReceiptAudit extends Model
 
     public const ACTION_DUPLICATE_ATTEMPT = 'duplicate_receipt_attempt';
 
+    public const ACTION_PARTIAL_RECEIPT_ISSUED = 'partial_receipt_issued';
+
     public const ACTION_OVERRIDE_UPDATE = 'override_locked_update';
 
     public const ACTION_REVERT_DENIED = 'revert_paid_denied';

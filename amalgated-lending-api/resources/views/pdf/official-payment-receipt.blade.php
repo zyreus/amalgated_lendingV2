@@ -28,13 +28,19 @@
       <p>Official payment receipt / invoice</p>
     </div>
     <div class="meta">
-      <div><strong>Receipt No.</strong><br>{{ $officialOr }}</div>
+      <div><strong>Receipt No.</strong><br>{{ $officialOr !== '' ? $officialOr : '—' }}</div>
+      <div style="margin-top:8px;"><strong>AR No.</strong><br>{{ ($acknowledgementAr ?? '') !== '' ? $acknowledgementAr : '—' }}</div>
       <div style="margin-top:8px;"><strong>Invoice ref.</strong><br>{{ $invoiceNumber }}</div>
       <div class="badge">PAID</div>
+      @if(!empty($receiptQrDataUri))
+        <div style="margin-top:10px;"><img src="{{ $receiptQrDataUri }}" alt="Verification QR" style="width:92px;height:92px;"></div>
+      @endif
     </div>
   </div>
 
   <table class="data">
+    <tr><th>Official receipt (OR)</th><td>{{ $officialOr !== '' ? $officialOr : '—' }}</td></tr>
+    <tr><th>Acknowledgement receipt (AR)</th><td>{{ ($acknowledgementAr ?? '') !== '' ? $acknowledgementAr : '—' }}</td></tr>
     <tr><th>Borrower</th><td>{{ $borrowerName }}</td></tr>
     <tr><th>Loan reference</th><td>{{ $loanNumber }}</td></tr>
     <tr><th>Installment</th><td>#{{ $installmentNo }}</td></tr>

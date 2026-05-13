@@ -261,6 +261,7 @@ class LoanController extends Controller
             $loan->status = Loan::STATUS_ONGOING;
             $loan->approved_by = $request->user()->id;
             $loan->approved_at = now();
+            $loan->rejected_at = null;
             $loan->disbursed_at = now();
             $loan->monthly_payment = isset($breakdown['monthly_amortization']) ? (float) $breakdown['monthly_amortization'] : $loan->monthly_payment;
             $loan->total_interest = isset($breakdown['total_add_on_interest']) ? (float) $breakdown['total_add_on_interest'] : $loan->total_interest;
@@ -407,7 +408,8 @@ class LoanController extends Controller
             $locked->status = Loan::STATUS_REJECTED;
             $locked->rejection_reason = $data['rejection_reason'];
             $locked->approved_by = $request->user()->id;
-            $locked->approved_at = now();
+            $locked->approved_at = null;
+            $locked->rejected_at = now();
             $locked->save();
 
             $loanApp = $locked->loanApplication;

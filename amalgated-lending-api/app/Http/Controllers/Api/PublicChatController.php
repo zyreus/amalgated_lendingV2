@@ -8,6 +8,7 @@ use App\Models\FeedbackTicket;
 use App\Models\SupportChatFeedback;
 use App\Models\SupportConversation;
 use App\Models\User;
+use App\Services\ChatMessageReceiptService;
 use App\Services\NotificationCenter;
 use App\Support\FeedbackSubmissionGuard;
 use App\Support\SupportChatPresenter;
@@ -21,8 +22,19 @@ class PublicChatController extends Controller
     {
         $afterId = max((int) $request->query('after_id', 0), 0);
         $limit = min(max((int) $request->query('limit', 120), 1), 500);
+        $sid = trim($sessionId);
 
-        $rows = ChatMessage::query()
+        $receipts = app(ChatMessageReceiptService::class);
+        $readThrough = $receipts->parseThroughId($request->query('receipt_read_through_id'));
+        $deliveryThrough = $receipts->parseThroughId($request->query('receipt_delivery_through_id'));
+        if ($readThrough > 0) {
+            $receipts->applyReadThrough($sid, $readThrough, true);
+        }
+        if ($deliveryThrough > 0) {
+            $receipts->applyDeliveryThrough($sid, $deliveryThrough, true);
+        }
+
+        $baseQuery = fn () => ChatMessage::query()
             ->select([
                 'id',
                 'session_id',
@@ -36,17 +48,32 @@ class PublicChatController extends Controller
                 'is_from_visitor',
                 'is_from_admin',
                 'admin_user_id',
+                'sent_at',
+                'delivered_at',
+                'read_at',
                 'created_at',
                 'updated_at',
             ])
-            ->where('session_id', $sessionId)
+            ->where('session_id', $sid)
             ->when($afterId > 0, fn ($query) => $query->where('id', '>', $afterId))
             ->where('is_feedback', false)
-            ->orderBy('created_at')
+            ->orderByRaw('COALESCE(sent_at, created_at) asc')
             ->orderBy('id')
             ->with('adminUser:id,name')
-            ->limit($limit)
-            ->get();
+            ->limit($limit);
+
+        $rows = $baseQuery()->get();
+
+        if ($request->boolean('auto_mark_staff_receipts', true)) {
+            $maxStaffId = (int) $rows->where('is_from_admin', true)->max('id');
+            if ($maxStaffId > 0) {
+                $n = $receipts->applyReadThrough($sid, $maxStaffId, true);
+                $n += $receipts->applyDeliveryThrough($sid, $maxStaffId, true);
+                if ($n > 0) {
+                    $rows = $baseQuery()->get();
+                }
+            }
+        }
 
         return response()->json([
             'ok' => true,

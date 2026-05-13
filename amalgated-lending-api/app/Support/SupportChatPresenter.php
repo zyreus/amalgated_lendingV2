@@ -31,6 +31,9 @@ class SupportChatPresenter
             'is_feedback' => (bool) $row->is_feedback,
             'rating' => $row->rating,
             'routing_status' => $row->routing_status,
+            'sent_at' => optional($row->sent_at)?->toIso8601String(),
+            'delivered_at' => optional($row->delivered_at)?->toIso8601String(),
+            'read_at' => optional($row->read_at)?->toIso8601String(),
             'created_at' => optional($row->created_at)?->toIso8601String(),
             'updated_at' => optional($row->updated_at)?->toIso8601String(),
         ];

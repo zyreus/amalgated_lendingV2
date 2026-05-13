@@ -5,14 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\AuthSecurityRecorder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    public function login(Request $request, ActivityLogger $logger): JsonResponse
+    public function login(Request $request, ActivityLogger $logger, AuthSecurityRecorder $security): JsonResponse
     {
         $data = $request->validate([
             'username' => 'required|string',
@@ -31,23 +31,26 @@ class AuthController extends Controller
             ->first();
 
         if (! $user || ! Hash::check($password, $user->password)) {
+            $security->recordFailure('api', $login);
+
             return response()->json([
                 'ok' => false,
                 'message' => 'Invalid username or password.',
             ], 401);
         }
 
-        $token = auth('api')->login($user);
-
-        /** @var User $user */
-        $user = auth('api')->user();
         if (! $user->is_active) {
-            auth('api')->logout();
+            $security->recordFailure('api', $login, ['reason' => 'inactive']);
 
             return response()->json(['ok' => false, 'message' => 'Account is deactivated.'], 403);
         }
 
+        $token = auth('api')->login($user);
+
+        /** @var User $user */
+        $user = auth('api')->user();
         $logger->log($user, 'auth.login');
+        $security->recordSuccess('api', $user);
 
         return $this->respondWithToken($token, $user);
     }
@@ -62,9 +65,11 @@ class AuthController extends Controller
         ]);
     }
 
-    public function logout(Request $request, ActivityLogger $logger): JsonResponse
+    public function logout(Request $request, ActivityLogger $logger, AuthSecurityRecorder $security): JsonResponse
     {
-        $logger->log($request->user(), 'auth.logout');
+        $user = $request->user();
+        $logger->log($user, 'auth.logout');
+        $security->recordLogout('api', $user);
         auth('api')->logout();
 
         return response()->json(['ok' => true]);

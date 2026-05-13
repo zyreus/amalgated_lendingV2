@@ -10,6 +10,8 @@ class ActivityLog extends Model
     protected $fillable = [
         'user_id',
         'action',
+        'module',
+        'record_id',
         'subject_type',
         'subject_id',
         'properties',
@@ -20,6 +22,17 @@ class ActivityLog extends Model
     protected $casts = [
         'properties' => 'array',
     ];
+
+    protected static function booted(): void
+    {
+        static::updating(function (self $log): bool {
+            return false;
+        });
+
+        static::deleting(function (self $log): bool {
+            return false;
+        });
+    }
 
     public function user(): BelongsTo
     {

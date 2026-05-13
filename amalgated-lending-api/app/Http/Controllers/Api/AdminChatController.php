@@ -7,6 +7,7 @@ use App\Models\ChatMessage;
 use App\Models\SupportAssignment;
 use App\Models\SupportChatFeedback;
 use App\Models\SupportConversation;
+use App\Services\ChatMessageReceiptService;
 use App\Services\NodeChatBroadcastService;
 use App\Support\SupportChatPresenter;
 use Illuminate\Http\JsonResponse;
@@ -232,12 +233,23 @@ class AdminChatController extends Controller
         ]);
     }
 
-    public function messages(string $sessionId): JsonResponse
+    public function messages(Request $request, string $sessionId): JsonResponse
     {
-        $afterId = max((int) request()->query('after_id', 0), 0);
-        $limit = min(max((int) request()->query('limit', 150), 1), 500);
+        $afterId = max((int) $request->query('after_id', 0), 0);
+        $limit = min(max((int) $request->query('limit', 150), 1), 500);
+        $sid = trim($sessionId);
 
-        $rows = ChatMessage::query()
+        $receipts = app(ChatMessageReceiptService::class);
+        $readThrough = $receipts->parseThroughId($request->query('receipt_read_through_id'));
+        $deliveryThrough = $receipts->parseThroughId($request->query('receipt_delivery_through_id'));
+        if ($readThrough > 0) {
+            $receipts->applyReadThrough($sid, $readThrough, false);
+        }
+        if ($deliveryThrough > 0) {
+            $receipts->applyDeliveryThrough($sid, $deliveryThrough, false);
+        }
+
+        $baseQuery = fn () => ChatMessage::query()
             ->select([
                 'id',
                 'session_id',
@@ -251,17 +263,32 @@ class AdminChatController extends Controller
                 'is_from_visitor',
                 'is_from_admin',
                 'admin_user_id',
+                'sent_at',
+                'delivered_at',
+                'read_at',
                 'created_at',
                 'updated_at',
             ])
-            ->where('session_id', $sessionId)
+            ->where('session_id', $sid)
             ->where('is_feedback', false)
             ->when($afterId > 0, fn ($query) => $query->where('id', '>', $afterId))
-            ->orderBy('created_at')
+            ->orderByRaw('COALESCE(sent_at, created_at) asc')
             ->orderBy('id')
             ->with('adminUser:id,name')
-            ->limit($limit)
-            ->get();
+            ->limit($limit);
+
+        $rows = $baseQuery()->get();
+
+        if ($request->user() && $request->boolean('auto_mark_visitor_receipts', true)) {
+            $maxVisitorId = (int) $rows->where('is_from_visitor', true)->max('id');
+            if ($maxVisitorId > 0) {
+                $n = $receipts->applyReadThrough($sid, $maxVisitorId, false);
+                $n += $receipts->applyDeliveryThrough($sid, $maxVisitorId, false);
+                if ($n > 0) {
+                    $rows = $baseQuery()->get();
+                }
+            }
+        }
 
         return response()->json($rows->map(fn (ChatMessage $row) => SupportChatPresenter::message($row))->values());
     }

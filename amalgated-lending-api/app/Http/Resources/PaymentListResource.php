@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Services\PaymentReceiptStatusManager;
 use App\Support\PublicStorageUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -24,6 +25,8 @@ class PaymentListResource extends JsonResource
             'installment_no' => $this->installment_no,
             'official_receipt_number' => $this->official_receipt_number,
             'acknowledgement_receipt_number' => $this->acknowledgement_receipt_number,
+            'receipt_status' => $this->receipt_status,
+            'receipt_document_coverage' => app(PaymentReceiptStatusManager::class)->documentCoverageLabel($this->resource),
             'receipt_issued_at' => optional($this->receipt_issued_at)?->toIso8601String(),
             'receipt_issued_by_name' => $this->receiptIssuedByUser?->name,
             'receipt_issued_role' => $this->receipt_issued_role,

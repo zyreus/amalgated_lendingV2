@@ -38,6 +38,7 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
         'id_document_name',
         'profile_photo_path',
         'profile_photo_name',
+        'timezone',
     ];
 
     protected $hidden = [
@@ -216,6 +217,7 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
             'email' => $this->email,
             'role' => $this->role ?: $this->derivePrimaryRoleFromRoles(),
             'phone' => $this->phone,
+            'timezone' => $this->timezone,
             'is_active' => $this->is_active,
             'roles' => $this->roles->map(fn ($r) => [
                 'id' => $r->id,

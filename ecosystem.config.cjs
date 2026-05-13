@@ -11,7 +11,7 @@ module.exports = {
        * Run `npm run build` (or `npm run build:laravel`) before `pm2 restart amalgated-frontend`.
        */
       name: 'amalgated-frontend',
-      cwd: 'C:/xampp/htdocs/amalgated-lending/amalgated-lending',
+      cwd: 'C:/xampp/htdocs/amalgated_lendingV2',
       script: 'C:/Windows/System32/cmd.exe',
       args: '/d /s /c "npx vite preview --config frontend/vite.config.js --host 0.0.0.0 --port 5174 --strictPort"',
       windowsHide: true,
@@ -36,7 +36,7 @@ module.exports = {
        * (Pick a different port via `--port` if you also want the preview server up.)
        */
       name: 'amalgated-frontend-dev',
-      cwd: 'C:/xampp/htdocs/amalgated-lending/amalgated-lending',
+      cwd: 'C:/xampp/htdocs/amalgated_lendingV2',
       script: 'C:/Windows/System32/cmd.exe',
       args: '/d /s /c "npm run dev:vite -- --host 0.0.0.0 --port 5175 --strictPort"',
       windowsHide: true,
@@ -54,14 +54,14 @@ module.exports = {
     },
     {
       name: 'amalgated-backend',
-      cwd: 'C:/xampp/htdocs/amalgated-lending/amalgated-lending',
+      cwd: 'C:/xampp/htdocs/amalgated_lendingV2',
       script: 'C:/Windows/System32/cmd.exe',
       args: '/d /s /c "npm run serve:laravel"',
       windowsHide: true,
       env: {
         NODE_ENV: 'development',
         PHP_BINARY: 'C:/xampp/php/php.exe',
-        LARAVEL_PORT: '8002',
+        LARAVEL_PORT: '8001',
       },
       watch: false,
       autorestart: true,
@@ -73,14 +73,14 @@ module.exports = {
 
     {
       name: 'amalgated-chat',
-      cwd: 'C:/xampp/htdocs/amalgated-lending/amalgated-lending',
+      cwd: 'C:/xampp/htdocs/amalgated_lendingV2',
       script: 'C:/Windows/System32/cmd.exe',
       args: '/d /s /c "npm run serve:chat"',
       windowsHide: true,
       env: {
         NODE_ENV: 'development',
         PORT: '8010',
-        LARAVEL_CHAT_SYNC_URL: 'http://127.0.0.1:8002/api/v1',
+        LARAVEL_CHAT_SYNC_URL: 'http://127.0.0.1:8001/api/v1',
         /** Must equal amalgated-lending-api `.env` `SUPPORT_CHAT_SYNC_SECRET`, or CRM warehouse stays empty. */
         LARAVEL_CHAT_SYNC_SECRET: 'amalgated-local-chat-warehouse-sync-v1',
       },

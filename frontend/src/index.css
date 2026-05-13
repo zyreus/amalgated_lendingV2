@@ -135,11 +135,13 @@ body {
   }
 }
 
+/* Default print page (loan forms, etc.). Reports financial summary injects landscape @page in JS before print. */
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
 @media print {
-  @page {
-    size: A4;
-    margin: 12mm;
-  }
   body * {
     visibility: hidden;
   }
@@ -148,16 +150,29 @@ body {
     color: #000 !important;
   }
   #loan-application-print-root,
-  #loan-application-print-root * {
+  #loan-application-print-root *,
+  #financial-report-print-root,
+  #financial-report-print-root * {
     visibility: visible;
   }
-  #loan-application-print-root {
+  #loan-application-print-root,
+  #financial-report-print-root {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
     background: #fff;
     color: #000;
+  }
+  #financial-report-print-root {
+    left: 0 !important;
+    top: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    width: 100% !important;
+    overflow: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
   }
   .print-page-number::after {
     content: "Page " counter(page);
