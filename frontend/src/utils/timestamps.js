@@ -4,7 +4,7 @@ const TZ_STORAGE_KEY = 'crm_display_timezone'
  * Preferred display timezone: explicit user profile (IANA), then localStorage override, then browser default.
  * @param {{ timezone?: string | null } | null | undefined} user
  */
-export function getResolvedDisplayTimeZone(user) {
+function getResolvedDisplayTimeZone(user) {
   const fromUser = user?.timezone && String(user.timezone).trim()
   if (fromUser) return fromUser
   try {
@@ -24,7 +24,7 @@ export function getResolvedDisplayTimeZone(user) {
  * @param {string | number | Date | null | undefined} isoOrDate
  * @param {{ timeZone?: string, locale?: string }} [opts]
  */
-export function formatChatTime(isoOrDate, opts = {}) {
+function formatChatTime(isoOrDate, opts = {}) {
   const d = toDate(isoOrDate)
   if (!d) return ''
   const locale = opts.locale || 'en-US'
@@ -40,7 +40,7 @@ export function formatChatTime(isoOrDate, opts = {}) {
 /**
  * Full CRM / audit log line (local calendar + clock).
  */
-export function formatCrmLog(isoOrDate, opts = {}) {
+function formatCrmLog(isoOrDate, opts = {}) {
   const d = toDate(isoOrDate)
   if (!d) return ''
   const locale = opts.locale || 'en-US'
@@ -57,9 +57,9 @@ export function formatCrmLog(isoOrDate, opts = {}) {
 }
 
 /**
- * Visitor inbox row — fixed pattern "May 13, 2026, 3:55 PM" (comma before time).
+ * Visitor inbox row - fixed pattern "May 13, 2026, 3:55 PM" (comma before time).
  */
-export function formatCrmInboxDate(isoOrDate, opts = {}) {
+function formatCrmInboxDate(isoOrDate, opts = {}) {
   const d = toDate(isoOrDate)
   if (!d) return ''
   const locale = opts.locale || 'en-US'
@@ -88,7 +88,7 @@ export function formatCrmInboxDate(isoOrDate, opts = {}) {
 /**
  * Relative time from UTC instant (browser clock).
  */
-export function formatRelativeUtc(isoOrDate) {
+function formatRelativeUtc(isoOrDate) {
   const d = toDate(isoOrDate)
   if (!d) return ''
   const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
@@ -113,7 +113,7 @@ export function formatRelativeUtc(isoOrDate) {
  * @param {Record<string, unknown>} msg — API row with read_at / delivered_at / sent_at (ISO strings)
  * @param {'staff' | 'visitor'} perspective
  */
-export function chatOutgoingReceiptLabel(msg, perspective) {
+function chatOutgoingReceiptLabel(msg, perspective) {
   const isStaffPerspective = perspective === 'staff'
   const outgoing =
     (isStaffPerspective && (msg?.sender === 'admin' || msg?.sender === 'ai' || msg?.sender === 'system')) ||
@@ -130,4 +130,13 @@ function toDate(isoOrDate) {
   const d = isoOrDate instanceof Date ? isoOrDate : new Date(isoOrDate)
   if (Number.isNaN(d.getTime())) return null
   return d
+}
+
+export {
+  chatOutgoingReceiptLabel,
+  formatChatTime,
+  formatCrmInboxDate,
+  formatCrmLog,
+  formatRelativeUtc,
+  getResolvedDisplayTimeZone,
 }
