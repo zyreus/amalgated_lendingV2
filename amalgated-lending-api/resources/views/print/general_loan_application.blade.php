@@ -179,7 +179,6 @@
 
     <div class="doc-title">Application Form</div>
     <div class="meta">Reference #{{ $app->id }} · {{ $loanTypeLabel }} · Generated {{ now()->format('Y-m-d H:i') }}</div>
-    <div class="divider"></div>
 
     <div class="field" style="max-width: 180px;">
         <div class="field-label">Branch</div>
@@ -418,7 +417,6 @@
         <div style="page-break-before: always;"></div>
         @include('partials.company-corporate-header')
         <div class="doc-title">Co-Maker Statement</div>
-        <div class="divider"></div>
         <p class="note">
             I agreed to be the co-maker of the applicant. I am signing the note as co-maker and understand that I may be jointly and solidarily liable with the applicant.
         </p>

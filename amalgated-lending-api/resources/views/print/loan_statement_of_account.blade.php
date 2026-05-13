@@ -62,7 +62,6 @@
     <div class="meta">
         {{ $loan->loan_number }} · Loan ID #{{ $loan->id }} · Generated {{ now()->format('Y-m-d H:i') }}
     </div>
-    <div class="divider"></div>
 
     <dl class="summary">
         <div>

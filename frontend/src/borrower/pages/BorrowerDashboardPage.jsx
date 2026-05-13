@@ -190,15 +190,14 @@ export default function BorrowerDashboardPage() {
 body{font-family:Arial,sans-serif;padding:24px;color:#111827}
 .wrap{max-width:760px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;padding:24px}
 .muted{color:#6b7280;font-size:12px}
-.invoice-title{margin:12px 0 4px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#991b1b}
 table{width:100%;border-collapse:collapse;margin-top:16px}
 th,td{border:1px solid #e5e7eb;padding:10px;font-size:13px;text-align:left}
 th{background:#f9fafb}
 </style>
 </head><body><div class="wrap">
-${corporatePrintHeaderBlock(brandLogoUrl, 46)}
-<p class="invoice-title">Payment invoice</p>
-<p class="muted" style="margin:0 0 8px"><strong>Invoice #:</strong> ${invoiceNumber(payment)}</p>
+${corporatePrintHeaderBlock(brandLogoUrl, 52)}
+<p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:0.06em">Payment invoice</p>
+<p class="muted" style="margin:0 0 16px">Invoice #: ${invoiceNumber(payment)}</p>
 <p><strong>Borrower:</strong> ${user?.name || user?.full_name || 'Borrower'}</p>
 <p><strong>Email:</strong> ${user?.email || payment?.borrower_email || 'N/A'}</p>
 <p><strong>Payment Date:</strong> ${formatDate(payment?.paid_at || payment?.due_date)}</p>

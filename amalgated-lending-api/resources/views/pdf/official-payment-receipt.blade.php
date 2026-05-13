@@ -24,7 +24,7 @@
 
   <div class="meta-row">
     <div class="meta-left">
-      <p style="margin:0;font-size:12px;color:#64748b;">{{ $companyName }}</p>
+      &nbsp;
     </div>
     <div class="meta-right">
       <div><strong>Receipt No.</strong><br>{{ $officialOr !== '' ? $officialOr : '—' }}</div>
