@@ -405,6 +405,14 @@ Route::prefix('v1')->group(function () {
     });
 });
 
+/**
+ * Visitor analytics JSON aligned with chat-server `GET /api/admin/analytics` (used when Vite does not
+ * proxy `/api/admin` to Node, or any client calling this path on Laravel).
+ */
+Route::middleware(['lending.chat_or_admin'])->prefix('admin')->group(function () {
+    Route::get('/analytics', [AdminChatController::class, 'visitorAnalytics']);
+});
+
 /** Short path for public SPA / legacy clients (same handler as `/api/v1/public/inquiry`). */
 Route::post('/inquiry', [PublicInquiryController::class, 'store'])
     ->middleware('throttle:20,1')

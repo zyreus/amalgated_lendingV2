@@ -14,6 +14,7 @@ use App\Http\Middleware\TrimStrings;
 use App\Http\Middleware\TrustProxies;
 use App\Http\Middleware\ValidateSignature;
 use App\Http\Middleware\VerifyCsrfToken;
+use App\Http\Middleware\AuthenticateLendingChatOrAdminApi;
 use App\Http\Middleware\VerifySupportChatSyncSecret;
 use Illuminate\Auth\Middleware\AuthenticateWithBasicAuth;
 use Illuminate\Auth\Middleware\Authorize;
@@ -95,5 +96,6 @@ class Kernel extends HttpKernel
         'admin' => EnsureAdminRole::class,
         'borrower' => EnsureBorrowerRole::class,
         'support.sync' => VerifySupportChatSyncSecret::class,
+        'lending.chat_or_admin' => AuthenticateLendingChatOrAdminApi::class,
     ];
 }

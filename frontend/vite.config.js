@@ -95,25 +95,16 @@ export default defineConfig(({ mode }) => {
     chatPortFromFile || env.CHAT_PORT || env.PORT || '8010'
   const chatTarget = (env.VITE_CHAT_PROXY_TARGET || `http://127.0.0.1:${chatPort}`).replace(/\/$/, '')
   /**
-   * Only proxy `/socket.io` + `/uploads` when chat is actually running (port file from `serve:chat`)
-   * or when `VITE_CHAT_PROXY_TARGET` is set. Otherwise Vite spams `ECONNREFUSED 127.0.0.1:8010` when
-   * the browser falls back to same-origin Socket.IO while Laravel-only dev (`npm run dev:vite`) is used.
+   * Only proxy `/api/admin`, `/socket.io`, and `/uploads` to Node when chat is actually running (port file
+   * from `serve:chat`) or when `VITE_CHAT_PROXY_TARGET` is set. Otherwise Vite spams `ECONNREFUSED` for
+   * same-origin `/api/admin/*` and Socket.IO while Laravel-only dev (`npm run dev:vite`) is used; those
+   * paths then fall through to the Laravel `/api` proxy (Laravel serves `GET /api/admin/analytics`).
    */
   const enableChatProxy = Boolean(
     chatPortFromFile || String(env.VITE_CHAT_PROXY_TARGET || '').trim(),
   )
 
-  const proxy = {
-    /**
-     * Node chat-server CRM (`chat-server/server.js`) — inbox, feedback, analytics, bulk admin routes.
-     * Must be listed **before** `/api`: otherwise Vite forwards `/api/admin/*` to Laravel (no matching handlers).
-     */
-    '/api/admin': {
-      target: chatTarget,
-      changeOrigin: true,
-      timeout: 120_000,
-      proxyTimeout: 120_000,
-    },
+  let proxy = {
     '/api': {
       target: proxyTarget,
       changeOrigin: true,
@@ -134,6 +125,17 @@ export default defineConfig(({ mode }) => {
   }
 
   if (enableChatProxy) {
+    /**
+     * Node chat-server CRM (`chat-server/server.js`) — `/api/admin/*` visitor DB, feedback, bulk routes.
+     * Must be registered **before** the generic `/api` proxy (insert at front of the map).
+     */
+    const chatAdminProxy = {
+      target: chatTarget,
+      changeOrigin: true,
+      timeout: 120_000,
+      proxyTimeout: 120_000,
+    }
+    proxy = { '/api/admin': chatAdminProxy, ...proxy }
     /** Chat server CMS uploads (`/uploads/cms/...`) for LAN dev host. */
     proxy['/uploads'] = {
       target: chatTarget,

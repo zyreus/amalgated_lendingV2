@@ -244,6 +244,33 @@ class AdminChatController extends Controller
         ]);
     }
 
+    /**
+     * Same response shape as chat-server `emptyAnalytics()` / successful `GET /api/admin/analytics`.
+     * Visitor page-hit data lives in Node; Laravel returns zeros so admin SPA charts load without error.
+     */
+    public function visitorAnalytics(): JsonResponse
+    {
+        $empty = [
+            'visits' => 0,
+            'totalVisits' => 0,
+            'totalMessages' => 0,
+            'viewersCount' => 0,
+            'messagedCount' => 0,
+            'avgDurationSeconds' => 0,
+            'byDevice' => (object) [],
+            'byBrowser' => (object) [],
+            'byLocation' => (object) [],
+            'byDeviceMessaged' => (object) [],
+            'byBrowserMessaged' => (object) [],
+            'byLocationMessaged' => (object) [],
+            'recentVisits' => [],
+            'recentViewers' => [],
+            'recentMessaged' => [],
+        ];
+
+        return response()->json($empty);
+    }
+
     public function messages(Request $request, string $sessionId): JsonResponse
     {
         $afterId = max((int) $request->query('after_id', 0), 0);
