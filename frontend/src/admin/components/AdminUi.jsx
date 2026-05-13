@@ -15,9 +15,9 @@ export const admin = {
   chartCard:
     'rounded-xl border border-gray-200 bg-white p-4 shadow-md transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:p-4 dark:shadow-lg sm:p-6',
   btnPrimary:
-    'rounded-xl bg-[#DC2626] px-4 py-2.5 text-sm font-semibold text-white shadow-md transition duration-200 hover:bg-red-700 hover:shadow-lg',
+    'touch-manipulation rounded-xl bg-[#DC2626] px-4 py-2.5 text-sm font-semibold text-white shadow-md transition duration-200 hover:bg-red-700 hover:shadow-lg',
   btnSecondary:
-    'rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 transition duration-200 hover:bg-gray-100 dark:border-[#1F2937] dark:bg-[#1F2937] dark:text-gray-100 dark:hover:bg-gray-800',
+    'touch-manipulation rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 transition duration-200 hover:bg-gray-100 dark:border-[#1F2937] dark:bg-[#1F2937] dark:text-gray-100 dark:hover:bg-gray-800',
   input:
     'rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition duration-300 placeholder:text-gray-500 focus:border-[#DC2626]/40 focus:ring-2 focus:ring-[#DC2626]/15 dark:border-[#1F2937] dark:bg-[#111827] dark:text-gray-100 dark:placeholder:text-gray-400',
   tableWrap:

@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock.js'
 import { useBorrowerAuth } from './context/useBorrowerAuth.js'
 import { borrowerApi } from './api/client.js'
 import { getLaravelStorageFileUrl } from '../utils/lendingLaravelApi.js'
@@ -59,6 +60,7 @@ export default function BorrowerLayout() {
   const { user, logout } = useBorrowerAuth()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
+  useBodyScrollLock(mobileOpen)
   const [notifUnread, setNotifUnread] = useState(null)
   const [notifModalOpen, setNotifModalOpen] = useState(false)
   const notifWrapRef = useRef(null)
@@ -185,7 +187,7 @@ export default function BorrowerLayout() {
           className="sticky top-0 z-20 border-b border-gray-200/90 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.05),0_6px_20px_-4px_rgba(15,23,42,0.08)] backdrop-blur-md transition-[box-shadow,background-color] duration-300 dark:border-[#1F2937] dark:bg-[#0F172A]/95 dark:shadow-[0_1px_0_rgba(255,255,255,0.04),0_8px_28px_-6px_rgba(0,0,0,0.45)]"
           role="banner"
         >
-          <div className="mx-auto flex w-full max-w-6xl min-w-0 items-center justify-between gap-2 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:gap-3">
+          <div className="mx-auto flex w-full max-w-[min(100%,var(--width-content-standard))] 2xl:max-w-[min(100%,var(--width-content-wide))] min-w-0 items-center justify-between gap-2 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:gap-3">
             {/* Left: menu (mobile) → avatar → name, then portal label */}
             <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
               <button
@@ -328,8 +330,8 @@ export default function BorrowerLayout() {
           </div>
         </header>
 
-        <main className="min-h-0 min-w-0 max-w-full flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain p-4 [-webkit-overflow-scrolling:touch] sm:p-6 lg:px-8 lg:py-6">
-          <div className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-4">
+        <main className="min-h-0 min-w-0 max-w-full flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] [-webkit-overflow-scrolling:touch] sm:p-6 lg:px-8 lg:py-6">
+          <div className="mx-auto flex w-full min-w-0 max-w-[min(100%,var(--width-content-standard))] 2xl:max-w-[min(100%,var(--width-content-wide))] flex-col gap-4">
             <Outlet />
           </div>
         </main>

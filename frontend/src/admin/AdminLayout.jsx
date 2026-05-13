@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useRef, lazy, Suspense } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock.js'
 import { io } from 'socket.io-client'
 import { adminSocketUrls, getLendingChatSecret } from '../utils/adminChatApi.js'
 import { api, getToken as getAdminToken } from './api/client.js'
@@ -122,6 +123,7 @@ export default function AdminLayout() {
   const location = useLocation()
   const chatFullBleed = location.pathname.startsWith('/admin/chat-crm')
   const [mobileOpen, setMobileOpen] = useState(false)
+  useBodyScrollLock(mobileOpen)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     typeof window !== 'undefined' ? readSidebarCollapsed() : false,
   )
@@ -503,17 +505,21 @@ export default function AdminLayout() {
 
       <div className={`flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col ${mainPlClass}`}>
         <header
-          className={`sticky top-0 z-30 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-200/80 bg-white/90 px-4 shadow-sm backdrop-blur-md sm:px-6 ${chatFullBleed ? 'py-2' : 'py-3'}`}
+          className={`sticky top-0 z-30 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-200/80 bg-white/90 px-4 shadow-sm backdrop-blur-md sm:px-6 ${
+            chatFullBleed
+              ? 'pb-2 pt-[calc(0.5rem+env(safe-area-inset-top,0px))]'
+              : 'pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))]'
+          }`}
         >
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <button
               type="button"
               onClick={() => setMobileOpen((o) => !o)}
-              className="rounded-lg p-2 text-gray-700 hover:bg-gray-100 lg:hidden"
+              className="touch-target rounded-xl border border-gray-200/80 bg-white text-gray-800 shadow-sm transition-colors hover:bg-gray-50 active:bg-gray-100 lg:hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#DC2626]"
               aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={mobileOpen}
             >
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
                 {mobileOpen ? (
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 ) : (
@@ -592,7 +598,7 @@ export default function AdminLayout() {
             className={
               chatFullBleed
                 ? 'flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-0'
-                : `flex min-h-0 min-w-0 max-w-full flex-col gap-4 ${admin.pageContainer} mx-auto max-w-[1600px]`
+                : `flex min-h-0 min-w-0 max-w-full flex-col gap-4 ${admin.pageContainer} mx-auto w-full max-w-[min(100%,var(--width-content-wide))] 2xl:max-w-[min(100%,var(--width-content-ultra))]`
             }
           >
             <Outlet />

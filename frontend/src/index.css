@@ -14,8 +14,8 @@
   --color-brand-primary: #dc2626;
   --color-brand-primary-hover: #b91c1c;
   --color-brand-secondary: #404040;
-  --color-brand-background: #FFFFFF;
-  --color-brand-background-alt: #FFFFFF;
+  --color-brand-background: #ffffff;
+  --color-brand-background-alt: #ffffff;
   --color-brand-text: #000000;
   --color-brand-green: #dc2626;
   --color-brand-green-hover: #b91c1c;
@@ -23,6 +23,12 @@
   --shadow-soft: 0 18px 45px rgba(0, 0, 0, 0.08);
   --shadow-brand-primary: 0 2px 8px rgba(220, 38, 38, 0.35);
   --shadow-brand-green: 0 2px 8px rgba(220, 38, 38, 0.35);
+  /** Ultra-wide layouts: use `3xl:` utilities alongside default `sm/md/lg/xl/2xl`. */
+  --breakpoint-3xl: 120rem;
+  /** Max content width tokens (use with max-w-[min(100%,var(--width-content-…))]). */
+  --width-content-standard: 80rem;
+  --width-content-wide: 100rem;
+  --width-content-ultra: 120rem;
 }
 
 *,
@@ -78,6 +84,16 @@ body {
     @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
   }
 
+  /** Horizontal scroll strip for responsive tables (pair with `admin.tableBase` + `admin.tableMin*` in JSX). */
+  .table-scroll-region {
+    @apply w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch];
+  }
+
+  /** Mobile-first content well — use on marketing/public sections; portals use layout shells. */
+  .content-well {
+    @apply mx-auto w-full min-w-0 max-w-[min(100%,var(--width-content-standard))] px-4 sm:px-6 lg:px-8 2xl:px-10 3xl:px-12;
+  }
+
   .surface-card {
     @apply rounded-2xl border border-white/10 bg-[#0c0c0c] shadow-[0_10px_30px_rgba(0,0,0,0.35)];
   }
@@ -88,6 +104,11 @@ body {
 
   .section-title {
     @apply text-xs font-semibold uppercase tracking-[0.2em] text-red-500;
+  }
+
+  /** Minimum 44×44px touch target (WCAG 2.5.5); pair with icon-only controls on phones. */
+  .touch-target {
+    @apply inline-flex min-h-11 min-w-11 touch-manipulation items-center justify-center;
   }
 }
 
@@ -139,6 +160,12 @@ body {
 @page {
   size: A4 portrait;
   margin: 12mm;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 @media print {
