@@ -231,6 +231,9 @@ export default function LendingChatWidget() {
           lastPersistedMessageIdRef.current = id
         }
       }
+      // Do not paint CRM/history into the transcript until the visitor opens the widget —
+      // avoids showing prior AI replies as if the bot spoke before they started chatting.
+      if (!openRef.current) return
       setMessages((prev) => mergeMessages(prev, rows))
     } catch {
       /* ignore */
@@ -286,12 +289,15 @@ export default function LendingChatWidget() {
     const attachSharedHandlers = (socket) => {
       socket.on('chat:history', (rows) => {
         if (!Array.isArray(rows)) return
+        if (!openRef.current) return
         setMessages((prev) => mergeMessages(prev, rows))
       })
 
       socket.on('chat:message', (msg) => {
         if (shouldIgnoreUserEcho(msg)) return
-        setMessages((prev) => mergeMessages(prev, [msg]))
+        if (openRef.current) {
+          setMessages((prev) => mergeMessages(prev, [msg]))
+        }
         const fromAssistant = msg?.sender === 'ai' || msg?.sender === 'admin' || msg?.sender === 'system'
         if (fromAssistant) {
           setStreamPending(false)
@@ -300,9 +306,12 @@ export default function LendingChatWidget() {
         if (!openRef.current && msg.sender !== 'user') setUnread((n) => n + 1)
       })
 
-      socket.on('chat:typing', () => setTyping(true))
+      socket.on('chat:typing', () => {
+        if (openRef.current) setTyping(true)
+      })
       socket.on('chat:typingStop', () => setTyping(false))
       socket.on('chat:streamStart', (event) => {
+        if (!openRef.current) return
         const streamId = event?.stream_id
         if (!streamId) return
         const tempId = `stream-${streamId}`
@@ -319,6 +328,7 @@ export default function LendingChatWidget() {
         )
       })
       socket.on('chat:streamDelta', (event) => {
+        if (!openRef.current) return
         const streamId = event?.stream_id
         const delta = String(event?.delta || '')
         if (!streamId || !delta) return
@@ -339,6 +349,7 @@ export default function LendingChatWidget() {
         const finalContent = String(event?.content || '')
         setStreamPending(false)
         setTyping(false)
+        if (!openRef.current) return
         setMessages((prev) =>
           prev.map((m) =>
             m.id === messageId
@@ -408,10 +419,25 @@ export default function LendingChatWidget() {
   }, [open])
 
   useEffect(() => {
+    if (open) return
+    setStreamPending(false)
+    setTyping(false)
+    streamMessageByIdRef.current.clear()
+    setMessages((prev) => prev.filter((m) => !String(m?.id || '').startsWith('stream-')))
+  }, [open])
+
+  useEffect(() => {
     if (!open) return
     setUnread(0)
     inputRef.current?.focus()
-  }, [open])
+    /** Refresh Node history + Laravel warehouse once the visitor opens the assistant (not on every page load). */
+    socketRef.current?.emit('visitor:join', {
+      conversationId: convoId.current,
+      source_page: sourcePage,
+      lang,
+    })
+    loadPersistedMessages(convoId.current, { afterId: 0 })
+  }, [open, loadPersistedMessages, sourcePage, lang])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -424,10 +450,6 @@ export default function LendingChatWidget() {
       /* ignore */
     }
   }, [lang])
-
-  useEffect(() => {
-    loadPersistedMessages(convoId.current, { afterId: 0 })
-  }, [loadPersistedMessages])
 
   // Keep chatbot <-> CRM in sync even if a socket event is dropped or relay env is misconfigured.
   useEffect(() => {
