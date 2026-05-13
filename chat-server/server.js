@@ -165,6 +165,13 @@ if (process.env.TRUST_PROXY === '1' || process.env.NODE_ENV === 'production') {
   app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS) || 1);
 }
 
+/**
+ * mysql2 can return BIGINT columns as JavaScript BigInt; JSON.stringify (used by res.json) throws → HTTP 500.
+ */
+function jsonSafe(value) {
+  return JSON.parse(JSON.stringify(value, (_, v) => (typeof v === 'bigint' ? v.toString() : v)));
+}
+
 /** Comma-separated browser origins; empty = allow all (local dev). Set in production. */
 const normalizeCorsOrigin = (value) => {
   const raw = String(value || '').trim().replace(/\/$/, '');
@@ -1022,11 +1029,20 @@ const MAX_CONTEXT_CHARS = Number.isFinite(Number(process.env.AI_MAX_CONTEXT_CHAR
 const FAST_LENDING_FAQ_RE =
   /\b(apply|application|requirements?|documents?|rates?|interest|monthly|amort|office|address|location|hello|hi|thanks|eligib|qualified|processing time|status|payment|repay|penalty|ofw|borrower portal)\b/i;
 
+/**
+ * Optional Groq bypass for very short FAQ-like visitor text (saves tokens).
+ * Default OFF: the keyword list matched almost all real questions *and* the long widget
+ * quick-action prompts ("How to apply…", "Ask about rates…"), which skipped Groq+RAG and
+ * produced generic canned replies on the public site.
+ */
 function shouldUseFastLendingFaq(conversationId, userMessage, options = {}) {
+  if (String(process.env.GROQ_FAST_LENDING_FAQ || '').trim() !== '1') return false;
   if (typeof conversationId !== 'string' || !conversationId.startsWith('lending-')) return false;
   const text = String(userMessage || '').trim();
   if (!text) return false;
   if (options?.forceAi === true) return false;
+  const maxChars = Math.max(24, Number(process.env.GROQ_FAST_LENDING_FAQ_MAX_CHARS || 96) || 96);
+  if (text.length > maxChars) return false;
   return FAST_LENDING_FAQ_RE.test(text);
 }
 
@@ -2782,7 +2798,7 @@ app.get(
 
 app.get('/api/admin/tickets', requireAdminOrLendingSecret, async (req, res) => {
   const { status, conversationId } = req.query;
-  res.json(await getTickets({ status: status || undefined, conversationId: conversationId || undefined }));
+  res.json(jsonSafe(await getTickets({ status: status || undefined, conversationId: conversationId || undefined })));
 });
 
 app.post('/api/admin/tickets', requireAdminOrLendingSecret, async (req, res) => {
@@ -2808,12 +2824,17 @@ app.post('/api/admin/tickets', requireAdminOrLendingSecret, async (req, res) => 
       details: `Chat ticket #${ticket?.id || ''} for conversation ${conversation_id}`,
     }).catch(() => {});
     io.to('admin').emit('tickets:refresh');
-    res.json(ticket);
+    res.json(jsonSafe(ticket));
   } catch (err) {
     console.error('[admin][tickets][create]', err?.message || err);
+    let message = err?.message || 'Failed to create ticket';
+    if (err?.errno === 1452 || /cannot add or update a child row/i.test(String(err?.message || ''))) {
+      message =
+        'This conversation is not linked in the chat database yet. Send or receive a message in the thread, refresh the inbox, then create the ticket again.';
+    }
     return res.status(500).json({
       ok: false,
-      message: err?.message || 'Failed to create ticket',
+      message,
     });
   }
 });
@@ -2827,11 +2848,11 @@ app.patch('/api/admin/tickets/:id', requireAdminOrLendingSecret, async (req, res
   logActivity({ action: 'ticket_updated', adminUsername: req.admin?.username, ipAddress: getClientIp(req), details: `Chat ticket #${id}` }).catch(() => {});
   await setTicketUnread(Number(id), false);
   io.to('admin').emit('tickets:refresh');
-  res.json(updated);
+  res.json(jsonSafe(updated));
 });
 
 app.get('/api/admin/tickets/by-conversation/:conversationId', requireAdminOrLendingSecret, async (req, res) => {
-  res.json(await getTicketsByConvo(req.params.conversationId));
+  res.json(jsonSafe(await getTicketsByConvo(req.params.conversationId)));
 });
 
 // ── CRM tickets (standalone support system) ──

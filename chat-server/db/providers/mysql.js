@@ -87,6 +87,9 @@ const pool = mysql.createPool({
   namedPlaceholders: true,
   dateStrings: true,
   charset: 'utf8mb4',
+  /** Avoid BigInt in row objects — breaks Express res.json / JSON.stringify. */
+  supportBigNumbers: true,
+  bigNumberStrings: true,
 })
 
 async function q(sql, params = {}) {
