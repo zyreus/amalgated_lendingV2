@@ -903,16 +903,18 @@ Use only provided website/company details for contacts, addresses, and company f
 If information is not available, say so briefly and suggest contacting the team.
 When a "Lending assistant" section is included, follow it strictly and never invent rates, approvals, legal claims, or guarantees.`;
 
-// Static company/office info (aligned with amalgatedlending.com Contact page) for AI context
+// Static company/office info (aligned with amalgatedlending.com Contact + Branches SPA) for AI context
 const WEBSITE_KNOWLEDGE = `
-- Amalgated Lending Inc. (ALI) — personal and business loans in Davao & Mindanao.
-- Address: ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000.
+- Amalgated Lending Inc. (ALI) — personal and business loans; public site serves Luzon, Visayas, Mindanao, and NCR.
+- Main office VisMin (corporate): ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000.
+- Main office Luzon: 1220 Pedro Gil Street, Paco, Manila.
+- Branch network (see /branches on amalgatedlending.com): Kidapawan — A & S Landing Commercial Bldg., Brgy. Sudapin, Kidapawan City; Mangagoy — M.Conpinco Building Espiritu St., Mangagoy, Bislig City, Surigao del Sur 8311; Lagao — Aradaza st., General Santos City.
 - Mobile: 09190675095 (official callback — do not use or repeat any old landline such as (082) 297 8099).
 - Email: support@amalgatedlending.com.
-- Website: https://amalgatedlending.com.
+- Website: https://amalgatedlending.com — key routes: /loan-products, /application-flow, /contact (inquiry form → continue in Borrower Portal), /branches, /privacy-policy.
 - Operating hours (typical): Monday–Saturday, 8:30 AM–5:30 PM (confirm by phone if unsure).
 - Parent group: Amalgated Holdings — https://amalgatedholdings.com.
-- Visitors can use the contact form on the website or this chat; staff may follow up by phone or email.
+- Visitors can use the contact form, this chat (with optional human escalation / “Human agent”), or phone/email; staff may follow up by phone or email.
 `;
 
 let websiteContextCache = null;
@@ -1186,13 +1188,14 @@ function getHoldingsFallbackReply(userMessage, lang) {
   const l = normalizeLang(lang);
   const phone = '09190675095';
   const email = 'support@amalgatedlending.com';
-  const addr =
+  const addrDavao =
     'ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000';
+  const addrManila = '1220 Pedro Gil Street, Paco, Manila';
   if (l === 'fil') {
     return `Salamat sa mensahe mo. Para sa Amalgated Holdings / Amalgated Lending Inc., mobile ${phone}, email ${email}, o bisitahin ang amalgatedlending.com o amalgatedholdings.com.`
   }
   if (/contact|phone|email|address|office|where|location/i.test(m)) {
-    return `Amalgated Lending Inc. — ${addr}. Mobile: ${phone}. Email: ${email}. Website: https://amalgatedlending.com (Holdings group: https://amalgatedholdings.com).`
+    return `Amalgated Lending Inc. — Main office VisMin: ${addrDavao}. Main office Luzon: ${addrManila}. Mobile: ${phone}. Email: ${email}. Website: https://amalgatedlending.com/branches at https://amalgatedlending.com/contact (Holdings: https://amalgatedholdings.com).`
   }
   return `Thanks for reaching out. Amalgated Lending Inc.: mobile ${phone}, ${email}, https://amalgatedlending.com. Amalgated Holdings group: https://amalgatedholdings.com. How can I help you today?`
 }
@@ -2785,10 +2788,34 @@ app.get('/api/admin/tickets', requireAdminOrLendingSecret, async (req, res) => {
 app.post('/api/admin/tickets', requireAdminOrLendingSecret, async (req, res) => {
   const { conversation_id, priority, status, assigned_staff, notes } = req.body || {};
   if (!conversation_id) return res.status(400).json({ ok: false, message: 'conversation_id required' });
-  const ticket = await createTicket(conversation_id, { priority, status, assigned_staff, notes });
-  logActivity({ action: 'ticket_created', adminUsername: req.admin?.username, ipAddress: getClientIp(req), details: `Chat ticket #${ticket?.id || ''} for conversation ${conversation_id}` }).catch(() => {});
-  io.to('admin').emit('tickets:refresh');
-  res.json(ticket);
+  try {
+    let convo = await getConversation(conversation_id);
+    if (!convo) {
+      await createConversation(conversation_id);
+      convo = await getConversation(conversation_id);
+    }
+    if (!convo) {
+      return res.status(400).json({
+        ok: false,
+        message: 'Conversation not found. Refresh the inbox and try again.',
+      });
+    }
+    const ticket = await createTicket(conversation_id, { priority, status, assigned_staff, notes });
+    logActivity({
+      action: 'ticket_created',
+      adminUsername: req.admin?.username,
+      ipAddress: getClientIp(req),
+      details: `Chat ticket #${ticket?.id || ''} for conversation ${conversation_id}`,
+    }).catch(() => {});
+    io.to('admin').emit('tickets:refresh');
+    res.json(ticket);
+  } catch (err) {
+    console.error('[admin][tickets][create]', err?.message || err);
+    return res.status(500).json({
+      ok: false,
+      message: err?.message || 'Failed to create ticket',
+    });
+  }
 });
 
 app.patch('/api/admin/tickets/:id', requireAdminOrLendingSecret, async (req, res) => {

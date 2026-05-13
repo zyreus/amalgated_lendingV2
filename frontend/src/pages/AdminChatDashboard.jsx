@@ -292,6 +292,11 @@ export default function AdminChatDashboard({
   const [ticketStatusFilter, setTicketStatusFilter] = useState('all')
   const [ticketSelected, setTicketSelected] = useState({})
   const [ticketModal, setTicketModal] = useState(null)
+  const [ticketCreateSubject, setTicketCreateSubject] = useState('')
+  const [ticketCreateNotes, setTicketCreateNotes] = useState('')
+  const [ticketCreatePriority, setTicketCreatePriority] = useState('medium')
+  const [ticketCreateError, setTicketCreateError] = useState('')
+  const [ticketCreateSubmitting, setTicketCreateSubmitting] = useState(false)
   const [newLeadAlert, setNewLeadAlert] = useState(null)
   const [leadEmailModal, setLeadEmailModal] = useState(null)
   const [leadEmailSubject, setLeadEmailSubject] = useState('')
@@ -1399,21 +1404,56 @@ Amalgated Lending Inc. Team`
     }
   }
 
+  const resetTicketCreateForm = () => {
+    setTicketCreateSubject('')
+    setTicketCreateNotes('')
+    setTicketCreatePriority('medium')
+    setTicketCreateError('')
+    setTicketCreateSubmitting(false)
+  }
+
+  const openTicketCreateModal = (conversationId) => {
+    resetTicketCreateForm()
+    setTicketModal({ conversation_id: conversationId })
+  }
+
   const createTicketForConvo = async (conversationId) => {
+    const subject = ticketCreateSubject.trim()
+    const detail = ticketCreateNotes.trim()
+    if (!subject || !detail) {
+      setTicketCreateError('Enter a subject and a short description so the team knows what this ticket is for.')
+      return
+    }
+    setTicketCreateSubmitting(true)
+    setTicketCreateError('')
     try {
-      await chatFetch('/api/admin/tickets', {
+      const notes = `${subject}\n\n${detail}`
+      const { res, data } = await chatJson('/api/admin/tickets', {
         method: 'POST',
         body: JSON.stringify({
           conversation_id: conversationId,
-          priority: 'medium',
+          priority: ticketCreatePriority,
           status: 'open',
+          notes,
         }),
       })
+      if (!res?.ok) {
+        const msg =
+          (data && (data.message || data.error)) ||
+          (typeof data === 'string' ? data : null) ||
+          `Could not create ticket (${res?.status || 'error'}).`
+        setTicketCreateError(msg)
+        return
+      }
+      resetTicketCreateForm()
       setTicketModal(null)
       goToView('tickets')
       fetchTickets()
     } catch (error) {
       console.error(error)
+      setTicketCreateError(error?.message || 'Network error — check chat server and admin secret.')
+    } finally {
+      setTicketCreateSubmitting(false)
     }
   }
 
@@ -2490,7 +2530,7 @@ Amalgated Lending Inc. Team`
                   </button>
                   <button
                     type="button"
-                    onClick={() => setTicketModal({ conversation_id: activeId })}
+                    onClick={() => openTicketCreateModal(activeId)}
                     className="rounded-xl border border-[var(--admin-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--admin-text)] shadow-sm hover:bg-[var(--admin-surface-2)]"
                     title="Create support ticket"
                   >
@@ -3903,32 +3943,90 @@ Amalgated Lending Inc. Team`
 
       {/* Create ticket modal */}
       {ticketModal && ticketModal.conversation_id && !ticketModal.id && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-[var(--admin-text)]">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ticket-create-title"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-6 shadow-xl ring-1 ring-[color:var(--admin-accent)]/10">
+            <h3 id="ticket-create-title" className="text-lg font-semibold text-[var(--admin-text)]">
               Create support ticket
             </h3>
-            <p className="mt-2 text-sm text-[color:var(--admin-muted)]">
-              Create a ticket for this conversation.
+            <p className="mt-1 text-sm text-[color:var(--admin-muted)]">
+              Link this thread to a trackable ticket for your team. Fields are saved to the ticket notes.
             </p>
-            <div className="mt-4">
-              <p className="text-xs text-[color:var(--admin-muted-2)]">
-                Conversation: {ticketModal.conversation_id}
+            <p className="mt-3 rounded-lg bg-[var(--admin-surface-2)] px-3 py-2 font-mono text-[11px] text-[color:var(--admin-muted-2)]">
+              {ticketModal.conversation_id}
+            </p>
+            {ticketCreateError ? (
+              <p
+                className="mt-3 rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-800 dark:text-rose-200"
+                role="alert"
+              >
+                {ticketCreateError}
               </p>
-            </div>
+            ) : null}
+            <label htmlFor="ticket-create-subject" className="mt-4 block text-xs font-semibold text-[color:var(--admin-muted)]">
+              Subject
+            </label>
+            <input
+              id="ticket-create-subject"
+              type="text"
+              value={ticketCreateSubject}
+              onChange={(e) => setTicketCreateSubject(e.target.value)}
+              placeholder="e.g. Visitor question about payment posting"
+              className="mt-1 w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-bg)] px-3 py-2 text-sm text-[var(--admin-text)] outline-none focus:ring-2 focus:ring-[color:var(--admin-accent)]/25"
+              autoComplete="off"
+            />
+            <label htmlFor="ticket-create-priority" className="mt-3 block text-xs font-semibold text-[color:var(--admin-muted)]">
+              Priority
+            </label>
+            <select
+              id="ticket-create-priority"
+              value={ticketCreatePriority}
+              onChange={(e) => setTicketCreatePriority(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-bg)] px-3 py-2 text-sm text-[var(--admin-text)] outline-none focus:ring-2 focus:ring-[color:var(--admin-accent)]/25"
+            >
+              {Object.entries(TICKET_PRIORITY).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <label htmlFor="ticket-create-notes" className="mt-3 block text-xs font-semibold text-[color:var(--admin-muted)]">
+              Description
+            </label>
+            <textarea
+              id="ticket-create-notes"
+              value={ticketCreateNotes}
+              onChange={(e) => setTicketCreateNotes(e.target.value)}
+              rows={4}
+              placeholder="What should staff follow up on?"
+              className="mt-1 w-full resize-y rounded-lg border border-[var(--admin-border)] bg-[var(--admin-bg)] px-3 py-2 text-sm text-[var(--admin-text)] outline-none focus:ring-2 focus:ring-[color:var(--admin-accent)]/25"
+            />
             <div className="mt-6 flex gap-3">
               <button
-                onClick={() => setTicketModal(null)}
+                type="button"
+                onClick={() => {
+                  resetTicketCreateForm()
+                  setTicketModal(null)
+                }}
                 className="flex-1 rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-4 py-2.5 text-sm font-semibold text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)]"
               >
                 Cancel
               </button>
               <button
+                type="button"
+                disabled={
+                  ticketCreateSubmitting ||
+                  !String(ticketCreateSubject || '').trim() ||
+                  !String(ticketCreateNotes || '').trim()
+                }
                 onClick={() => createTicketForConvo(ticketModal.conversation_id)}
-                className="flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                style={{ backgroundColor: 'var(--brand-primary, #2F6FA3)' }}
+                className="flex-1 rounded-lg bg-[color:var(--admin-accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Create ticket
+                {ticketCreateSubmitting ? 'Creating…' : 'Create ticket'}
               </button>
             </div>
           </div>

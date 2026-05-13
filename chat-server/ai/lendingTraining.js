@@ -6,11 +6,21 @@
 import fs from 'fs';
 import path from 'path';
 
-/** Official public contact — aligned with amalgatedlending.com */
+/** Official public contact — aligned with amalgatedlending.com Contact page */
 export const LENDING_PHONE = '09190675095';
 export const LENDING_EMAIL = 'support@amalgatedlending.com';
+/** Main office VisMin (corporate) — same copy as `ContactPage.jsx` / `BranchesPage.jsx` */
 export const LENDING_OFFICE =
   'ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000';
+/** Main office Luzon — same copy as Contact + Branches pages */
+export const LENDING_OFFICE_LUZON = '1220 Pedro Gil Street, Paco, Manila';
+
+/** Branch rows as shown on public `/branches` (keep in sync with `BranchesPage.jsx`). */
+export const LENDING_PUBLIC_BRANCHES_LINES = [
+  'Kidapawan: A & S Landing Commercial Bldg., Brgy. Sudapin, Kidapawan City',
+  'Mangagoy: M.Conpinco Building Espiritu St. Mangagoy, Bislig City Surigao Del Sur 8311',
+  'Lagao (General Santos): Aradaza st. General Santos City',
+].join('\n');
 
 /**
  * System prompt (hierarchical). FAQ block below adds topic recipes without repeating every prohibition.
@@ -21,9 +31,18 @@ ROLE
 You are the official AI assistant for Amalgated Lending Inc. (ALI), Davao City, Philippines — part of the Amalgated Holdings group. You serve website visitors and borrowers with general, non-binding information only.
 
 GOALS
-- Explain loan categories, navigation (Loan Products, Apply, Contact, Branches), and high-level application steps.
+- Explain loan categories, navigation (Loan Products, Application flow, Apply/Borrower Portal, Contact, Branches), and high-level application steps.
 - Encourage responsible borrowing and use of official channels.
 - Match the user’s language (widget language when set; otherwise the user’s last message).
+
+PUBLIC WEBSITE (canonical — match amalgatedlending.com SPA; paths are on-site routes)
+- Main office VisMin (corporate): ${LENDING_OFFICE}
+- Main office Luzon: ${LENDING_OFFICE_LUZON}
+- Branch network (see /branches): ${LENDING_PUBLIC_BRANCHES_LINES.replace(/\n/g, '; ')}
+- Service areas (site copy): Luzon, Visayas, Mindanao, and NCR.
+- Contact (/contact): inquiry form for name, contact number, email, preferred loan type, estimated amount; “Get directions” for the Davao pin; after submit, users continue the full application in the Borrower Portal (/borrower/login).
+- Key visitor routes: /loan-products, /application-flow, /loans/* product pages, /contact, /branches, /privacy-policy.
+- This chat widget: quick actions include “How to apply?”, “Ask about rates”, “Loan products”, and “Talk to an agent” / “Human agent” for escalation; the UI states users may escalate to a human anytime. A footer notes AI answers can be inaccurate—if asked, acknowledge briefly and offer phone (${LENDING_PHONE}) or agent handoff for verified details.
 
 CORE RULES (compliance — never break)
 - Do not quote specific interest rates, APRs, monthly amortization amounts, fees, or approval percentages. Say they depend on product, amount, term, and credit assessment; direct to Apply or ${LENDING_PHONE}.
@@ -37,7 +56,7 @@ KNOWLEDGE PRIORITY
 2) Otherwise use the FAQ reference block in this system message for topic handling.
 
 HUMAN ESCALATION
-- If the user wants a human (e.g. "Talk to an agent", callback, loan officer): confirm briefly, tell them staff can continue in chat or by phone at ${LENDING_PHONE}, and do not treat it as a trivia question. The app may switch modes; stay professional.
+- If the user wants a human (e.g. "Talk to an agent", "Human agent", callback, loan officer): confirm briefly, tell them staff can continue in chat or by phone at ${LENDING_PHONE}, and do not treat it as a trivia question. The app may switch modes; stay professional.
 
 SECURITY
 - Never ask for or repeat passwords, OTPs, or full ID numbers. No internal IDs, admin secrets, or borrower PII you do not see in-thread. No invented vulnerabilities.
@@ -85,7 +104,9 @@ FAQ TOPICS (answer in the user’s language; stay within CORE RULES above):
 
 • Off-topic — Politely redirect to ALI lending or official contact.
 
-• Widget shortcuts — "How to apply" → steps + documents (no rate numbers). "Ask about rates" → depends on assessment + Apply/phone. "Loan products" → categories + site sections. "Talk to an agent" → human handoff / phone as above.
+• Widget shortcuts — "How to apply" → steps + documents (no rate numbers). "Ask about rates" → depends on assessment + Apply/phone. "Loan products" → categories + site sections. "Talk to an agent" / "Human agent" → human handoff / phone as above.
+
+• Locations — Always mention both main offices (Davao VisMin + Manila Luzon) when answering “where are you / office / branch”; then summarize branch cities or send users to /branches and /contact. Do not invent extra branches.
 
 • Admin portal — Generic staff workflows only; no secrets or individual borrower data.
 `.trim();
@@ -139,12 +160,25 @@ function wantsEscalation(message, lang) {
 function escalationReply(lang) {
   const l = normalizeLang(lang);
   if (l === 'fil') {
-    return `Naiintindihan namin na gusto mong makausap ang aming team. Pakipindot ang **Talk to an agent** sa chat kung available, o tumawag sa ${LENDING_PHONE} (mobile) o mag-email sa ${LENDING_EMAIL}. Hindi namin mabibigay ang account-specific na detalye dito sa chat para manatiling secure ang impormasyon mo.`;
+    return `Naiintindihan namin na gusto mong makausap ang aming team. Pakipindot ang **Talk to an agent** o **Human agent** sa chat kung available, o tumawag sa ${LENDING_PHONE} (mobile) o mag-email sa ${LENDING_EMAIL}. Hindi namin mabibigay ang account-specific na detalye dito sa chat para manatiling secure ang impormasyon mo.`;
   }
   if (l === 'es') {
-    return `Podemos pasarle con nuestro equipo. Use **Talk to an agent** en el chat si está disponible, o llame al ${LENDING_PHONE} (móvil) o escriba a ${LENDING_EMAIL}. Por seguridad, no compartimos datos específicos de su cuenta aquí.`;
+    return `Podemos pasarle con nuestro equipo. Use **Talk to an agent** / **Human agent** en el chat si está disponible, o llame al ${LENDING_PHONE} (móvil) o escriba a ${LENDING_EMAIL}. Por seguridad, no compartimos datos específicos de su cuenta aquí.`;
   }
-  return `I’ll connect you with our team. Please tap **Talk to an agent** in this chat if you see it, or call ${LENDING_PHONE} (mobile) or email ${LENDING_EMAIL}. For your security, we can’t discuss account-specific details in this automated chat.`;
+  return `I’ll connect you with our team. Please tap **Talk to an agent** or **Human agent** in this chat if you see it, or call ${LENDING_PHONE} (mobile) or email ${LENDING_EMAIL}. For your security, we can’t discuss account-specific details in this automated chat.`;
+}
+
+/** Office + branch summary — keep aligned with `ContactPage.jsx` and `BranchesPage.jsx`. */
+function publicLocationFallbackReply(lang) {
+  const l = normalizeLang(lang);
+  const site = 'https://amalgatedlending.com';
+  if (l === 'fil') {
+    return `Ayon sa pampublikong website ng Amalgated Lending Inc.: **Main office VisMin (corporate):** ${LENDING_OFFICE} **Main office Luzon:** ${LENDING_OFFICE_LUZON}. May branch network sa Kidapawan, Mangagoy (Bislig), at General Santos (Lagao)—buong address sa ${site}/branches. Mobile: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}. Inquiry: ${site}/contact.`;
+  }
+  if (l === 'es') {
+    return `Según el sitio público de Amalgated Lending Inc.: **Oficina principal VisMin:** ${LENDING_OFFICE} **Oficina principal Luzón:** ${LENDING_OFFICE_LUZON}. Red en Kidapawan, Mangagoy (Bislig) y General Santos (Lagao)—direcciones en ${site}/branches. Móvil: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}. Contacto: ${site}/contact.`;
+  }
+  return `Amalgated Lending Inc. lists two main offices on amalgatedlending.com: **VisMin (corporate):** ${LENDING_OFFICE} **Luzon:** ${LENDING_OFFICE_LUZON}. Published branches include Kidapawan, Mangagoy (Bislig), and General Santos (Lagao)—full addresses on ${site}/branches. Mobile: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}. Contact & inquiry: ${site}/contact. Explore Loan Products and Apply there too.`;
 }
 
 /** Rule-based replies when Groq is unavailable or errors. */
@@ -179,7 +213,7 @@ export function getLendingFallbackReply(userMessage, lang) {
       return `Kailangan suriin ng specialist ang kasalukuyang account mo. Mag-apply o tumawag sa ${LENDING_PHONE} at banggitin ang existing loan mo.`;
     }
     if (/complaint|reklamo|problem|issue|mali|error|hindi\s+masaya/i.test(m)) {
-      return `Paumanhin sa abala. Pakigamit ang **Talk to an agent** sa chat o tumawag sa ${LENDING_PHONE} para direktang matulungan ka ng staff.`;
+      return `Paumanhin sa abala. Pakigamit ang **Talk to an agent** o **Human agent** sa chat o tumawag sa ${LENDING_PHONE} para direktang matulungan ka ng staff.`;
     }
     if (/ofw|abroad|overseas|sa ibang bansa|nasasabak/i.test(m)) {
       return `Maraming OFW case ang nangangailangan ng tamang dokumento at proof of income. Mag-apply online o tumawag sa ${LENDING_PHONE} para matulungan kang pumili ng angkop na product.`;
@@ -187,8 +221,8 @@ export function getLendingFallbackReply(userMessage, lang) {
     if (/insurance|notary|third party/i.test(m)) {
       return `Maaaring may karagdagang bayarin depende sa produkto at proseso. Ang detalye ay mula sa loan officer o sa agreement — ${LENDING_PHONE}.`;
     }
-    if (/branch|opisina|saan|location|davao|address|bisita|taga\s+saan/i.test(m)) {
-      return `Opisina: ${LENDING_OFFICE}. Mobile: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}.`;
+    if (/branch|opisina|saan|location|davao|manila|luzon|address|bisita|taga\s+saan|kidapawan|bislig|gensan|lagao|ncr/i.test(m)) {
+      return publicLocationFallbackReply(l);
     }
     if (/hello|hi |^hi$|kumusta|tulong|help|magandang|musta|kamusta/i.test(m)) {
       return `Kumusta! Dito ang Amalgated Lending Inc. — tutulong kami sa pangkalahatang tanong tungkol sa loans, Apply, at Loan Products. Ano ang gusto mong malaman? Puwede mo ring gamitin ang mga quick option sa chat.`;
@@ -209,8 +243,8 @@ export function getLendingFallbackReply(userMessage, lang) {
     if (/documento|requisito|papel|garantía|colateral|vehículo|propiedad/i.test(m)) {
       return `Normalmente: ID oficial, comprobante de ingresos, domicilio y documentos según el producto. Complete Apply en línea; el equipo indicará si falta algo. ${LENDING_PHONE}.`;
     }
-    if (/sucursal|oficina|dirección|ubicación|dónde|davao/i.test(m)) {
-      return `Oficina: ${LENDING_OFFICE}. Móvil: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}.`;
+    if (/sucursal|oficina|dirección|ubicación|dónde|davao|manila|luzon|kidapawan|bislig/i.test(m)) {
+      return publicLocationFallbackReply(l);
     }
     if (/hola|buenos|ayuda|gracias por contactar/i.test(m)) {
       return `Hola, somos Amalgated Lending Inc. — préstamos personales, salariales, empresariales y más. ¿En qué podemos orientarle? Use también las opciones rápidas del chat.`;
@@ -240,7 +274,7 @@ export function getLendingFallbackReply(userMessage, lang) {
     return `A specialist needs to review your current account. Please apply or call ${LENDING_PHONE} and mention your existing loan so we can guide you correctly.`;
   }
   if (/complaint|problem with|issue|wrong|error|not happy/i.test(m)) {
-    return `Sorry you’re having trouble. Please use **Talk to an agent** in this chat or call ${LENDING_PHONE} so our staff can assist you directly.`;
+    return `Sorry you’re having trouble. Please use **Talk to an agent** or **Human agent** in this chat or call ${LENDING_PHONE} so our staff can assist you directly.`;
   }
   if (/privacy|data|personal information|is my info safe/i.test(m)) {
     return `We use your information to evaluate and service your request. Avoid sharing full ID numbers or sensitive data in chat when possible—official forms on the Apply page are best. Questions: ${LENDING_PHONE}.`;
@@ -260,8 +294,8 @@ export function getLendingFallbackReply(userMessage, lang) {
   if (/insurance|notary|third[- ]party fee/i.test(m)) {
     return `Some products may involve third-party costs. Exact details come from your loan officer or agreement—call ${LENDING_PHONE}.`;
   }
-  if (/branch|office|location|davao|where|address|visit|open/i.test(m)) {
-    return `Main office: ${LENDING_OFFICE}. Mobile: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}. You can also browse Loan Products and Apply on our site.`;
+  if (/branch|office|location|davao|manila|luzon|where|address|\bvisit\b|kidapawan|bislig|gensan|lagao|ncr/i.test(m)) {
+    return publicLocationFallbackReply(l);
   }
   if (/hours|when are you|schedule/i.test(m)) {
     return `For branch hours and appointments, please call ${LENDING_PHONE}.`;

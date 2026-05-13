@@ -24,6 +24,12 @@ class SupportConversation extends Model
         'rated_at',
         'escalated_at',
         'resolved_at',
+        'last_visitor_message_at',
+        'last_staff_message_at',
+        'visitor_last_seen_at',
+        'staff_last_seen_at',
+        'typing_last_at',
+        'archived_at',
     ];
 
     protected $casts = [
@@ -31,6 +37,12 @@ class SupportConversation extends Model
         'rated_at' => 'datetime',
         'escalated_at' => 'datetime',
         'resolved_at' => 'datetime',
+        'last_visitor_message_at' => 'datetime',
+        'last_staff_message_at' => 'datetime',
+        'visitor_last_seen_at' => 'datetime',
+        'staff_last_seen_at' => 'datetime',
+        'typing_last_at' => 'datetime',
+        'archived_at' => 'datetime',
     ];
 
     public function assignedUser(): BelongsTo
