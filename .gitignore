@@ -15,3 +15,8 @@ dist/
 
 # Ephemeral dev scripts
 scripts/.laravel-bind-port
+
+# Local noise (archives, nested copy of repo, runtime logs)
+*.rar
+logs/
+amalgated_lendingV2/
