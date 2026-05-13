@@ -79,26 +79,6 @@ CREATE TABLE IF NOT EXISTS visitor_visits (
     ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
--- Tickets
-CREATE TABLE IF NOT EXISTS tickets (
-  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  ticket_id VARCHAR(128) NOT NULL,
-  conversation_id VARCHAR(128) NOT NULL,
-  priority ENUM('low','medium','high','urgent') NOT NULL DEFAULT 'medium',
-  status ENUM('open','pending','closed') NOT NULL DEFAULT 'open',
-  assigned_staff VARCHAR(255) NULL,
-  notes TEXT NULL,
-  is_unread TINYINT(1) NOT NULL DEFAULT 1,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uniq_ticket_id (ticket_id),
-  KEY idx_tickets_status_created (status, created_at),
-  KEY idx_tickets_convo_created (conversation_id, created_at),
-  CONSTRAINT fk_tickets_conversation
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id)
-    ON DELETE CASCADE
-) ENGINE=InnoDB;
-
 -- Users (auth)
 CREATE TABLE IF NOT EXISTS users (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,

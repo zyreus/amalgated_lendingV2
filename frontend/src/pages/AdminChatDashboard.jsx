@@ -53,12 +53,6 @@ function CrmNavIcon({ name }) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
         </svg>
       )
-    case 'tickets':
-      return (
-        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25m16.5 0V6A2.25 2.25 0 0018 3.75H8.25A2.25 2.25 0 006 6v12" />
-        </svg>
-      )
     case 'analytics':
       return (
         <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
@@ -74,17 +68,6 @@ function CrmNavIcon({ name }) {
 const LEAD_STATUS = {
   new: 'New',
   ongoing: 'Ongoing',
-  closed: 'Closed',
-}
-const TICKET_PRIORITY = {
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
-  urgent: 'Urgent',
-}
-const TICKET_STATUS = {
-  open: 'Open',
-  pending: 'Pending',
   closed: 'Closed',
 }
 /** Fixed locale so date + time + AM/PM stay consistent across admin browsers. */
@@ -227,14 +210,13 @@ function normalizeLead(lead) {
   }
 }
 
-const VALID_VIEWS = ['chats', 'leads', 'analytics', 'tickets']
+const VALID_VIEWS = ['chats', 'leads', 'analytics']
 
 /** Left rail + column header title per view */
 const VIEW_TITLE = {
   chats: 'Inbox',
   leads: 'Leads',
   analytics: 'Analytics',
-  tickets: 'Tickets',
 }
 
 /** Matches `BorrowerPortalController::resolveBorrowerLead` — borrower portal chat threads. */
@@ -287,16 +269,6 @@ export default function AdminChatDashboard({
   const [knowledgeStats, setKnowledgeStats] = useState(null)
   const [knowledgeSyncLoading, setKnowledgeSyncLoading] = useState(false)
   const [knowledgeSyncMessage, setKnowledgeSyncMessage] = useState(null)
-  const [tickets, setTickets] = useState([])
-  const [ticketReadFilter, setTicketReadFilter] = useState('all')
-  const [ticketStatusFilter, setTicketStatusFilter] = useState('all')
-  const [ticketSelected, setTicketSelected] = useState({})
-  const [ticketModal, setTicketModal] = useState(null)
-  const [ticketCreateSubject, setTicketCreateSubject] = useState('')
-  const [ticketCreateNotes, setTicketCreateNotes] = useState('')
-  const [ticketCreatePriority, setTicketCreatePriority] = useState('medium')
-  const [ticketCreateError, setTicketCreateError] = useState('')
-  const [ticketCreateSubmitting, setTicketCreateSubmitting] = useState(false)
   const [newLeadAlert, setNewLeadAlert] = useState(null)
   const [leadEmailModal, setLeadEmailModal] = useState(null)
   const [leadEmailSubject, setLeadEmailSubject] = useState('')
@@ -331,7 +303,6 @@ export default function AdminChatDashboard({
   const prevActiveId = useRef(null)
   const fetchLeadsRef = useRef(() => {})
   const fetchConversationsRef = useRef(async () => {})
-  const fetchTicketsRef = useRef(async () => {})
   const fetchAnalyticsRef = useRef(async () => {})
   const fetchFeedbackRef = useRef(async () => {})
   const fetchAiSessionMetricsRef = useRef(async () => {})
@@ -528,18 +499,6 @@ export default function AdminChatDashboard({
     fetchKnowledgeStats()
   }, [view, fetchKnowledgeStats])
 
-  const fetchTickets = useCallback(async () => {
-    try {
-      const { res } = await chatFetch('/api/admin/tickets')
-      if (!res || res.status === 401) {
-        return
-      }
-      setTickets(await res.json())
-    } catch {
-      /* ignore */
-    }
-  }, [])
-
   const fetchAiSessionMetrics = useCallback(async () => {
     try {
       const { res, data } = await chatJson('/api/admin/ai-session-metrics')
@@ -556,11 +515,10 @@ export default function AdminChatDashboard({
   useEffect(() => {
     fetchLeadsRef.current = fetchLeads
     fetchConversationsRef.current = fetchConversations
-    fetchTicketsRef.current = fetchTickets
     fetchAnalyticsRef.current = fetchAnalytics
     fetchFeedbackRef.current = fetchFeedback
     fetchAiSessionMetricsRef.current = fetchAiSessionMetrics
-  }, [fetchLeads, fetchConversations, fetchTickets, fetchAnalytics, fetchFeedback, fetchAiSessionMetrics])
+  }, [fetchLeads, fetchConversations, fetchAnalytics, fetchFeedback, fetchAiSessionMetrics])
 
   useEffect(() => {
     if (view !== 'chats' || chatInboxTab !== 'visitor') return
@@ -672,18 +630,13 @@ export default function AdminChatDashboard({
         window.dispatchEvent(new CustomEvent('admin:statsRefresh'))
       }
     }
-    if (resource === 'tickets') {
-      setTicketSelected({})
-      fetchTickets()
-    }
   }
 
   useEffect(() => {
     fetchConversations()
     fetchLeads()
     fetchFeedback()
-    fetchTickets()
-  }, [fetchConversations, fetchLeads, fetchFeedback, fetchTickets])
+  }, [fetchConversations, fetchLeads, fetchFeedback])
 
   useEffect(() => {
     setWarehouseActionError('')
@@ -738,10 +691,6 @@ export default function AdminChatDashboard({
   }, [view, fetchAnalytics])
 
   useEffect(() => {
-    if (view === 'tickets') fetchTickets()
-  }, [view, fetchTickets])
-
-  useEffect(() => {
     if (view === 'chats') return
     if (prevActiveId.current) {
       socketRef.current?.emit('admin:leaveConversation', prevActiveId.current)
@@ -788,7 +737,6 @@ export default function AdminChatDashboard({
           prev.map((c) => (c.id === cid ? { ...c, mode } : c)),
         )
       })
-      socket.on('tickets:refresh', () => fetchTicketsRef.current())
       socket.on('analytics:refresh', () => fetchAnalyticsRef.current())
       socket.on('feedback:refresh', () => fetchFeedbackRef.current())
       socket.on('leads:refresh', () => fetchLeadsRef.current())
@@ -1308,7 +1256,6 @@ export default function AdminChatDashboard({
       else if (view === 'feedback') await fetchFeedback()
       else if (view === 'leads') await fetchLeads()
       else if (view === 'analytics') await fetchAnalytics()
-      else if (view === 'tickets') await fetchTickets()
     } finally {
       setTimeout(() => setRefreshing(false), 400)
     }
@@ -1404,71 +1351,6 @@ Amalgated Lending Inc. Team`
     }
   }
 
-  const resetTicketCreateForm = () => {
-    setTicketCreateSubject('')
-    setTicketCreateNotes('')
-    setTicketCreatePriority('medium')
-    setTicketCreateError('')
-    setTicketCreateSubmitting(false)
-  }
-
-  const openTicketCreateModal = (conversationId) => {
-    resetTicketCreateForm()
-    setTicketModal({ conversation_id: conversationId })
-  }
-
-  const createTicketForConvo = async (conversationId) => {
-    const subject = ticketCreateSubject.trim()
-    const detail = ticketCreateNotes.trim()
-    if (!subject || !detail) {
-      setTicketCreateError('Enter a subject and a short description so the team knows what this ticket is for.')
-      return
-    }
-    setTicketCreateSubmitting(true)
-    setTicketCreateError('')
-    try {
-      const notes = `${subject}\n\n${detail}`
-      const { res, data } = await chatJson('/api/admin/tickets', {
-        method: 'POST',
-        body: JSON.stringify({
-          conversation_id: conversationId,
-          priority: ticketCreatePriority,
-          status: 'open',
-          notes,
-        }),
-      })
-      if (!res?.ok) {
-        const msg =
-          (data && (data.message || data.error)) ||
-          (typeof data === 'string' ? data : null) ||
-          `Could not create ticket (${res?.status || 'error'}).`
-        setTicketCreateError(msg)
-        return
-      }
-      resetTicketCreateForm()
-      setTicketModal(null)
-      goToView('tickets')
-      fetchTickets()
-    } catch (error) {
-      console.error(error)
-      setTicketCreateError(error?.message || 'Network error — check chat server and admin secret.')
-    } finally {
-      setTicketCreateSubmitting(false)
-    }
-  }
-
-  const updateTicketById = async (ticketId, data) => {
-    try {
-      await chatFetch(`/api/admin/tickets/${ticketId}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-      })
-      fetchTickets()
-    } catch (error) {
-      console.error(error)
-    }
-  }
-
   const filteredBase =
     visitorQueueBucket !== 'all'
       ? conversations
@@ -1485,14 +1367,6 @@ Amalgated Lending Inc. Team`
   const filteredFeedback = feedbackList.filter((f) => {
     if (feedbackReadFilter === 'unread') return !f.is_read
     if (feedbackReadFilter === 'read') return !!f.is_read
-    return true
-  })
-
-  const filteredTickets = tickets.filter((t) => {
-    if (ticketStatusFilter !== 'all' && t.status !== ticketStatusFilter) return false
-    const unread = !!t.is_unread
-    if (ticketReadFilter === 'unread') return unread
-    if (ticketReadFilter === 'read') return !unread
     return true
   })
 
@@ -1523,7 +1397,6 @@ Amalgated Lending Inc. Team`
 
   const selectedConversationIds = Object.keys(chatSelected).filter((key) => chatSelected[key])
   const selectedFeedbackIds = Object.keys(feedbackSelected).filter((key) => feedbackSelected[key])
-  const selectedTicketIds = Object.keys(ticketSelected).filter((key) => ticketSelected[key])
   const hasConversationSelection = selectedConversationIds.length > 0
 
   const chatAuthMissing = !hasChatServerAuth()
@@ -1598,7 +1471,6 @@ Amalgated Lending Inc. Team`
             {[
               ['Inbox', 'chats', 'inbox'],
               ['Leads', 'leads', 'leads'],
-              ['Tickets', 'tickets', 'tickets'],
               ...(canViewAnalytics ? [['Analytics', 'analytics', 'analytics']] : []),
             ].map(([label, key, icon]) => (
               <button
@@ -1637,8 +1509,6 @@ Amalgated Lending Inc. Team`
                 {view === 'leads' &&
                   `${leads.length} lead${leads.length !== 1 ? 's' : ''}`}
                 {view === 'analytics' && 'Visitor analytics'}
-                {view === 'tickets' &&
-                  `${tickets.length} ticket${tickets.length !== 1 ? 's' : ''}`}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
@@ -1691,7 +1561,6 @@ Amalgated Lending Inc. Team`
             <button onClick={() => goToView('chats')} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${view === 'chats' ? 'bg-[var(--admin-surface)] text-[var(--admin-text)] shadow-sm' : 'text-[color:var(--admin-muted)] hover:text-[var(--admin-text)]'}`}>Chats</button>
             <button onClick={() => goToView('leads')} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${view === 'leads' ? 'bg-[var(--admin-surface)] text-[var(--admin-text)] shadow-sm' : 'text-[color:var(--admin-muted)] hover:text-[var(--admin-text)]'}`}>Leads</button>
             {canViewAnalytics ? <button onClick={() => goToView('analytics')} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${view === 'analytics' ? 'bg-[var(--admin-surface)] text-[var(--admin-text)] shadow-sm' : 'text-[color:var(--admin-muted)] hover:text-[var(--admin-text)]'}`}>Analytics</button> : null}
-            <button onClick={() => goToView('tickets')} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${view === 'tickets' ? 'bg-[var(--admin-surface)] text-[var(--admin-text)] shadow-sm' : 'text-[color:var(--admin-muted)] hover:text-[var(--admin-text)]'}`}>Tickets</button>
           </div>
 
           {view === 'chats' && (
@@ -1973,51 +1842,6 @@ Amalgated Lending Inc. Team`
                 </button>
                 <button
                   onClick={() => setFeedbackSelected({})}
-                  className="flex-1 rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-xs font-semibold text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)] focus:outline-none focus:ring-2 focus:ring-[color:var(--admin-accent)]/20"
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-          )}
-
-          {view === 'tickets' && (
-            <div className="mt-3 space-y-2">
-              <select
-                value={ticketStatusFilter}
-                onChange={(event) => setTicketStatusFilter(event.target.value)}
-                className="w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-xs text-[var(--admin-text)] outline-none focus:border-[color:var(--admin-accent)]/60 focus:ring-2 focus:ring-[color:var(--admin-accent)]/15"
-              >
-                <option value="all">All statuses</option>
-                <option value="open">Open</option>
-                <option value="pending">Pending</option>
-                <option value="closed">Closed</option>
-              </select>
-              <select
-                value={ticketReadFilter}
-                onChange={(event) => setTicketReadFilter(event.target.value)}
-                className="w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-xs text-[var(--admin-text)] outline-none focus:border-[color:var(--admin-accent)]/60 focus:ring-2 focus:ring-[color:var(--admin-accent)]/15"
-              >
-                <option value="all">All</option>
-                <option value="unread">Unread</option>
-                <option value="read">Read</option>
-              </select>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    const allIds = filteredTickets.map((t) => t.id)
-                    const next = {}
-                    allIds.forEach((id) => {
-                      next[id] = true
-                    })
-                    setTicketSelected(next)
-                  }}
-                  className="flex-1 rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-xs font-semibold text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)] focus:outline-none focus:ring-2 focus:ring-[color:var(--admin-accent)]/20"
-                >
-                  Select all
-                </button>
-                <button
-                  onClick={() => setTicketSelected({})}
                   className="flex-1 rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-xs font-semibold text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)] focus:outline-none focus:ring-2 focus:ring-[color:var(--admin-accent)]/20"
                 >
                   Clear
@@ -2340,56 +2164,6 @@ Amalgated Lending Inc. Team`
             </div>
           )}
 
-          {view === 'tickets' && (
-            <>
-              {filteredTickets.length === 0 && (
-                <p className="px-5 py-10 text-center text-sm text-gray-400">
-                  No tickets
-                </p>
-              )}
-              {filteredTickets.map((t) => (
-                <div
-                  key={t.id}
-                  className="flex w-full items-center gap-3 border-b border-gray-50 px-5 py-3 text-left transition hover:bg-gray-50"
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!ticketSelected[t.id]}
-                    onChange={(event) =>
-                      setTicketSelected((prev) => ({
-                        ...prev,
-                        [t.id]: event.target.checked,
-                      }))
-                    }
-                  />
-                  <button
-                    onClick={() => setTicketModal(t)}
-                    className="flex flex-1 items-center justify-between"
-                  >
-                    <span className="truncate text-xs font-mono text-gray-700">
-                      {t.ticket_id}
-                      {t.is_unread ? (
-                        <span className="ml-2 inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-600">
-                          Unread
-                        </span>
-                      ) : null}
-                    </span>
-                    <span
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        t.status === 'open'
-                          ? 'bg-yellow-100 text-yellow-700'
-                          : t.status === 'pending'
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {TICKET_STATUS[t.status]}
-                    </span>
-                  </button>
-                </div>
-              ))}
-            </>
-          )}
         </div>
       </div>
       </div>
@@ -2440,15 +2214,6 @@ Amalgated Lending Inc. Team`
                   Visitor Analytics
                 </p>
                 <p className="text-sm text-[color:var(--admin-muted-2)]">Last 7 days</p>
-              </div>
-            ) : view === 'tickets' ? (
-              <div>
-                <p className="text-sm font-semibold text-[var(--admin-text)]">
-                  Support Tickets
-                </p>
-                <p className="text-[11px] text-[color:var(--admin-muted-2)]">
-                  {tickets.length} ticket{tickets.length !== 1 ? 's' : ''}
-                </p>
               </div>
             ) : view === 'chats' && chatInboxTab === 'borrower' && activeBorrowerLead ? (
               <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -2527,14 +2292,6 @@ Amalgated Lending Inc. Team`
                     aria-pressed={activeConvo.mode === 'ai'}
                   >
                     {activeConvo.mode === 'ai' ? 'AI on' : 'Human'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openTicketCreateModal(activeId)}
-                    className="rounded-xl border border-[var(--admin-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--admin-text)] shadow-sm hover:bg-[var(--admin-surface-2)]"
-                    title="Create support ticket"
-                  >
-                    Ticket
                   </button>
                   <button
                     type="button"
@@ -2730,41 +2487,6 @@ Amalgated Lending Inc. Team`
                 }
                 disabled={!selectedFeedbackIds.length}
                 className="rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-[color:var(--admin-danger-text)] transition hover:bg-rose-500/15 focus:outline-none focus:ring-2 focus:ring-rose-500/25 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Delete selected
-              </button>
-            </div>
-          )}
-
-          {view === 'tickets' && (
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-[var(--admin-surface-2)] px-2.5 py-1 text-[11px] font-medium text-[color:var(--admin-muted)] ring-1 ring-[var(--admin-border)]">
-                Selected: {selectedTicketIds.length}
-              </span>
-              <button
-                onClick={() =>
-                  bulkAction('tickets', 'markRead', selectedTicketIds)
-                }
-                disabled={!selectedTicketIds.length}
-                className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-xs font-semibold text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Mark read
-              </button>
-              <button
-                onClick={() =>
-                  bulkAction('tickets', 'markUnread', selectedTicketIds)
-                }
-                disabled={!selectedTicketIds.length}
-                className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-xs font-semibold text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Mark unread
-              </button>
-              <button
-                onClick={() =>
-                  bulkAction('tickets', 'delete', selectedTicketIds)
-                }
-                disabled={!selectedTicketIds.length}
-                className="rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-[color:var(--admin-danger-text)] transition hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Delete selected
               </button>
@@ -3257,100 +2979,6 @@ Amalgated Lending Inc. Team`
               {!analyticsLoading && !analytics && !analyticsError && (
                 <p className="text-center text-gray-400">No data yet. Open the site in another tab and use the chat to generate visitor analytics.</p>
               )}
-            </div>
-          )}
-
-          {/* Tickets list detail view */}
-          {view === 'tickets' && (
-            <div className="w-full min-w-0 space-y-4 px-1">
-              {tickets.length === 0 && (
-                <p className="py-10 text-center text-gray-400">
-                  No tickets. Create one from a conversation (open a chat and click
-                  &quot;Create ticket&quot;).
-                </p>
-              )}
-              {tickets.map((ticket) => (
-                <div
-                  key={ticket.id}
-                  className="rounded-xl border border-gray-200 bg-white p-5"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-mono text-sm font-semibold text-gray-900">
-                        {ticket.ticket_id}
-                      </p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        Conversation: {ticket.conversation_id}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <select
-                        value={ticket.priority}
-                        onChange={(event) =>
-                          updateTicketById(ticket.id, {
-                            priority: event.target.value,
-                          })
-                        }
-                        className="rounded border border-gray-200 px-2 py-1 text-xs"
-                      >
-                        {Object.entries(TICKET_PRIORITY).map(([key, value]) => (
-                          <option key={key} value={key}>
-                            {value}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        value={ticket.status}
-                        onChange={(event) =>
-                          updateTicketById(ticket.id, {
-                            status: event.target.value,
-                          })
-                        }
-                        className="rounded border border-gray-200 px-2 py-1 text-xs"
-                      >
-                        {Object.entries(TICKET_STATUS).map(([key, value]) => (
-                          <option key={key} value={key}>
-                            {value}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <span className="text-xs text-gray-500">Assigned:</span>
-                    <input
-                      type="text"
-                      placeholder="Staff name"
-                      defaultValue={ticket.assigned_staff || ''}
-                      onBlur={(event) =>
-                        updateTicketById(ticket.id, {
-                          assigned_staff: event.target.value || null,
-                        })
-                      }
-                      className="max-w-[200px] flex-1 rounded border border-gray-200 px-2 py-1 text-xs"
-                    />
-                  </div>
-                  {ticket.notes !== undefined && (
-                    <div className="mt-2">
-                      <span className="text-xs text-gray-500">Notes:</span>
-                      <p className="mt-0.5 text-sm text-gray-700">
-                        {ticket.notes || '—'}
-                      </p>
-                    </div>
-                  )}
-                  <textarea
-                    placeholder="Add or edit notes..."
-                    defaultValue={ticket.notes || ''}
-                    onBlur={(event) =>
-                      updateTicketById(ticket.id, {
-                        notes: event.target.value || null,
-                      })
-                    }
-                    className="mt-2 w-full rounded border border-gray-200 px-3 py-2 text-xs outline-none focus:border-brand-primary"
-                    rows={2}
-                  />
-                </div>
-              ))}
             </div>
           )}
 
@@ -3940,98 +3568,6 @@ Amalgated Lending Inc. Team`
           </aside>
         ) : null}
       </div>
-
-      {/* Create ticket modal */}
-      {ticketModal && ticketModal.conversation_id && !ticketModal.id && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="ticket-create-title"
-        >
-          <div className="w-full max-w-md rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-6 shadow-xl ring-1 ring-[color:var(--admin-accent)]/10">
-            <h3 id="ticket-create-title" className="text-lg font-semibold text-[var(--admin-text)]">
-              Create support ticket
-            </h3>
-            <p className="mt-1 text-sm text-[color:var(--admin-muted)]">
-              Link this thread to a trackable ticket for your team. Fields are saved to the ticket notes.
-            </p>
-            <p className="mt-3 rounded-lg bg-[var(--admin-surface-2)] px-3 py-2 font-mono text-[11px] text-[color:var(--admin-muted-2)]">
-              {ticketModal.conversation_id}
-            </p>
-            {ticketCreateError ? (
-              <p
-                className="mt-3 rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-800 dark:text-rose-200"
-                role="alert"
-              >
-                {ticketCreateError}
-              </p>
-            ) : null}
-            <label htmlFor="ticket-create-subject" className="mt-4 block text-xs font-semibold text-[color:var(--admin-muted)]">
-              Subject
-            </label>
-            <input
-              id="ticket-create-subject"
-              type="text"
-              value={ticketCreateSubject}
-              onChange={(e) => setTicketCreateSubject(e.target.value)}
-              placeholder="e.g. Visitor question about payment posting"
-              className="mt-1 w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-bg)] px-3 py-2 text-sm text-[var(--admin-text)] outline-none focus:ring-2 focus:ring-[color:var(--admin-accent)]/25"
-              autoComplete="off"
-            />
-            <label htmlFor="ticket-create-priority" className="mt-3 block text-xs font-semibold text-[color:var(--admin-muted)]">
-              Priority
-            </label>
-            <select
-              id="ticket-create-priority"
-              value={ticketCreatePriority}
-              onChange={(e) => setTicketCreatePriority(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-bg)] px-3 py-2 text-sm text-[var(--admin-text)] outline-none focus:ring-2 focus:ring-[color:var(--admin-accent)]/25"
-            >
-              {Object.entries(TICKET_PRIORITY).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-            <label htmlFor="ticket-create-notes" className="mt-3 block text-xs font-semibold text-[color:var(--admin-muted)]">
-              Description
-            </label>
-            <textarea
-              id="ticket-create-notes"
-              value={ticketCreateNotes}
-              onChange={(e) => setTicketCreateNotes(e.target.value)}
-              rows={4}
-              placeholder="What should staff follow up on?"
-              className="mt-1 w-full resize-y rounded-lg border border-[var(--admin-border)] bg-[var(--admin-bg)] px-3 py-2 text-sm text-[var(--admin-text)] outline-none focus:ring-2 focus:ring-[color:var(--admin-accent)]/25"
-            />
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  resetTicketCreateForm()
-                  setTicketModal(null)
-                }}
-                className="flex-1 rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-4 py-2.5 text-sm font-semibold text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={
-                  ticketCreateSubmitting ||
-                  !String(ticketCreateSubject || '').trim() ||
-                  !String(ticketCreateNotes || '').trim()
-                }
-                onClick={() => createTicketForConvo(ticketModal.conversation_id)}
-                className="flex-1 rounded-lg bg-[color:var(--admin-accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {ticketCreateSubmitting ? 'Creating…' : 'Create ticket'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Delete conversation modal */}
       {deleteTarget && (

@@ -42,24 +42,6 @@ export const updateVisitLocation = impl.updateVisitLocation
 export const getAllVisits = impl.getAllVisits
 export const getVisitsForAnalytics = impl.getVisitsForAnalytics
 
-export const createTicket = impl.createTicket
-export const getTickets = impl.getTickets
-export const getTicketById = impl.getTicketById
-export const getTicketsByConvo = impl.getTicketsByConvo
-export const updateTicket = impl.updateTicket
-export const setTicketUnread = impl.setTicketUnread
-export const getCrmTickets = impl.getCrmTickets
-export const getCrmTicketById = impl.getCrmTicketById
-export const createCrmTicket = impl.createCrmTicket
-export const updateCrmTicket = impl.updateCrmTicket
-export const deleteCrmTicket = impl.deleteCrmTicket
-export const addCrmTicketReply = impl.addCrmTicketReply
-export const addCrmTicketNote = impl.addCrmTicketNote
-export const setCrmTicketUnread = impl.setCrmTicketUnread
-export const getRecentOpenChatTickets = impl.getRecentOpenChatTickets
-export const getRecentOpenCrmTickets = impl.getRecentOpenCrmTickets
-export const deleteTicket = impl.deleteTicket
-
 export const createUser = impl.createUser
 export const getUserByEmail = impl.getUserByEmail
 export const getUserById = impl.getUserById

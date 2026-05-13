@@ -105,9 +105,8 @@ export default defineConfig(({ mode }) => {
 
   const proxy = {
     /**
-     * Node chat-server CRM (`chat-server/server.js`) — inbox, tickets, feedback, analytics, bulk.
-     * Must be listed **before** `/api`: otherwise Vite forwards `/api/admin/*` to Laravel, which has no
-     * matching POST handlers → **405 Method Not Allowed** (e.g. Create support ticket).
+     * Node chat-server CRM (`chat-server/server.js`) — inbox, feedback, analytics, bulk admin routes.
+     * Must be listed **before** `/api`: otherwise Vite forwards `/api/admin/*` to Laravel (no matching handlers).
      */
     '/api/admin': {
       target: chatTarget,

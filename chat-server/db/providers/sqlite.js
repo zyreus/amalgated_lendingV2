@@ -104,20 +104,6 @@ db.exec(`
     FOREIGN KEY (conversation_id) REFERENCES conversations(id)
   );
 
-  CREATE TABLE IF NOT EXISTS tickets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ticket_id TEXT UNIQUE NOT NULL,
-    conversation_id TEXT NOT NULL,
-    priority TEXT DEFAULT 'medium' CHECK(priority IN ('low','medium','high','urgent')),
-    status TEXT DEFAULT 'open' CHECK(status IN ('open','pending','closed')),
-    assigned_staff TEXT,
-    notes TEXT,
-    is_unread INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id)
-  );
-
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT UNIQUE NOT NULL,
@@ -200,38 +186,6 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now'))
   );
 
-  CREATE TABLE IF NOT EXISTS crm_tickets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ticket_number TEXT UNIQUE NOT NULL,
-    customer_name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    subject TEXT NOT NULL,
-    category TEXT,
-    priority TEXT DEFAULT 'medium' CHECK(priority IN ('low','medium','high','urgent')),
-    status TEXT DEFAULT 'open' CHECK(status IN ('open','in_progress','resolved','closed')),
-    assigned_to INTEGER,
-    is_unread INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-  );
-  CREATE TABLE IF NOT EXISTS ticket_messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ticket_id INTEGER NOT NULL,
-    sender_type TEXT NOT NULL CHECK(sender_type IN ('admin','user')),
-    message TEXT NOT NULL,
-    attachment TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (ticket_id) REFERENCES crm_tickets(id)
-  );
-  CREATE TABLE IF NOT EXISTS ticket_notes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ticket_id INTEGER NOT NULL,
-    admin_id TEXT NOT NULL,
-    note TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (ticket_id) REFERENCES crm_tickets(id)
-  );
-
   CREATE TABLE IF NOT EXISTS roles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
@@ -292,6 +246,15 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_visitor_visits_visit_id ON visitor_visits (visit_id);
 `)
 save()
+try {
+  db.run(`DROP TABLE IF EXISTS ticket_notes`)
+  db.run(`DROP TABLE IF EXISTS ticket_messages`)
+  db.run(`DROP TABLE IF EXISTS crm_tickets`)
+  db.run(`DROP TABLE IF EXISTS tickets`)
+  save()
+} catch {
+  /* ignore */
+}
 try {
   run(`ALTER TABLE partnerships ADD COLUMN status TEXT DEFAULT 'new'`)
   save()
@@ -737,51 +700,6 @@ export async function getVisitsForAnalytics(since = '-7 days') {
   return all(`SELECT * FROM visitor_visits WHERE started_at >= datetime('now', ?)`, [since])
 }
 
-export async function createTicket(conversationId, data = {}) {
-  const ticketId = 'TKT-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8).toUpperCase()
-  const { priority, status, assigned_staff, notes } = data
-  run(
-    `INSERT INTO tickets (ticket_id, conversation_id, priority, status, assigned_staff, notes, is_unread) VALUES (?, ?, ?, ?, ?, ?, 1)`,
-    [ticketId, conversationId, priority || 'medium', status || 'open', assigned_staff || null, notes || null],
-  )
-  return get(`SELECT * FROM tickets WHERE id = last_insert_rowid()`)
-}
-
-export async function getTickets(filter = {}) {
-  let rows = all(`SELECT * FROM tickets ORDER BY created_at DESC`)
-  if (filter.status) rows = rows.filter((r) => r.status === filter.status)
-  if (filter.conversationId) rows = rows.filter((r) => r.conversation_id === filter.conversationId)
-  return rows
-}
-
-export async function getTicketById(id) {
-  return get(`SELECT * FROM tickets WHERE id = ?`, [id])
-}
-
-export async function getTicketsByConvo(conversationId) {
-  return all(`SELECT * FROM tickets WHERE conversation_id = ? ORDER BY created_at DESC`, [conversationId])
-}
-
-export async function updateTicket(id, data) {
-  const row = await getTicketById(id)
-  if (!row) return null
-  const { priority, status, assigned_staff, notes } = data
-  run(
-    `UPDATE tickets SET priority = ?, status = ?, assigned_staff = ?, notes = ?, updated_at = datetime('now') WHERE id = ?`,
-    [priority ?? row.priority, status ?? row.status, assigned_staff !== undefined ? assigned_staff : row.assigned_staff, notes !== undefined ? notes : row.notes, id],
-  )
-  return getTicketById(id)
-}
-
-export async function setTicketUnread(id, isUnread) {
-  run(`UPDATE tickets SET is_unread = ?, updated_at = datetime('now') WHERE id = ?`, [isUnread ? 1 : 0, id])
-  return getTicketById(id)
-}
-
-export async function deleteTicket(id) {
-  run(`DELETE FROM tickets WHERE id = ?`, [id])
-}
-
 export async function getAdminUsers() {
   try {
     const rows = all(
@@ -1001,15 +919,7 @@ export async function getAdminStats() {
     )?.count ?? 0
 
   const unreadChat = get(`SELECT COALESCE(SUM(admin_unread_count), 0) AS count FROM conversations`)?.count ?? 0
-  const unreadTickets = get(`SELECT COUNT(1) AS count FROM tickets WHERE is_unread = 1`)?.count ?? 0
   const subscribers = get(`SELECT COUNT(1) AS count FROM subscribers`)?.count ?? 0
-  const openChatTickets = get(`SELECT COUNT(1) AS count FROM tickets WHERE status IN ('open','pending')`)?.count ?? 0
-  let openCrmTickets = 0
-  try {
-    openCrmTickets = get(`SELECT COUNT(1) AS count FROM crm_tickets WHERE status IN ('open','in_progress')`)?.count ?? 0
-  } catch {
-    // crm_tickets table may not exist yet
-  }
 
   let jobApplications = 0
   try {
@@ -1024,10 +934,7 @@ export async function getAdminStats() {
     posts,
     activeChats,
     unreadChat,
-    unreadTickets,
     subscribers,
-    openChatTickets,
-    openCrmTickets,
     jobApplications,
   }
 }
@@ -1110,18 +1017,6 @@ export async function getCmsSectionByPageAndKey(pageId, sectionKey) {
 
 export async function getCmsSectionById(sectionId) {
   return get(`SELECT id, page_id AS pageId, section_key AS sectionKey, label FROM cms_sections WHERE id = ?`, [sectionId])
-}
-
-export async function getRecentOpenChatTickets(limit = 5) {
-  return all(`SELECT id, ticket_id, conversation_id, status, priority, notes, created_at FROM tickets WHERE status IN ('open','pending') ORDER BY created_at DESC LIMIT ?`, [limit])
-}
-
-export async function getRecentOpenCrmTickets(limit = 5) {
-  try {
-    return all(`SELECT id, ticket_number, customer_name, subject, status, created_at FROM crm_tickets WHERE status IN ('open','in_progress') ORDER BY created_at DESC LIMIT ?`, [limit])
-  } catch {
-    return []
-  }
 }
 
 // ── Careers & News ──
@@ -1505,105 +1400,6 @@ export async function getSubscriberByToken(token) {
 export async function deleteSubscriberByToken(token) {
   run(`DELETE FROM subscribers WHERE unsubscribe_token = ?`, [token])
   return true
-}
-
-// ── CRM tickets ──
-
-function crmTicketNumber() {
-  return 'TKT-' + crypto.randomBytes(4).toString('hex').toUpperCase() + '-' + new Date().toISOString().slice(0, 10).replace(/-/g, '')
-}
-
-export async function getCrmTickets(filter = {}) {
-  let rows = all(`SELECT * FROM crm_tickets ORDER BY created_at DESC`)
-  if (filter.status) rows = rows.filter((r) => r.status === filter.status)
-  if (filter.priority) rows = rows.filter((r) => r.priority === filter.priority)
-  if (filter.assigned_to != null) rows = rows.filter((r) => String(r.assigned_to) === String(filter.assigned_to))
-  if (filter.search) {
-    const s = String(filter.search).toLowerCase()
-    rows = rows.filter(
-      (r) =>
-        (r.ticket_number || '').toLowerCase().includes(s) ||
-        (r.customer_name || '').toLowerCase().includes(s) ||
-        (r.email || '').toLowerCase().includes(s) ||
-        (r.subject || '').toLowerCase().includes(s),
-    )
-  }
-  return rows
-}
-
-export async function getCrmTicketById(id) {
-  const ticket = get(`SELECT * FROM crm_tickets WHERE id = ?`, [id])
-  if (!ticket) return null
-  const messages = all(`SELECT * FROM ticket_messages WHERE ticket_id = ? ORDER BY created_at ASC`, [id])
-  const notes = all(`SELECT * FROM ticket_notes WHERE ticket_id = ? ORDER BY created_at ASC`, [id])
-  return { ...ticket, messages, notes }
-}
-
-export async function createCrmTicket(data) {
-  const { customer_name, email, subject, category = null, priority = 'medium', message } = data || {}
-  const ticketNumber = crmTicketNumber()
-  run(
-    `INSERT INTO crm_tickets (ticket_number, customer_name, email, subject, category, priority, status) VALUES (?, ?, ?, ?, ?, ?, 'open')`,
-    [ticketNumber, customer_name, email, subject, category, priority],
-  )
-  const row = get(`SELECT * FROM crm_tickets WHERE ticket_number = ?`, [ticketNumber])
-  if (message && row) {
-    run(`INSERT INTO ticket_messages (ticket_id, sender_type, message) VALUES (?, 'user', ?)`, [row.id, message])
-    row.messages = all(`SELECT * FROM ticket_messages WHERE ticket_id = ? ORDER BY created_at ASC`, [row.id])
-  } else if (row) {
-    row.messages = []
-  }
-  if (row) row.notes = []
-  return row
-}
-
-export async function updateCrmTicket(id, data) {
-  const row = await getCrmTicketById(id)
-  if (!row) return null
-  const allowed = ['status', 'priority', 'assigned_to', 'category', 'subject', 'customer_name', 'email']
-  const updates = []
-  const params = []
-  for (const k of allowed) {
-    if (data[k] !== undefined) {
-      updates.push(`${k} = ?`)
-      params.push(data[k])
-    }
-  }
-  if (updates.length === 0) return getCrmTicketById(id)
-  params.push(id)
-  run(`UPDATE crm_tickets SET ${updates.join(', ')}, updated_at = datetime('now') WHERE id = ?`, params)
-  return getCrmTicketById(id)
-}
-
-export async function deleteCrmTicket(id) {
-  run(`DELETE FROM ticket_notes WHERE ticket_id = ?`, [id])
-  run(`DELETE FROM ticket_messages WHERE ticket_id = ?`, [id])
-  run(`DELETE FROM crm_tickets WHERE id = ?`, [id])
-  return true
-}
-
-export async function addCrmTicketReply(id, message, attachment = null) {
-  const ticket = get(`SELECT * FROM crm_tickets WHERE id = ?`, [id])
-  if (!ticket) return null
-  run(`INSERT INTO ticket_messages (ticket_id, sender_type, message, attachment) VALUES (?, 'admin', ?, ?)`, [
-    id,
-    message,
-    attachment,
-  ])
-  run(`UPDATE crm_tickets SET is_unread = 0, status = 'in_progress', updated_at = datetime('now') WHERE id = ?`, [id])
-  return getCrmTicketById(id)
-}
-
-export async function addCrmTicketNote(id, adminId, note) {
-  const ticket = get(`SELECT * FROM crm_tickets WHERE id = ?`, [id])
-  if (!ticket) return null
-  run(`INSERT INTO ticket_notes (ticket_id, admin_id, note) VALUES (?, ?, ?)`, [id, adminId, note])
-  return getCrmTicketById(id)
-}
-
-export async function setCrmTicketUnread(id, isUnread) {
-  run(`UPDATE crm_tickets SET is_unread = ?, updated_at = datetime('now') WHERE id = ?`, [isUnread ? 1 : 0, id])
-  return getCrmTicketById(id)
 }
 
 // ── Dynamic settings ──

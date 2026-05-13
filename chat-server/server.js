@@ -59,15 +59,8 @@ import {
   getAllVisits,
   getVisitsForAnalytics,
   updateVisitLocation,
-  createTicket,
-  getTickets,
-  getTicketById,
-  getTicketsByConvo,
-  updateTicket,
-  setTicketUnread,
   incrementConversationUnread,
   clearConversationUnread,
-  deleteTicket,
   getSiteSettings,
   setSiteSettings,
   getSettings,
@@ -108,15 +101,6 @@ import {
   getPartnerships,
   deletePartnership,
   updatePartnership,
-  getCrmTickets,
-  getCrmTicketById,
-  createCrmTicket,
-  updateCrmTicket,
-  deleteCrmTicket,
-  addCrmTicketReply,
-  addCrmTicketNote,
-  setCrmTicketUnread,
-  getRecentOpenChatTickets,
   logActivity,
   getActivityLogs,
   getAdminUsers,
@@ -163,13 +147,6 @@ import { deterministicSyncUuid } from './lib/syncDedupeUuid.js';
 const app = express();
 if (process.env.TRUST_PROXY === '1' || process.env.NODE_ENV === 'production') {
   app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS) || 1);
-}
-
-/**
- * mysql2 can return BIGINT columns as JavaScript BigInt; JSON.stringify (used by res.json) throws → HTTP 500.
- */
-function jsonSafe(value) {
-  return JSON.parse(JSON.stringify(value, (_, v) => (typeof v === 'bigint' ? v.toString() : v)));
 }
 
 /** Comma-separated browser origins; empty = allow all (local dev). Set in production. */
@@ -1680,20 +1657,16 @@ app.get('/api/admin/stats', requireAdminOrLendingSecret, requirePermission('view
   const stats = await getAdminStats();
   const feedbackUnread = await countUnreadFeedback();
   const unreadChat = Number(stats.unreadChat) || 0;
-  const unreadTickets = Number(stats.unreadTickets) || 0;
   const feedbackCount = Number(feedbackUnread) || 0;
-  const notifications = unreadChat + unreadTickets + feedbackCount;
-  const recentOpenChatTickets = await getRecentOpenChatTickets(5);
+  const notifications = unreadChat + feedbackCount;
   res.json({
     ok: true,
     stats: {
       ...stats,
       unreadChat,
-      unreadTickets,
       feedbackUnread: feedbackCount,
       notifications,
     },
-    recentOpenChatTickets,
   });
 });
 
@@ -1756,7 +1729,7 @@ app.post('/api/admin/partnerships/:id/email', requireAdmin, requirePermission('m
 app.post('/api/admin/bulk', requireAdminOrLendingSecret, async (req, res) => {
   const { resource, action, ids } = req.body || {};
   if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ ok: false, message: 'ids required' });
-  if (!['conversations', 'feedback', 'tickets'].includes(resource)) return res.status(400).json({ ok: false, message: 'invalid resource' });
+  if (!['conversations', 'feedback'].includes(resource)) return res.status(400).json({ ok: false, message: 'invalid resource' });
   if (!['delete', 'markRead', 'markUnread'].includes(action)) return res.status(400).json({ ok: false, message: 'invalid action' });
 
   if (resource === 'conversations') {
@@ -1769,19 +1742,8 @@ app.post('/api/admin/bulk', requireAdminOrLendingSecret, async (req, res) => {
     return res.json({ ok: true });
   }
 
-  if (resource === 'tickets') {
-    for (const id of ids) {
-      const num = Number(id);
-      if (!Number.isFinite(num)) return;
-      if (action === 'delete') {
-        await deleteTicket(num);
-        logActivity({ action: 'ticket_deleted', adminUsername: req.admin?.username, ipAddress: getClientIp(req), details: `Chat ticket #${num} deleted` }).catch(() => {});
-      }
-      if (action === 'markRead') await setTicketUnread(num, false);
-      if (action === 'markUnread') await setTicketUnread(num, true);
-    }
-    io.to('admin').emit('tickets:refresh');
-    return res.json({ ok: true });
+  if (resource !== 'feedback') {
+    return res.status(400).json({ ok: false, message: 'invalid resource' });
   }
 
   if (action === 'delete') {
@@ -2793,146 +2755,6 @@ app.get(
     });
   },
 );
-
-// ── Admin: Tickets ──
-
-app.get('/api/admin/tickets', requireAdminOrLendingSecret, async (req, res) => {
-  const { status, conversationId } = req.query;
-  res.json(jsonSafe(await getTickets({ status: status || undefined, conversationId: conversationId || undefined })));
-});
-
-app.post('/api/admin/tickets', requireAdminOrLendingSecret, async (req, res) => {
-  const { conversation_id, priority, status, assigned_staff, notes } = req.body || {};
-  if (!conversation_id) return res.status(400).json({ ok: false, message: 'conversation_id required' });
-  try {
-    let convo = await getConversation(conversation_id);
-    if (!convo) {
-      await createConversation(conversation_id);
-      convo = await getConversation(conversation_id);
-    }
-    if (!convo) {
-      return res.status(400).json({
-        ok: false,
-        message: 'Conversation not found. Refresh the inbox and try again.',
-      });
-    }
-    const ticket = await createTicket(conversation_id, { priority, status, assigned_staff, notes });
-    logActivity({
-      action: 'ticket_created',
-      adminUsername: req.admin?.username,
-      ipAddress: getClientIp(req),
-      details: `Chat ticket #${ticket?.id || ''} for conversation ${conversation_id}`,
-    }).catch(() => {});
-    io.to('admin').emit('tickets:refresh');
-    res.json(jsonSafe(ticket));
-  } catch (err) {
-    console.error('[admin][tickets][create]', err?.message || err);
-    let message = err?.message || 'Failed to create ticket';
-    if (err?.errno === 1452 || /cannot add or update a child row/i.test(String(err?.message || ''))) {
-      message =
-        'This conversation is not linked in the chat database yet. Send or receive a message in the thread, refresh the inbox, then create the ticket again.';
-    }
-    return res.status(500).json({
-      ok: false,
-      message,
-    });
-  }
-});
-
-app.patch('/api/admin/tickets/:id', requireAdminOrLendingSecret, async (req, res) => {
-  const { id } = req.params;
-  const { priority, status, assigned_staff, notes } = req.body || {};
-  const ticket = await getTicketById(Number(id));
-  if (!ticket) return res.status(404).json({ ok: false, message: 'Ticket not found' });
-  const updated = await updateTicket(Number(id), { priority, status, assigned_staff, notes });
-  logActivity({ action: 'ticket_updated', adminUsername: req.admin?.username, ipAddress: getClientIp(req), details: `Chat ticket #${id}` }).catch(() => {});
-  await setTicketUnread(Number(id), false);
-  io.to('admin').emit('tickets:refresh');
-  res.json(jsonSafe(updated));
-});
-
-app.get('/api/admin/tickets/by-conversation/:conversationId', requireAdminOrLendingSecret, async (req, res) => {
-  res.json(jsonSafe(await getTicketsByConvo(req.params.conversationId)));
-});
-
-// ── CRM tickets (standalone support system) ──
-app.get('/api/tickets', requireAdmin, async (req, res) => {
-  const { status, priority, assigned_to, search } = req.query;
-  const tickets = await getCrmTickets({
-    status: status || undefined,
-    priority: priority || undefined,
-    assigned_to: assigned_to != null ? Number(assigned_to) : undefined,
-    search: search || undefined,
-  });
-  res.json({ ok: true, tickets });
-});
-
-app.get('/api/tickets/:id', requireAdmin, async (req, res) => {
-  const ticket = await getCrmTicketById(Number(req.params.id));
-  if (!ticket) return res.status(404).json({ ok: false, message: 'Ticket not found' });
-  await setCrmTicketUnread(Number(req.params.id), false);
-  res.json({ ok: true, ticket });
-});
-
-app.post('/api/tickets', requireAdmin, async (req, res) => {
-  const { customer_name, email, subject, category, priority, message } = req.body || {};
-  if (!customer_name || !email || !subject) {
-    return res.status(400).json({ ok: false, message: 'customer_name, email, and subject required' });
-  }
-  const ticket = await createCrmTicket({ customer_name, email, subject, category, priority, message });
-  logActivity({ action: 'ticket_created', adminUsername: req.admin?.username, ipAddress: getClientIp(req), details: `CRM ticket #${ticket?.id || ''} – ${(subject || '').slice(0, 50)}` }).catch(() => {});
-  io.to('admin').emit('tickets:refresh');
-  res.status(201).json({ ok: true, ticket });
-});
-
-app.put('/api/tickets/:id', requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  const ticket = await getCrmTicketById(id);
-  if (!ticket) return res.status(404).json({ ok: false, message: 'Ticket not found' });
-  const allowed = ['status', 'priority', 'assigned_to', 'category', 'subject', 'customer_name', 'email'];
-  const data = {};
-  for (const k of allowed) {
-    if (req.body[k] !== undefined) data[k] = req.body[k];
-  }
-  const updated = await updateCrmTicket(id, data);
-  logActivity({ action: 'ticket_updated', adminUsername: req.admin?.username, ipAddress: getClientIp(req), details: `CRM ticket #${id}` }).catch(() => {});
-  io.to('admin').emit('tickets:refresh');
-  res.json({ ok: true, ticket: updated });
-});
-
-app.delete('/api/tickets/:id', requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  const ticket = await getCrmTicketById(id);
-  if (!ticket) return res.status(404).json({ ok: false, message: 'Ticket not found' });
-  await deleteCrmTicket(id);
-  logActivity({ action: 'ticket_deleted', adminUsername: req.admin?.username, ipAddress: getClientIp(req), details: `CRM ticket #${id}` }).catch(() => {});
-  io.to('admin').emit('tickets:refresh');
-  res.json({ ok: true });
-});
-
-app.post('/api/tickets/:id/reply', requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  const { message } = req.body || {};
-  if (!message || !String(message).trim()) {
-    return res.status(400).json({ ok: false, message: 'message required' });
-  }
-  const ticket = await addCrmTicketReply(id, String(message).trim());
-  if (!ticket) return res.status(404).json({ ok: false, message: 'Ticket not found' });
-  io.to('admin').emit('tickets:refresh');
-  res.json({ ok: true, ticket, message: ticket.messages[ticket.messages.length - 1] });
-});
-
-app.post('/api/tickets/:id/notes', requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  const { note } = req.body || {};
-  if (!note || !String(note).trim()) {
-    return res.status(400).json({ ok: false, message: 'note required' });
-  }
-  const adminId = 'admin';
-  const ticket = await addCrmTicketNote(id, adminId, String(note).trim());
-  if (!ticket) return res.status(404).json({ ok: false, message: 'Ticket not found' });
-  res.json({ ok: true, ticket, note: ticket.notes[ticket.notes.length - 1] });
-});
 
 // ── Socket.io ──
 

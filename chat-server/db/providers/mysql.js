@@ -177,6 +177,28 @@ export async function ensureLendingApplicationsTable() {
   )
 }
 
+/** Remove legacy chat-linked + standalone CRM ticket tables (feature retired). Idempotent. */
+async function dropRemovedSupportTicketTables() {
+  const tables = ['ticket_notes', 'ticket_messages', 'crm_tickets', 'tickets']
+  try {
+    await q('SET FOREIGN_KEY_CHECKS = 0')
+  } catch {
+    /* ignore */
+  }
+  for (const t of tables) {
+    try {
+      await q(`DROP TABLE IF EXISTS \`${t}\``)
+    } catch (e) {
+      console.warn('[chat-db] drop table', t, e?.message || e)
+    }
+  }
+  try {
+    await q('SET FOREIGN_KEY_CHECKS = 1')
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * Chat & CRM persistence (server.js Socket.IO + /api/admin/conversations).
  * Matches db/mysql-init.sql so Node can run without manually importing that file.
@@ -231,29 +253,10 @@ async function ensureChatCrmTables() {
         ON DELETE SET NULL
     ) ENGINE=InnoDB`,
   )
-  await q(
-    `CREATE TABLE IF NOT EXISTS tickets (
-      id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-      ticket_id VARCHAR(128) NOT NULL,
-      conversation_id VARCHAR(128) NOT NULL,
-      priority ENUM('low','medium','high','urgent') NOT NULL DEFAULT 'medium',
-      status ENUM('open','pending','closed') NOT NULL DEFAULT 'open',
-      assigned_staff VARCHAR(255) NULL,
-      notes TEXT NULL,
-      is_unread TINYINT(1) NOT NULL DEFAULT 1,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_ticket_id (ticket_id),
-      KEY idx_tickets_status_created (status, created_at),
-      KEY idx_tickets_convo_created (conversation_id, created_at),
-      CONSTRAINT fk_tickets_conversation
-        FOREIGN KEY (conversation_id) REFERENCES conversations(id)
-        ON DELETE CASCADE
-    ) ENGINE=InnoDB`,
-  )
 }
 
 async function ensureSchema() {
+  await dropRemovedSupportTicketTables()
   // Legacy auth/content tables still used by admin stats and older endpoints.
   await q(
     `CREATE TABLE IF NOT EXISTS users (
@@ -380,49 +383,6 @@ async function ensureSchema() {
   } catch (e) {
     if (e?.code !== 'ER_DUP_FIELDNAME') throw e
   }
-
-  // CRM tickets (standalone support system)
-  await q(
-    `CREATE TABLE IF NOT EXISTS crm_tickets (
-      id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-      ticket_number VARCHAR(64) NOT NULL UNIQUE,
-      customer_name VARCHAR(255) NOT NULL,
-      email VARCHAR(255) NOT NULL,
-      subject VARCHAR(255) NOT NULL,
-      category VARCHAR(64) NULL,
-      priority ENUM('low','medium','high','urgent') NOT NULL DEFAULT 'medium',
-      status ENUM('open','in_progress','resolved','closed') NOT NULL DEFAULT 'open',
-      assigned_to BIGINT NULL,
-      is_unread TINYINT(1) NOT NULL DEFAULT 1,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      KEY idx_crm_tickets_status (status, created_at),
-      KEY idx_crm_tickets_priority (priority, created_at)
-    ) ENGINE=InnoDB`,
-  )
-  await q(
-    `CREATE TABLE IF NOT EXISTS ticket_messages (
-      id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-      ticket_id BIGINT NOT NULL,
-      sender_type ENUM('admin','user') NOT NULL,
-      message TEXT NOT NULL,
-      attachment VARCHAR(255) NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      KEY idx_ticket_messages_ticket (ticket_id, created_at),
-      FOREIGN KEY (ticket_id) REFERENCES crm_tickets(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB`,
-  )
-  await q(
-    `CREATE TABLE IF NOT EXISTS ticket_notes (
-      id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-      ticket_id BIGINT NOT NULL,
-      admin_id VARCHAR(64) NOT NULL,
-      note TEXT NOT NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      KEY idx_ticket_notes_ticket (ticket_id, created_at),
-      FOREIGN KEY (ticket_id) REFERENCES crm_tickets(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB`,
-  )
 
   // Activity logs (admin actions, login, etc.)
   await q(
@@ -994,164 +954,6 @@ export async function getVisitsForAnalytics(since = '-7 days') {
   return q(`SELECT * FROM visitor_visits WHERE started_at >= DATE_SUB(NOW(), INTERVAL :days DAY)`, { days })
 }
 
-export async function createTicket(conversationId, data = {}) {
-  const ticketId = 'TKT-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8).toUpperCase()
-  const { priority = 'medium', status = 'open', assigned_staff = null, notes = null } = data || {}
-  await q(
-    `INSERT INTO tickets (ticket_id, conversation_id, priority, status, assigned_staff, notes, is_unread)
-     VALUES (:ticketId, :conversationId, :priority, :status, :assigned_staff, :notes, 1)`,
-    { ticketId, conversationId, priority, status, assigned_staff, notes },
-  )
-  return one(`SELECT * FROM tickets WHERE ticket_id = :ticketId`, { ticketId })
-}
-
-export async function getTickets(filter = {}) {
-  const { status, conversationId } = filter || {}
-  if (status && conversationId) {
-    return q(
-      `SELECT * FROM tickets WHERE status=:status AND conversation_id=:conversationId ORDER BY created_at DESC`,
-      { status, conversationId },
-    )
-  }
-  if (status) return q(`SELECT * FROM tickets WHERE status=:status ORDER BY created_at DESC`, { status })
-  if (conversationId) {
-    return q(`SELECT * FROM tickets WHERE conversation_id=:conversationId ORDER BY created_at DESC`, { conversationId })
-  }
-  return q(`SELECT * FROM tickets ORDER BY created_at DESC`)
-}
-
-export async function getTicketById(id) {
-  return one(`SELECT * FROM tickets WHERE id = :id`, { id })
-}
-
-export async function getTicketsByConvo(conversationId) {
-  return q(`SELECT * FROM tickets WHERE conversation_id = :conversationId ORDER BY created_at DESC`, { conversationId })
-}
-
-export async function updateTicket(id, data) {
-  const row = await getTicketById(id)
-  if (!row) return null
-  const next = {
-    priority: data?.priority ?? row.priority,
-    status: data?.status ?? row.status,
-    assigned_staff: data?.assigned_staff !== undefined ? data.assigned_staff : row.assigned_staff,
-    notes: data?.notes !== undefined ? data.notes : row.notes,
-  }
-  await q(
-    `UPDATE tickets SET priority=:priority, status=:status, assigned_staff=:assigned_staff, notes=:notes WHERE id=:id`,
-    { id, ...next },
-  )
-  return getTicketById(id)
-}
-
-export async function setTicketUnread(id, isUnread) {
-  await q(`UPDATE tickets SET is_unread=:is_unread WHERE id=:id`, { id, is_unread: isUnread ? 1 : 0 })
-  return getTicketById(id)
-}
-
-export async function deleteTicket(id) {
-  await q(`DELETE FROM tickets WHERE id=:id`, { id })
-}
-
-// ── CRM tickets (standalone support system) ──
-
-function crmTicketNumber() {
-  return 'TKT-' + Buffer.from(crypto.randomBytes(4)).toString('hex').toUpperCase() + '-' + new Date().toISOString().slice(0, 10).replace(/-/g, '')
-}
-
-export async function getCrmTickets(filter = {}) {
-  let sql = `SELECT * FROM crm_tickets WHERE 1=1`
-  const params = {}
-  if (filter.status) { sql += ` AND status = :status`; params.status = filter.status }
-  if (filter.priority) { sql += ` AND priority = :priority`; params.priority = filter.priority }
-  if (filter.assigned_to != null) { sql += ` AND assigned_to = :assigned_to`; params.assigned_to = filter.assigned_to }
-  if (filter.search) {
-    const s = `%${String(filter.search).trim()}%`
-    sql += ` AND (ticket_number LIKE :s1 OR customer_name LIKE :s2 OR email LIKE :s3 OR subject LIKE :s4)`
-    params.s1 = params.s2 = params.s3 = params.s4 = s
-  }
-  sql += ` ORDER BY created_at DESC`
-  return Object.keys(params).length ? q(sql, params) : q(sql)
-}
-
-export async function getCrmTicketById(id) {
-  const ticket = await one(`SELECT * FROM crm_tickets WHERE id = :id`, { id })
-  if (!ticket) return null
-  const messages = await q(`SELECT * FROM ticket_messages WHERE ticket_id = :id ORDER BY created_at ASC`, { id })
-  const notes = await q(`SELECT * FROM ticket_notes WHERE ticket_id = :id ORDER BY created_at ASC`, { id })
-  return { ...ticket, messages, notes }
-}
-
-export async function createCrmTicket(data) {
-  const { customer_name, email, subject, category = null, priority = 'medium', message } = data || {}
-  const ticketNumber = crmTicketNumber()
-  await q(
-    `INSERT INTO crm_tickets (ticket_number, customer_name, email, subject, category, priority, status)
-     VALUES (:ticket_number, :customer_name, :email, :subject, :category, :priority, 'open')`,
-    { ticket_number: ticketNumber, customer_name, email, subject, category, priority },
-  )
-  const row = await one(`SELECT * FROM crm_tickets WHERE ticket_number = :ticket_number`, { ticket_number: ticketNumber })
-  if (message && row) {
-    await q(
-      `INSERT INTO ticket_messages (ticket_id, sender_type, message) VALUES (:ticket_id, 'user', :message)`,
-      { ticket_id: row.id, message },
-    )
-    const msgs = await q(`SELECT * FROM ticket_messages WHERE ticket_id = :id ORDER BY created_at ASC`, { id: row.id })
-    row.messages = msgs
-  } else if (row) {
-    row.messages = []
-  }
-  row.notes = []
-  return row
-}
-
-export async function updateCrmTicket(id, data) {
-  const allowed = ['status', 'priority', 'assigned_to', 'category', 'subject', 'customer_name', 'email']
-  const updates = []
-  const params = { id }
-  for (const k of allowed) {
-    if (data[k] !== undefined) {
-      updates.push(`\`${k}\` = :${k}`)
-      params[k] = data[k]
-    }
-  }
-  if (updates.length === 0) return getCrmTicketById(id)
-  await q(`UPDATE crm_tickets SET ${updates.join(', ')} WHERE id = :id`, params)
-  return getCrmTicketById(id)
-}
-
-export async function deleteCrmTicket(id) {
-  await q(`DELETE FROM crm_tickets WHERE id = :id`, { id })
-  return true
-}
-
-export async function addCrmTicketReply(id, message, attachment = null) {
-  const ticket = await one(`SELECT * FROM crm_tickets WHERE id = :id`, { id })
-  if (!ticket) return null
-  await q(
-    `INSERT INTO ticket_messages (ticket_id, sender_type, message, attachment) VALUES (:ticket_id, 'admin', :message, :attachment)`,
-    { ticket_id: id, message, attachment },
-  )
-  await q(`UPDATE crm_tickets SET is_unread = 0, status = 'in_progress' WHERE id = :id`, { id })
-  return getCrmTicketById(id)
-}
-
-export async function addCrmTicketNote(id, adminId, note) {
-  const ticket = await one(`SELECT * FROM crm_tickets WHERE id = :id`, { id })
-  if (!ticket) return null
-  await q(`INSERT INTO ticket_notes (ticket_id, admin_id, note) VALUES (:ticket_id, :admin_id, :note)`, {
-    ticket_id: id,
-    admin_id: adminId,
-    note,
-  })
-  return getCrmTicketById(id)
-}
-
-export async function setCrmTicketUnread(id, isUnread) {
-  await q(`UPDATE crm_tickets SET is_unread = :v WHERE id = :id`, { id, v: isUnread ? 1 : 0 })
-  return getCrmTicketById(id)
-}
-
 export async function getAdminUsers() {
   const rows = await q(
     `SELECT u.id, u.name, u.email, u.role_id AS roleId, r.name AS roleName, u.created_at AS createdAt
@@ -1452,28 +1254,14 @@ export async function getAdminStats() {
     }
   }
 
-  /** One round-trip per query, but all independent — parallel cuts wall-clock vs 11 sequential awaits. */
-  const [
-    users,
-    messages,
-    posts,
-    activeChats,
-    unreadChat,
-    unreadTickets,
-    subscribers,
-    openChatTickets,
-    openCrmTickets,
-    jobApplications,
-  ] = await Promise.all([
+  /** One round-trip per query, but all independent — parallel cuts wall-clock vs sequential awaits. */
+  const [users, messages, posts, activeChats, unreadChat, subscribers, jobApplications] = await Promise.all([
     safeCount(`SELECT COUNT(1) AS count FROM users`),
     safeCount(`SELECT COUNT(1) AS count FROM messages`),
     safeCount(`SELECT COUNT(1) AS count FROM posts`),
     safeCount(`SELECT COUNT(1) AS count FROM conversations WHERE status IN ('open','in_progress')`),
     safeCount(`SELECT COALESCE(SUM(admin_unread_count), 0) AS count FROM conversations`),
-    safeCount(`SELECT COUNT(1) AS count FROM tickets WHERE is_unread = 1`),
     safeCount(`SELECT COUNT(1) AS count FROM subscribers`),
-    safeCount(`SELECT COUNT(1) AS count FROM tickets WHERE status IN ('open','pending')`),
-    safeCount(`SELECT COUNT(1) AS count FROM crm_tickets WHERE status IN ('open','in_progress')`),
     safeCount(`SELECT COUNT(1) AS count FROM applications`),
   ])
   return {
@@ -1482,10 +1270,7 @@ export async function getAdminStats() {
     posts,
     activeChats,
     unreadChat,
-    unreadTickets,
     subscribers,
-    openChatTickets,
-    openCrmTickets,
     jobApplications,
   }
 }
@@ -1547,26 +1332,6 @@ export async function getCmsSectionByPageAndKey(pageId, sectionKey) {
 
 export async function getCmsSectionById(sectionId) {
   return one(`SELECT id, page_id AS pageId, section_key AS sectionKey, label FROM cms_sections WHERE id = :id`, { id: sectionId })
-}
-
-export async function getRecentOpenChatTickets(limit = 5) {
-  return q(
-    `SELECT id, ticket_id, conversation_id, status, priority, notes, created_at FROM tickets 
-     WHERE status IN ('open','pending') ORDER BY created_at DESC LIMIT :limit`,
-    { limit },
-  )
-}
-
-export async function getRecentOpenCrmTickets(limit = 5) {
-  try {
-    return await q(
-      `SELECT id, ticket_number, customer_name, subject, status, created_at FROM crm_tickets 
-       WHERE status IN ('open','in_progress') ORDER BY created_at DESC LIMIT :limit`,
-      { limit },
-    )
-  } catch {
-    return []
-  }
 }
 
 // ── Careers & News ──
