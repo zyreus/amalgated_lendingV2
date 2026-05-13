@@ -1,3 +1,5 @@
+import CorporateLetterhead from '../CorporateLetterhead.jsx'
+
 const LABEL = 'block text-xs font-medium text-slate-600 mb-1'
 const INPUT = 'w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-900 focus:border-[#c41e3a] focus:outline-none focus:ring-1 focus:ring-[#c41e3a]'
 const SECTION = 'rounded-xl border border-slate-200 bg-white p-4 shadow-sm'
@@ -44,6 +46,7 @@ export default function CoMakerStatementForm({ value, onChange, prefillApplicant
 
   return (
     <div className="space-y-4 print:space-y-3">
+      <CorporateLetterhead className="print:break-inside-avoid" />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-bold text-slate-900">Co-maker statement</h2>
       </div>

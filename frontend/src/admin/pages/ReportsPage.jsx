@@ -4,6 +4,7 @@ import { api } from '../api/client.js'
 import { useToast } from '../context/ToastContext.jsx'
 import { useAdminApiAuth } from '../context/useAdminApiAuth.js'
 import { admin } from '../components/AdminUi.jsx'
+import CorporateLetterhead from '../../components/CorporateLetterhead.jsx'
 import amalgatedLogo from '../../assets/amalgated-lending-logo.png'
 
 function fieldToInputDate(d) {
@@ -247,13 +248,10 @@ export default function ReportsPage() {
           CONFIDENTIAL
         </div>
         <header className="financial-print-header">
-          <div className="financial-print-brand">
-            <img src={amalgatedLogo} alt="" className="financial-print-logo" width={48} height={48} />
-            <div>
-              <p className="financial-print-company">Amalgated Lending Inc.</p>
-              <h2 className="financial-print-title">Financial summary report</h2>
-            </div>
+          <div className="financial-print-corp">
+            <CorporateLetterhead logoSrc={amalgatedLogo} />
           </div>
+          <h2 className="financial-print-title">Financial summary report</h2>
           <dl className="financial-print-meta">
             <div>
               <dt>Period covered</dt>
@@ -365,32 +363,19 @@ export default function ReportsPage() {
           user-select: none;
         }
         .financial-print-header {
-          border-bottom: 3px solid #000;
           padding-bottom: 10pt;
           margin-bottom: 14pt;
         }
-        .financial-print-brand {
-          display: flex;
-          align-items: center;
-          gap: 12pt;
+        .financial-print-corp {
           margin-bottom: 10pt;
         }
-        .financial-print-logo {
-          width: 44pt;
-          height: 44pt;
-          object-fit: contain;
-        }
-        .financial-print-company {
-          margin: 0;
-          font-size: 9pt;
+        .financial-print-title {
+          margin: 0 0 10pt;
+          font-size: 14pt;
           font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.12em;
-        }
-        .financial-print-title {
-          margin: 2pt 0 0;
-          font-size: 16pt;
-          font-weight: 700;
+          letter-spacing: 0.04em;
+          color: #7f1d1d;
         }
         .financial-print-meta {
           display: grid;

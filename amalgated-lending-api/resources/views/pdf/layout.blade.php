@@ -36,43 +36,14 @@
             min-height: 266mm;
             background: #ffffff;
         }
-        .brand-header {
-            width: 100%;
-            border-bottom: 1px solid #fca5a5;
-            padding-bottom: 3mm;
-            margin-bottom: 3mm;
-        }
-        .brand-row {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        .brand-row td {
-            vertical-align: middle;
-        }
-        .logo-wrap {
-            width: 48px;
-        }
-        .logo-wrap img {
-            max-height: 34px;
-            max-width: 120px;
-        }
-        .company-name {
-            font-size: 9.8pt;
-            font-weight: bold;
-            text-transform: uppercase;
-            color: #991b1b;
-        }
-        .company-sub {
-            color: #52525b;
-            font-size: 7.2pt;
-        }
-        .doc-title {
+        .pdf-doc-label {
             text-align: right;
             font-size: 9.2pt;
             font-weight: bold;
             color: #7f1d1d;
             text-transform: uppercase;
-            letter-spacing: .08em;
+            letter-spacing: 0.08em;
+            margin: 0 0 3mm 0;
         }
         .meta-bar {
             width: 100%;
@@ -213,29 +184,13 @@
     <div class="wm">CONFIDENTIAL</div>
 @endif
 <div class="sheet">
-    <div class="doc-shell">
-        <div class="brand-header">
-            <table class="brand-row">
-                <tr>
-                    <td class="logo-wrap">
-                        @if(!empty($logoDataUri))
-                            <img src="{{ $logoDataUri }}" alt="">
-                        @endif
-                    </td>
-                    <td>
-                        <div class="company-name">{{ $company['name'] }}</div>
-                        <div class="company-sub">Loan Management &amp; Financial Services</div>
-                    </td>
-                    <td style="text-align:right;">
-                        <div class="doc-title">@yield('document_label', $form->title)</div>
-                    </td>
-                </tr>
-            </table>
-        </div>
+        <div class="doc-shell">
+        @include('partials.company-corporate-header', ['logoDataUri' => $logoDataUri ?? null, 'logoSize' => 40])
+        <div class="pdf-doc-label">@yield('document_label', $form->title)</div>
         @yield('content')
         <div class="footer-fixed">
             <div class="left">Generated {{ $generatedAt }} | Version {{ $form->pdf_version }}</div>
-            <div class="right">{{ $company['name'] }} | Confidential Corporate Document</div>
+            <div class="right">{{ config('company.print_header_name', config('app.name')) }} | Confidential Corporate Document</div>
             <div class="clear"></div>
         </div>
     </div>

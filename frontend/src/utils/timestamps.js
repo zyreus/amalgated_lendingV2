@@ -57,6 +57,35 @@ export function formatCrmLog(isoOrDate, opts = {}) {
 }
 
 /**
+ * Visitor inbox row — fixed pattern "May 13, 2026, 3:55 PM" (comma before time).
+ */
+export function formatCrmInboxDate(isoOrDate, opts = {}) {
+  const d = toDate(isoOrDate)
+  if (!d) return ''
+  const locale = opts.locale || 'en-US'
+  const timeZone = opts.timeZone || getResolvedDisplayTimeZone()
+  const parts = new Intl.DateTimeFormat(locale, {
+    timeZone,
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(d)
+  const pick = (type) => parts.find((p) => p.type === type)?.value || ''
+  const month = pick('month')
+  const day = pick('day')
+  const year = pick('year')
+  const hour = pick('hour')
+  const minute = pick('minute')
+  const dayPeriod = (pick('dayPeriod') || '').toUpperCase()
+  if (!month || !day || !year) return formatCrmLog(isoOrDate, opts)
+  const timeSeg = hour && minute ? `${hour}:${minute}${dayPeriod ? ` ${dayPeriod}` : ''}` : ''
+  return timeSeg ? `${month} ${day}, ${year}, ${timeSeg}` : `${month} ${day}, ${year}`
+}
+
+/**
  * Relative time from UTC instant (browser clock).
  */
 export function formatRelativeUtc(isoOrDate) {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
 import { borrowerApi } from '../api/client.js'
 import { formatDate, formatPeso, paymentStatusBadge } from '../utils/formatters.js'
+import { corporatePrintHeaderBlock } from '../../utils/corporatePrintHeaderHtml.js'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 import { admin as ui } from '../../admin/components/AdminUi.jsx'
 import { SkeletonLine } from '../../components/AppSkeletons.jsx'
@@ -48,11 +49,7 @@ function buildInvoiceHtml(payment, user) {
     @page { size: A4; margin: 14mm; }
     body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; padding: 28px; color: #0f172a; background: #ffffff; }
     .wrap { max-width: 820px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 14px; padding: 24px; }
-    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 14px; border-bottom: 1px solid #e5e7eb; }
-    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-    .logo { width: 46px; height: 46px; object-fit: contain; }
-    .brand h1 { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: 0.02em; }
-    .brand p { margin: 2px 0 0; font-size: 12px; color: #64748b; }
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 14px; border-bottom: 1px solid #e5e7eb; margin-top: 4px; }
     .invmeta { text-align: right; }
     .invmeta .label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; }
     .invmeta .value { margin-top: 2px; font-size: 15px; font-weight: 800; }
@@ -84,13 +81,10 @@ function buildInvoiceHtml(payment, user) {
 </head>
 <body>
   <div class="wrap">
+    ${corporatePrintHeaderBlock(brandLogoUrl, 46)}
     <div class="topbar">
-      <div class="brand">
-        <img class="logo" src="${brandLogoUrl}" alt="Amalgated Lending Inc." />
-        <div style="min-width:0">
-          <h1>Amalgated Lending Inc.</h1>
-          <p>Payment invoice / receipt</p>
-        </div>
+      <div style="min-width:0">
+        <p style="margin:0;font-size:12px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:0.06em">Payment invoice / receipt</p>
       </div>
       <div class="invmeta">
         <div class="label">Invoice</div>

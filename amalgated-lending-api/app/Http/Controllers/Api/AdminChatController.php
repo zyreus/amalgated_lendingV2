@@ -56,7 +56,8 @@ class AdminChatController extends Controller
 
         $statusOnly = strtolower((string) $request->query('status', ''));
         if ($bucket === 'all' && $statusOnly !== '' && $statusOnly !== 'all') {
-            $query->whereRaw('LOWER(COALESCE(sc.status, ?)) = ?', ['open', $statusOnly]);
+            $mapped = SupportConversation::mapLifecycleToStatus($statusOnly);
+            $query->whereRaw('LOWER(COALESCE(sc.status, ?)) = ?', ['open', strtolower($mapped)]);
         }
 
         switch ($bucket) {
@@ -100,7 +101,7 @@ class AdminChatController extends Controller
         }
 
         $rows = $query
-            ->orderByDesc('agg.last_message_at')
+            ->orderByRaw('COALESCE(sc.last_message_at, agg.last_message_at) DESC')
             ->limit(min(max((int) $request->query('limit', 200), 1), 500))
             ->get([
                 'agg.session_id',
@@ -123,6 +124,9 @@ class AdminChatController extends Controller
                 'sc.unread_admin',
                 'sc.last_responder_type',
                 'sc.assigned_to',
+                'sc.last_message_at as conv_last_message_at',
+                'sc.visitor_type as conv_visitor_type',
+                'sc.updated_at as conv_updated_at',
             ]);
 
         $data = $rows->map(function ($row) {
@@ -147,6 +151,10 @@ class AdminChatController extends Controller
             }
 
             $uc = (int) ($row->unread_admin ?? 0);
+            $warehouseStatus = $row->conv_status ?: 'open';
+            $lastActivity = $row->conv_last_message_at ?: $row->last_message_at;
+            $visitorType = $row->conv_visitor_type
+                ?: (($row->conv_mode ?? 'ai') === 'human' ? SupportConversation::VISITOR_TYPE_HUMAN : SupportConversation::VISITOR_TYPE_AI);
 
             return [
                 'id' => $row->session_id,
@@ -154,13 +162,16 @@ class AdminChatController extends Controller
                 'visitor_id' => $row->visitor_id,
                 'visitor_name' => $row->guest_name ?: 'Website Visitor',
                 'visitor_email' => $row->guest_email,
-                'status' => $row->conv_status ?: 'open',
+                'status' => $warehouseStatus,
+                'lifecycle_status' => SupportConversation::mapStatusToLifecycle($warehouseStatus),
+                'visitor_type' => $visitorType,
                 'mode' => $row->conv_mode ?: 'ai',
                 'needs_human' => (bool) $row->conv_needs_human,
                 'assigned_to' => $row->assigned_to,
                 'last_handling' => $row->last_responder_type,
-                'last_message_at' => $row->last_message_at,
-                'updated_at' => $row->last_message_at,
+                'last_message_at' => $lastActivity,
+                'updated_at' => $lastActivity,
+                'conversation_updated_at' => $row->conv_updated_at,
                 'unread_count' => $uc,
                 /** CRM UI historically used admin_unread_count */
                 'admin_unread_count' => $uc,
@@ -360,7 +371,15 @@ class AdminChatController extends Controller
         );
 
         if (isset($data['status']) && $data['status'] !== '') {
-            $conv->status = strtolower((string) $data['status']);
+            $normalized = SupportConversation::mapLifecycleToStatus(strtolower(trim((string) $data['status'])));
+            $allowed = ['open', 'in_progress', 'resolved', 'archived'];
+            if (! in_array($normalized, $allowed, true)) {
+                return response()->json([
+                    'message' => 'Invalid status.',
+                    'errors' => ['status' => ['Must be one of: '.implode(', ', $allowed).', active, pending, closed.']],
+                ], 422);
+            }
+            $conv->status = $normalized;
             if ($conv->status === 'resolved') {
                 $conv->resolved_at = now();
             }

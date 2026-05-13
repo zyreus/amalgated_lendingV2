@@ -185,12 +185,16 @@ class PublicChatController extends Controller
             'data' => [
                 'session_id' => $conv->session_id,
                 'mode' => $conv->mode,
+                'visitor_type' => $conv->visitor_type,
                 'status' => $conv->status,
+                'lifecycle_status' => SupportConversation::mapStatusToLifecycle($conv->status),
                 'needs_human' => (bool) $conv->needs_human,
                 'assigned_to' => $conv->assigned_to,
                 'guest_name' => $conv->guest_name,
                 'guest_email' => $conv->guest_email,
                 'customer_rating' => $conv->customer_rating,
+                'last_message_at' => optional($conv->last_message_at)?->toIso8601String(),
+                'created_at' => optional($conv->created_at)?->toIso8601String(),
                 'updated_at' => optional($conv->updated_at)?->toIso8601String(),
             ],
         ]);

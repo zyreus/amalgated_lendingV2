@@ -355,4 +355,38 @@ class BorrowerNotificationController extends Controller
 
         return response()->json(['ok' => true, 'archived' => $archived]);
     }
+
+    /**
+     * Permanently remove one notification owned by the borrower.
+     */
+    public function destroy(Request $request, BorrowerNotification $borrowerNotification): JsonResponse
+    {
+        if ($borrowerNotification->user_id !== $request->user()->id) {
+            abort(403);
+        }
+        $borrowerNotification->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Permanently remove multiple notifications (same owner only).
+     */
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'ids' => 'required|array|min:1|max:100',
+            'ids.*' => 'integer|min:1',
+        ]);
+
+        $userId = $request->user()->id;
+        $ids = array_values(array_unique(array_map('intval', $data['ids'])));
+
+        $deleted = BorrowerNotification::query()
+            ->where('user_id', $userId)
+            ->whereIn('id', $ids)
+            ->delete();
+
+        return response()->json(['ok' => true, 'deleted' => $deleted]);
+    }
 }

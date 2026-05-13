@@ -11,10 +11,6 @@
         .sheet { width: 100%; max-width: 190mm; margin: 0 auto; }
         .toolbar { margin: 0 0 12px; font-size: 12px; }
         .toolbar a { color: #b91c1c; text-decoration: none; font-weight: 700; }
-        .header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-        .header .brand-logo { width: 54px; height: 54px; display: block; }
-        .brand-name { font-size: 19px; font-weight: 800; letter-spacing: 0.02em; }
-        .brand-sub { font-size: 11px; color: #b91c1c; font-weight: 700; margin-top: 2px; }
         .doc-title { margin: 10px 0 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
         .meta { margin: 0 0 10px; font-size: 10px; color: #444; }
         .divider { border-top: 1px solid #000; margin: 6px 0 10px; }
@@ -179,13 +175,8 @@
 <div class="sheet">
     <p class="toolbar"><a href="javascript:window.print()">Print</a> · General loan application</p>
 
-    <div class="header">
-        @include('partials.print-logo')
-        <div>
-            <div class="brand-name">AMALGATED</div>
-            <div class="brand-sub">Lending</div>
-        </div>
-    </div>
+    @include('partials.company-corporate-header')
+
     <div class="doc-title">Application Form</div>
     <div class="meta">Reference #{{ $app->id }} · {{ $loanTypeLabel }} · Generated {{ now()->format('Y-m-d H:i') }}</div>
     <div class="divider"></div>
@@ -425,13 +416,7 @@
             $cmObligations = is_array($cm['outstanding_obligations'] ?? null) ? $cm['outstanding_obligations'] : [];
         @endphp
         <div style="page-break-before: always;"></div>
-        <div class="header" style="margin-top:4px;">
-            @include('partials.print-logo')
-            <div>
-                <div class="brand-name">AMALGATED</div>
-                <div class="brand-sub">Lending</div>
-            </div>
-        </div>
+        @include('partials.company-corporate-header')
         <div class="doc-title">Co-Maker Statement</div>
         <div class="divider"></div>
         <p class="note">

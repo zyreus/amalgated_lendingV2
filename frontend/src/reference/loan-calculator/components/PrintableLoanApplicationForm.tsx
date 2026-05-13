@@ -1,5 +1,6 @@
 import { forwardRef, useRef } from 'react'
 import { useReactToPrint } from 'react-to-print'
+import CorporateLetterhead from '../../../components/CorporateLetterhead.jsx'
 import { formatPeso } from '../utils'
 import type { ComputeLoanResult } from '../types'
 
@@ -24,9 +25,9 @@ const PrintableBody = forwardRef<HTMLDivElement, Props>(function PrintableBody({
   return (
     <div ref={ref} className="bg-white p-8 text-black">
       <style>{`@media print { @page { size: A4; margin: 14mm; } }`}</style>
-      <div className="border-b border-black pb-4">
-        <h1 className="text-2xl font-bold">Loan Application Form</h1>
-        <p className="mt-1 text-sm">Amalgated Lending Inc.</p>
+      <CorporateLetterhead className="mb-6" />
+      <div className="border-b border-gray-300 pb-3">
+        <h1 className="text-xl font-bold text-gray-900">Loan Application Form</h1>
       </div>
 
       <div className="mt-6 grid grid-cols-2 gap-6 text-sm">

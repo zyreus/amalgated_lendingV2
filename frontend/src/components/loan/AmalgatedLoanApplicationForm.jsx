@@ -1,4 +1,5 @@
 import { APPLICATION_NATURE } from './amalgatedApplicationFormState'
+import CorporateLetterhead from '../CorporateLetterhead.jsx'
 
 const LABEL = 'block text-xs font-medium text-slate-600 mb-1'
 const INPUT = 'w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-900 focus:border-[#c41e3a] focus:outline-none focus:ring-1 focus:ring-[#c41e3a]'
@@ -81,6 +82,7 @@ export default function AmalgatedLoanApplicationForm({
 
   return (
     <div className="space-y-4 print:space-y-3">
+      <CorporateLetterhead className="print:break-inside-avoid" />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-bold text-slate-900">Official loan application (Amalgated format)</h2>
       </div>

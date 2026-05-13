@@ -4,7 +4,7 @@ import { io } from 'socket.io-client'
 import { adminSocketUrls, chatFetch, chatJson, getLendingChatSecret, hasChatServerAuth } from '../utils/adminChatApi.js'
 import { api as adminApi, getToken as getAdminToken } from '../admin/api/client.js'
 import { downloadCsv } from '../admin/utils/export.js'
-import { chatOutgoingReceiptLabel, formatChatTime, formatCrmLog, getResolvedDisplayTimeZone } from '../utils/timestamps.js'
+import { chatOutgoingReceiptLabel, formatChatTime, formatCrmInboxDate, formatCrmLog, getResolvedDisplayTimeZone } from '../utils/timestamps.js'
 
 const STATUS_BADGE = {
   open: 'bg-amber-500/15 text-[color:var(--admin-warn-text)] ring-1 ring-amber-500/25',
@@ -141,6 +141,26 @@ function fmtDate(d) {
   return formatCrmLog(date, {
     locale: CHAT_DATETIME_LOCALE,
     timeZone: getResolvedDisplayTimeZone(),
+  })
+}
+
+/** Inbox sidebar: "May 13, 2026, 3:55 PM" style (comma before time). */
+function fmtInboxDate(d) {
+  const date = d instanceof Date ? d : new Date(d)
+  if (Number.isNaN(date.getTime())) return ''
+  return formatCrmInboxDate(date, {
+    locale: CHAT_DATETIME_LOCALE,
+    timeZone: getResolvedDisplayTimeZone(),
+  })
+}
+
+function sortConversationsByLastMessageDesc(list) {
+  const arr = Array.isArray(list) ? [...list] : []
+  return arr.sort((a, b) => {
+    const ta = new Date(a.last_message_at || a.updated_at || 0).getTime()
+    const tb = new Date(b.last_message_at || b.updated_at || 0).getTime()
+    if (tb !== ta) return tb - ta
+    return String(b.id || '').localeCompare(String(a.id || ''))
   })
 }
 
@@ -328,7 +348,7 @@ export default function AdminChatDashboard({
       }
       const data = await adminApi(`/admin/chat/conversations?${params}`)
       if (requestSeq !== conversationsRequestSeqRef.current) return
-      setConversations(Array.isArray(data) ? data : [])
+      setConversations(Array.isArray(data) ? sortConversationsByLastMessageDesc(data) : [])
     } catch {
       if (requestSeq === conversationsRequestSeqRef.current) setConversations([])
     }
@@ -726,7 +746,7 @@ export default function AdminChatDashboard({
       socket.on('conversation:updated', (convo) => {
         if (!convo?.id) return
         setConversations((prev) =>
-          prev.map((c) => (c.id === convo.id ? { ...c, ...convo } : c)),
+          sortConversationsByLastMessageDesc(prev.map((c) => (c.id === convo.id ? { ...c, ...convo } : c))),
         )
         if (activeIdRef.current === convo.id) setActiveConvo((c) => (c ? { ...c, ...convo } : c))
       })
@@ -734,7 +754,7 @@ export default function AdminChatDashboard({
         if (!cid) return
         setActiveConvo((c) => (c?.id === cid && c ? { ...c, mode } : c))
         setConversations((prev) =>
-          prev.map((c) => (c.id === cid ? { ...c, mode } : c)),
+          sortConversationsByLastMessageDesc(prev.map((c) => (c.id === cid ? { ...c, mode } : c))),
         )
       })
       socket.on('analytics:refresh', () => fetchAnalyticsRef.current())
@@ -786,6 +806,7 @@ export default function AdminChatDashboard({
             return prev
           }
           const current = prev[idx]
+          const ts = message?.sent_at || message?.created_at || new Date().toISOString()
           const nextRow = {
             ...current,
             last_message: message
@@ -793,12 +814,16 @@ export default function AdminChatDashboard({
                   id: message.id || current?.last_message?.id,
                   content: message.content ?? current?.last_message?.content ?? '',
                   sender: message.sender ?? current?.last_message?.sender ?? 'user',
-                  created_at: message.created_at || new Date().toISOString(),
+                  created_at: ts,
                   admin_name: message.admin_name ?? current?.last_message?.admin_name ?? null,
                 }
               : current.last_message,
-            last_message_at: message?.created_at || current.last_message_at,
-            updated_at: message?.created_at || current.updated_at,
+            last_message_at: ts,
+            updated_at: ts,
+            visitor_type:
+              message?.visitor_type ||
+              current.visitor_type ||
+              (current.mode === 'human' ? 'HUMAN' : 'AI'),
             unread_count:
               cid !== active
                 ? Math.max(0, Number(current?.unread_count || 0) + 1)
@@ -813,7 +838,7 @@ export default function AdminChatDashboard({
           }
           const next = prev.slice()
           next[idx] = nextRow
-          return next
+          return sortConversationsByLastMessageDesc(next)
         })
       })
       socket.on('chat:streamStart', ({ conversation_id: cid, stream_id: streamId, created_at }) => {
@@ -1081,18 +1106,21 @@ export default function AdminChatDashboard({
           fetchMessages(activeId, { afterId: afterId > 0 ? afterId : 0 })
         }
         const latest = serverMessage || optimisticMessage
+        const latestTs = latest?.sent_at || latest?.created_at
         setConversations((prev) =>
-          prev.map((c) =>
-            c.id === activeId
-              ? {
-                  ...c,
-                  last_message: latest,
-                  last_message_at: latest.created_at,
-                  updated_at: latest.created_at,
-                  unread_count: 0,
-                  admin_unread_count: 0,
-                }
-              : c,
+          sortConversationsByLastMessageDesc(
+            prev.map((c) =>
+              c.id === activeId
+                ? {
+                    ...c,
+                    last_message: latest,
+                    last_message_at: latestTs || c.last_message_at,
+                    updated_at: latestTs || c.updated_at,
+                    unread_count: 0,
+                    admin_unread_count: 0,
+                  }
+                : c,
+            ),
           ),
         )
       })
@@ -1953,7 +1981,7 @@ Amalgated Lending Inc. Team`
                             className={`h-1.5 w-1.5 shrink-0 rounded-full ${connDot.className}`}
                             title={connDot.title}
                           />
-                          <span className="tabular-nums">{fmtDate(c.updated_at)}</span>
+                          <span className="tabular-nums">{fmtInboxDate(c.last_message_at || c.updated_at)}</span>
                           <span className="text-slate-300">·</span>
                           <span
                             className={`rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide ${

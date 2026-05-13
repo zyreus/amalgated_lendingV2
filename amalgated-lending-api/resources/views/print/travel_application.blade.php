@@ -40,6 +40,8 @@
 @endphp
 <div class="sheet">
     <p class="no-print"><a href="javascript:window.print()">Print</a> · Travel assistance loan</p>
+    @include('partials.company-corporate-header')
+
     <h1>Travel Assistance Loan Application</h1>
     <p class="sub">Reference #{{ $app->id }} · Generated {{ now()->format('Y-m-d H:i') }}</p>
 

@@ -4,6 +4,7 @@ import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
 import { borrowerApi } from '../api/client.js'
 import { getBorrowerDocumentLoanApplications } from '../../utils/documentLoanApi.js'
 import { dueCountdownLabel, formatDate, formatPeso, paymentStatusBadge } from '../utils/formatters.js'
+import { corporatePrintHeaderBlock } from '../../utils/corporatePrintHeaderHtml.js'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 import { admin as ui } from '../../admin/components/AdminUi.jsx'
 import { AdminPageSkeleton } from '../../components/AppSkeletons.jsx'
@@ -68,6 +69,7 @@ export default function BorrowerDashboardPage() {
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
   const [verifyBusy, setVerifyBusy] = useState(false)
+  const [receiptUploadedModalOpen, setReceiptUploadedModalOpen] = useState(false)
   const [modalRow, setModalRow] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [form, setForm] = useState({ referenceNumber: '', paymentMethod: 'gcash', receiptFile: null })
@@ -188,21 +190,15 @@ export default function BorrowerDashboardPage() {
 body{font-family:Arial,sans-serif;padding:24px;color:#111827}
 .wrap{max-width:760px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;padding:24px}
 .muted{color:#6b7280;font-size:12px}
-.head{display:flex;align-items:center;gap:12px;margin-bottom:10px}
-.logo{width:52px;height:52px;object-fit:contain}
-.title{font-size:22px;font-weight:700;margin:0}
+.invoice-title{margin:12px 0 4px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#991b1b}
 table{width:100%;border-collapse:collapse;margin-top:16px}
 th,td{border:1px solid #e5e7eb;padding:10px;font-size:13px;text-align:left}
 th{background:#f9fafb}
 </style>
 </head><body><div class="wrap">
-<div class="head">
-  <img class="logo" src="${brandLogoUrl}" alt="Amalgated Lending Inc." />
-  <div>
-    <p class="title">Amalgated Lending Inc. Payment Invoice</p>
-    <p class="muted" style="margin:6px 0 0">Invoice #: ${invoiceNumber(payment)}</p>
-  </div>
-</div>
+${corporatePrintHeaderBlock(brandLogoUrl, 46)}
+<p class="invoice-title">Payment invoice</p>
+<p class="muted" style="margin:0 0 8px"><strong>Invoice #:</strong> ${invoiceNumber(payment)}</p>
 <p><strong>Borrower:</strong> ${user?.name || user?.full_name || 'Borrower'}</p>
 <p><strong>Email:</strong> ${user?.email || payment?.borrower_email || 'N/A'}</p>
 <p><strong>Payment Date:</strong> ${formatDate(payment?.paid_at || payment?.due_date)}</p>
@@ -231,6 +227,7 @@ th{background:#f9fafb}
     if (!modalRow?.id || !form.receiptFile) return
     setUploading(true)
     setToast('')
+    setReceiptUploadedModalOpen(false)
     setError('')
     try {
       const body = new FormData()
@@ -239,7 +236,7 @@ th{background:#f9fafb}
       body.append('payment_method', form.paymentMethod)
       body.append('receipt', form.receiptFile)
       await borrowerApi('/borrower/upload-payment', { method: 'POST', body })
-      setToast('Receipt uploaded. Waiting for confirmation.')
+      setReceiptUploadedModalOpen(true)
       setModalRow(null)
       setForm({ referenceNumber: '', paymentMethod: 'gcash', receiptFile: null })
       // Do not await: a second dashboard round-trip kept the button on "Uploading..." for seconds after upload succeeded.
@@ -963,6 +960,16 @@ th{background:#f9fafb}
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={receiptUploadedModalOpen}
+        title="Receipt uploaded"
+        message="Receipt uploaded. Waiting for confirmation. Your payment will show as updated here after our team verifies the receipt."
+        confirmLabel="Got it"
+        showCancel={false}
+        onConfirm={() => setReceiptUploadedModalOpen(false)}
+        onCancel={() => setReceiptUploadedModalOpen(false)}
+      />
 
       <ConfirmDialog
         open={confirmDeleteDraftId != null}

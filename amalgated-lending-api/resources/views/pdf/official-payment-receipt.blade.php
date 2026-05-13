@@ -6,11 +6,10 @@
   <style>
     * { box-sizing: border-box; }
     body { font-family: DejaVu Sans, sans-serif; font-size: 12px; color: #0f172a; margin: 0; padding: 28px; }
-    .header { border-bottom: 2px solid #b91c1c; padding-bottom: 12px; margin-bottom: 18px; display: table; width: 100%; }
-    .brand { display: table-cell; vertical-align: middle; width: 70%; }
-    .brand h1 { margin: 0; font-size: 18px; color: #991b1b; }
-    .brand p { margin: 4px 0 0; color: #64748b; font-size: 11px; }
-    .meta { display: table-cell; vertical-align: middle; text-align: right; font-size: 11px; color: #475569; }
+    .meta-row { display: table; width: 100%; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
+    .meta-left { display: table-cell; vertical-align: top; width: 58%; }
+    .meta-right { display: table-cell; vertical-align: top; text-align: right; font-size: 11px; color: #475569; }
+    .meta-right div { margin-bottom: 8px; }
     .badge { display: inline-block; margin-top: 6px; padding: 4px 10px; background: #ecfdf5; color: #047857; font-weight: bold; border-radius: 4px; font-size: 11px; }
     table.data { width: 100%; border-collapse: collapse; margin-top: 12px; }
     table.data th, table.data td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; }
@@ -19,19 +18,19 @@
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="brand">
-      @if(!empty($logoDataUri))
-        <img src="{{ $logoDataUri }}" alt="" style="height:36px;margin-bottom:6px;">
-      @endif
-      <h1>{{ $companyName }}</h1>
-      <p>Official payment receipt / invoice</p>
+  @include('partials.company-corporate-header', ['logoDataUri' => $logoDataUri ?? null, 'logoSize' => 40])
+
+  <p style="margin:10px 0 0;font-size:11px;font-weight:bold;color:#991b1b;text-transform:uppercase;letter-spacing:0.06em;">Official payment receipt / invoice</p>
+
+  <div class="meta-row">
+    <div class="meta-left">
+      <p style="margin:0;font-size:12px;color:#64748b;">{{ $companyName }}</p>
     </div>
-    <div class="meta">
+    <div class="meta-right">
       <div><strong>Receipt No.</strong><br>{{ $officialOr !== '' ? $officialOr : '—' }}</div>
-      <div style="margin-top:8px;"><strong>AR No.</strong><br>{{ ($acknowledgementAr ?? '') !== '' ? $acknowledgementAr : '—' }}</div>
-      <div style="margin-top:8px;"><strong>Invoice ref.</strong><br>{{ $invoiceNumber }}</div>
-      <div class="badge">PAID</div>
+      <div><strong>AR No.</strong><br>{{ ($acknowledgementAr ?? '') !== '' ? $acknowledgementAr : '—' }}</div>
+      <div><strong>Invoice ref.</strong><br>{{ $invoiceNumber }}</div>
+      <span class="badge">PAID</span>
       @if(!empty($receiptQrDataUri))
         <div style="margin-top:10px;"><img src="{{ $receiptQrDataUri }}" alt="Verification QR" style="width:92px;height:92px;"></div>
       @endif

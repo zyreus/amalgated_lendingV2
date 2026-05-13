@@ -22,6 +22,8 @@
 </head>
 <body>
 <div class="wrap">
+    @include('partials.company-corporate-header')
+
     <h1>Loan Application Form</h1>
     <p class="muted">Generated {{ $generatedAt }} · You may print before finishing uploads or signing — incomplete fields show as N/A</p>
 

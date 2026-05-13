@@ -7,11 +7,12 @@
         // Fallback for environments where the frontend PNG isn't available.
         $logoSrc = asset('amalgated-lending-logo.png');
     }
+    $logoPx = isset($logoSize) ? max(24, (int) $logoSize) : 54;
 @endphp
 
 <img
     src="{{ $logoSrc }}"
-    alt="Amalgated Lending Inc. logo"
+    alt="{{ config('company.print_header_name', config('app.name')) }} logo"
     class="brand-logo"
-    style="width:54px;height:54px;display:block;object-fit:contain;"
+    style="width:{{ $logoPx }}px;height:{{ $logoPx }}px;display:block;object-fit:contain;"
 />

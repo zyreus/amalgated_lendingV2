@@ -1,4 +1,6 @@
 import { APPLICATION_NATURE } from './amalgatedApplicationFormState.js'
+import CorporateLetterhead from '../CorporateLetterhead.jsx'
+import { CORPORATE_PRINT_LEGAL_NAME } from '../../utils/corporatePrintHeaderHtml.js'
 
 const BRAND_LOGO_PATH = '/amalgated-lending-logo.png'
 
@@ -77,15 +79,9 @@ function TwoColInfoTable({ rows }) {
 
 function PrintHeader({ title = 'Loan Application' }) {
   return (
-    <header className="mb-5 border-b-2 border-black pb-3 text-center">
-      <div className="mb-2 flex items-center justify-center gap-3">
-        <img src={BRAND_LOGO_PATH} alt="Amalgated Lending Inc." className="h-12 w-12 object-contain" />
-        <div>
-          <h1 className="text-lg font-bold uppercase tracking-wide">Amalgated Lending Inc.</h1>
-          <p className="text-xs">Trusted Lending Solutions</p>
-        </div>
-      </div>
-      <p className="text-base font-bold uppercase">{title}</p>
+    <header className="mb-5">
+      <CorporateLetterhead logoSrc={BRAND_LOGO_PATH} />
+      <p className="mt-4 text-center text-base font-bold uppercase text-black">{title}</p>
     </header>
   )
 }
@@ -93,7 +89,7 @@ function PrintHeader({ title = 'Loan Application' }) {
 function PrintFooter() {
   return (
     <footer className="mt-6 border-t border-slate-400 pt-2 text-center text-[10px] text-black">
-      <span>Amalgated Lending Inc. Loan Application</span>
+      <span>{CORPORATE_PRINT_LEGAL_NAME} · Loan application</span>
       <span className="mx-2">|</span>
       <span className="print-page-number"></span>
     </footer>

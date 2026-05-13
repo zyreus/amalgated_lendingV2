@@ -12,6 +12,8 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
   busy = false,
+  /** When false, only the primary button is shown (info / success dialogs). */
+  showCancel = true,
 }) {
   const titleId = useId()
   const descId = useId()
@@ -54,7 +56,7 @@ export default function ConfirmDialog({
         <p id={descId} className="mt-3 text-[15px] leading-relaxed text-gray-900">
           {message}
         </p>
-        <div className="mt-8 flex flex-wrap justify-end gap-3">
+        <div className={`mt-8 flex flex-wrap gap-3 ${showCancel ? 'justify-end' : 'justify-center'}`}>
           <button
             ref={okRef}
             type="button"
@@ -64,14 +66,16 @@ export default function ConfirmDialog({
           >
             {confirmLabel}
           </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onCancel?.()}
-            className="min-h-[44px] rounded-full bg-[#d8f3dc] px-7 text-sm font-semibold text-gray-900 transition hover:bg-[#c7f0db] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {cancelLabel}
-          </button>
+          {showCancel ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onCancel?.()}
+              className="min-h-[44px] rounded-full bg-[#d8f3dc] px-7 text-sm font-semibold text-gray-900 transition hover:bg-[#c7f0db] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {cancelLabel}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

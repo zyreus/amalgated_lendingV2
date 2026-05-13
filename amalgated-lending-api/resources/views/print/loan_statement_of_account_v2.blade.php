@@ -10,9 +10,6 @@
         body { margin: 0; background: #fff; color: #111; font-family: Arial, Helvetica, sans-serif; line-height: 1.25; }
         .sheet { width: 100%; max-width: 190mm; margin: 0 auto; }
         .toolbar { margin: 0 0 12px; font-size: 12px; }
-        .header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-        .brand-name { font-size: 19px; font-weight: 800; letter-spacing: 0.02em; }
-        .brand-sub { font-size: 11px; color: #b91c1c; font-weight: 700; margin-top: 2px; }
         .doc-title { margin: 10px 0 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
         .meta { margin: 0 0 10px; font-size: 10px; color: #444; }
         .divider { border-top: 1px solid #000; margin: 6px 0 10px; }
@@ -88,13 +85,7 @@
 <div class="sheet">
     <p class="toolbar"><a href="javascript:window.print()">Print</a> · Statement of Account</p>
 
-    <div class="header">
-        @include('partials.print-logo')
-        <div>
-            <div class="brand-name">AMALGATED</div>
-            <div class="brand-sub">Lending</div>
-        </div>
-    </div>
+    @include('partials.company-corporate-header')
 
     <div class="doc-title">Statement of Account (SOA) — {{ $productName }}</div>
     <div class="meta">

@@ -387,10 +387,12 @@ Route::prefix('v1')->group(function () {
         Route::get('/notifications/unread-count', [BorrowerNotificationController::class, 'unreadCount']);
         Route::get('/notifications', [BorrowerNotificationController::class, 'index']);
         Route::post('/notifications/read-all', [BorrowerNotificationController::class, 'markAllRead']);
+        Route::post('/notifications/bulk-delete', [BorrowerNotificationController::class, 'bulkDestroy']);
+        Route::post('/notifications/clear-all', [BorrowerNotificationController::class, 'clearAll']);
+        Route::delete('/notifications/{borrowerNotification}', [BorrowerNotificationController::class, 'destroy']);
         Route::post('/notifications/{borrowerNotification}/read', [BorrowerNotificationController::class, 'markRead']);
         Route::post('/notifications/{borrowerNotification}/unread', [BorrowerNotificationController::class, 'markUnread']);
         Route::post('/notifications/{borrowerNotification}/archive', [BorrowerNotificationController::class, 'archive']);
-        Route::post('/notifications/clear-all', [BorrowerNotificationController::class, 'clearAll']);
         Route::get('/notification-preferences', [NotificationPreferenceController::class, 'show']);
         Route::put('/notification-preferences', [NotificationPreferenceController::class, 'update']);
         Route::post('/profile', [BorrowerPortalController::class, 'updateProfile']);

@@ -41,6 +41,15 @@ function formatWhen(iso) {
   }
 }
 
+function sectionKey(section, index) {
+  return String(section.section_key ?? section.title ?? `section-${index}`)
+}
+
+function sectionDomId(key) {
+  const safe = String(key).replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').slice(0, 72)
+  return `borrower-uploads-${safe || 'section'}`
+}
+
 /**
  * Admin CRM: unified borrower uploads (document loans, portal ID, loan KYC, payments).
  */
@@ -50,6 +59,8 @@ export default function BorrowerUploadedFilesPanel({ borrowerId, canVerifyDocs, 
   const [preview, setPreview] = useState(null)
   const [savingId, setSavingId] = useState(null)
   const [drafts, setDrafts] = useState({})
+  /** Section keys whose thumbnail grids are collapsed. */
+  const [collapsedSections, setCollapsedSections] = useState(() => new Set())
 
   const load = useCallback(async () => {
     if (!borrowerId) return
@@ -139,13 +150,53 @@ export default function BorrowerUploadedFilesPanel({ borrowerId, canVerifyDocs, 
         <p className={`mt-4 text-sm ${admin.textMuted}`}>No uploaded files found for this borrower yet.</p>
       ) : (
         <div className="mt-6 space-y-8">
-          {sections.map((section) => (
-            <div key={section.section_key || section.title}>
+          {sections.map((section, sectionIndex) => {
+            const key = sectionKey(section, sectionIndex)
+            const gridId = sectionDomId(key)
+            const collapsed = collapsedSections.has(key)
+            const toggleSection = () => {
+              setCollapsedSections((prev) => {
+                const next = new Set(prev)
+                if (next.has(key)) next.delete(key)
+                else next.add(key)
+                return next
+              })
+            }
+            return (
+            <div key={key}>
               <div className="border-b border-gray-200 pb-2 dark:border-[#374151]">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{section.title}</h3>
-                {section.subtitle ? <p className={`mt-0.5 text-xs ${admin.textMuted}`}>{section.subtitle}</p> : null}
+                <button
+                  type="button"
+                  onClick={toggleSection}
+                  className="flex w-full items-start justify-between gap-3 rounded-lg text-left outline-none ring-red-600/0 transition hover:bg-gray-50/80 focus-visible:ring-2 dark:hover:bg-white/5"
+                  aria-expanded={!collapsed}
+                  aria-controls={gridId}
+                  aria-label={collapsed ? `Expand section: ${section.title}` : `Collapse section: ${section.title}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{section.title}</h3>
+                    {section.subtitle ? (
+                      <p className={`mt-0.5 text-xs ${admin.textMuted}`}>{section.subtitle}</p>
+                    ) : null}
+                  </div>
+                  <span
+                    className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 dark:border-[#374151] dark:bg-[#1F2937] dark:text-gray-300"
+                    aria-hidden
+                  >
+                    <svg
+                      className={`h-4 w-4 transition-transform duration-200 ${collapsed ? '' : 'rotate-180'}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </span>
+                </button>
               </div>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {!collapsed ? (
+              <div id={gridId} className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {(section.items || []).map((item) => {
                   const url = displayUrl(item.preview_url)
                   const isImg = item.mime_kind === 'image' && url
@@ -250,8 +301,10 @@ export default function BorrowerUploadedFilesPanel({ borrowerId, canVerifyDocs, 
                   )
                 })}
               </div>
+              ) : null}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
