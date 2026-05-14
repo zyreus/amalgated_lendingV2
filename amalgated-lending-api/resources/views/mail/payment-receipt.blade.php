@@ -9,6 +9,7 @@
 <table role="presentation" cellpadding="12" cellspacing="0" border="1" bordercolor="#e2e8f0" style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:14px;">
   <tbody>
     <tr><td style="background:#f8fafc;font-weight:700;width:42%;">Official receipt No.</td><td style="font-weight:700;color:#991b1b;">{{ $officialOr }}</td></tr>
+    <tr><td style="background:#f8fafc;font-weight:700;">Acknowledgement receipt (AR) No.</td><td>{{ $acknowledgementAr ?? '—' }}</td></tr>
     <tr><td style="background:#f8fafc;font-weight:700;">Invoice ref.</td><td>{{ $invoiceNumber }}</td></tr>
     <tr><td style="background:#f8fafc;font-weight:700;">Installment no.</td><td>{{ $installmentNo }}</td></tr>
     <tr><td style="background:#f8fafc;font-weight:700;">Amount paid</td><td>₱ {{ $amountPaid }}</td></tr>

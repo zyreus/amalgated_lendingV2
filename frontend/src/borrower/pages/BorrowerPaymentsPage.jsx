@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
 import { borrowerApi } from '../api/client.js'
-import { formatDate, formatPeso, paymentStatusBadge } from '../utils/formatters.js'
+import { escapeHtmlForReceipt, formatDate, formatPeso, paymentStatusBadge } from '../utils/formatters.js'
 import { corporatePrintHeaderBlock } from '../../utils/corporatePrintHeaderHtml.js'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 import { admin as ui } from '../../admin/components/AdminUi.jsx'
@@ -34,6 +34,8 @@ function buildInvoiceHtml(payment, user) {
   const ref = paymentReference(payment)
   const name = borrowerDisplayName(payment, user)
   const email = user?.email || payment?.borrower_email || 'N/A'
+  const orNo = String(payment?.official_receipt_number ?? '').trim()
+  const arNo = String(payment?.acknowledgement_receipt_number ?? '').trim()
   const brandLogoUrl =
     typeof window !== 'undefined'
       ? new URL('/amalgated-lending-logo.png', window.location.origin).toString()
@@ -103,6 +105,8 @@ function buildInvoiceHtml(payment, user) {
         <h2>Payment details</h2>
         <div class="row"><strong>Payment date</strong><span>${paidDate}</span></div>
         <div class="row"><strong>Reference</strong><span class="mono">${ref}</span></div>
+        <div class="row"><strong>OR No.</strong><span class="mono">${escapeHtmlForReceipt(orNo || '—')}</span></div>
+        <div class="row"><strong>AR No.</strong><span class="mono">${escapeHtmlForReceipt(arNo || '—')}</span></div>
       </div>
     </div>
 

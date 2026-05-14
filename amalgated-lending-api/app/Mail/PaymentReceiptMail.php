@@ -31,6 +31,11 @@ class PaymentReceiptMail extends Mailable
             $officialOr = 'Pending';
         }
 
+        $acknowledgementAr = trim((string) ($this->payment->acknowledgement_receipt_number ?? ''));
+        if ($acknowledgementAr === '') {
+            $acknowledgementAr = '—';
+        }
+
         $invoiceNumber = 'INV-'.str_pad((string) $this->payment->id, 6, '0', STR_PAD_LEFT);
         $logoUrl = rtrim((string) config('app.url'), '/').'/amalgated-lending-logo.png';
 
@@ -66,6 +71,7 @@ class PaymentReceiptMail extends Mailable
                 'paidAt' => $this->payment->paid_at?->format('F j, Y g:i A') ?? now()->format('F j, Y g:i A'),
                 'remainingBalance' => number_format((float) $remainingBalance, 2),
                 'officialOr' => $officialOr,
+                'acknowledgementAr' => $acknowledgementAr,
                 'breakdownPrincipal' => number_format((float) ($this->payment->principal_portion ?? 0), 2),
                 'breakdownInterest' => number_format((float) ($this->payment->interest_portion ?? 0), 2),
                 'attachmentNote' => $attachmentNote,

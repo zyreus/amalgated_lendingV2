@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
 import { borrowerApi } from '../api/client.js'
 import { getBorrowerDocumentLoanApplications } from '../../utils/documentLoanApi.js'
-import { dueCountdownLabel, formatDate, formatPeso, paymentStatusBadge } from '../utils/formatters.js'
+import { dueCountdownLabel, formatDate, formatPeso, paymentOrArInvoiceSnippetHtml, paymentStatusBadge } from '../utils/formatters.js'
 import { corporatePrintHeaderBlock } from '../../utils/corporatePrintHeaderHtml.js'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 import { admin as ui } from '../../admin/components/AdminUi.jsx'
@@ -197,7 +197,8 @@ th{background:#f9fafb}
 </head><body><div class="wrap">
 ${corporatePrintHeaderBlock(brandLogoUrl, 52)}
 <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:0.06em">Payment invoice</p>
-<p class="muted" style="margin:0 0 16px">Invoice #: ${invoiceNumber(payment)}</p>
+<p class="muted" style="margin:0 0 4px">Invoice #: ${invoiceNumber(payment)}</p>
+${paymentOrArInvoiceSnippetHtml(payment)}
 <p><strong>Borrower:</strong> ${user?.name || user?.full_name || 'Borrower'}</p>
 <p><strong>Email:</strong> ${user?.email || payment?.borrower_email || 'N/A'}</p>
 <p><strong>Payment Date:</strong> ${formatDate(payment?.paid_at || payment?.due_date)}</p>

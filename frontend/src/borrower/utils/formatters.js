@@ -30,3 +30,25 @@ export function dueCountdownLabel(dueDate) {
   if (delta < 0) return `Overdue by ${Math.abs(delta)} day(s)`
   return `${delta} day(s) left`
 }
+
+/** Escape text embedded in static receipt / invoice HTML. */
+export function escapeHtmlForReceipt(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/**
+ * OR/AR lines for borrower payment invoice HTML (matches staff-assigned OR/AR on the payment).
+ * @param {Record<string, unknown>} payment
+ */
+export function paymentOrArInvoiceSnippetHtml(payment) {
+  const or = String(payment?.official_receipt_number ?? '').trim()
+  const ar = String(payment?.acknowledgement_receipt_number ?? '').trim()
+  const e = escapeHtmlForReceipt
+  return `<p class="muted" style="margin:6px 0 0"><strong>OR No.:</strong> ${or ? e(or) : e('—')}</p>
+<p class="muted" style="margin:4px 0 16px"><strong>AR No.:</strong> ${ar ? e(ar) : e('—')}</p>`
+}
