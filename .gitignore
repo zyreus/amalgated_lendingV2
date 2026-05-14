@@ -13,8 +13,11 @@ dist/
 *.sql
 .phpunit.result.cache
 
-# Ephemeral dev scripts
+# Ephemeral dev scripts (wait-laravel / wait-chat / serve helpers)
 scripts/.laravel-bind-port
+scripts/.laravel-active-port
+scripts/.chat-active-port
+scripts/.laravel-start-status.json
 
 # Local noise (archives, nested copy of repo, runtime logs)
 *.rar
