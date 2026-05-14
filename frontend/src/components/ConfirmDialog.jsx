@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef } from 'react'
 
 /**
- * Custom confirm modal (replaces window.confirm) — cream panel, pill OK/Cancel per borrower UI spec.
+ * Accessible confirm / info modal (replaces window.confirm).
+ * Styling matches Amalgated Lending admin/borrower surfaces: red primary, neutral card.
  */
 export default function ConfirmDialog({
   open,
@@ -34,9 +35,25 @@ export default function ConfirmDialog({
 
   if (!open) return null
 
+  const overlay =
+    'fixed inset-0 z-[120] flex items-end justify-center overflow-y-auto overflow-x-hidden bg-black/50 p-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] backdrop-blur-sm sm:items-center sm:p-6'
+
+  const panel =
+    'w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827]'
+
+  const titleCls = 'text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100'
+
+  const messageCls = 'mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-300'
+
+  const primaryBtn =
+    'touch-manipulation min-h-[44px] rounded-xl border-0 bg-red-600 px-5 py-2.5 text-sm font-semibold text-white outline-none ring-0 shadow-none transition-colors hover:bg-red-700 active:bg-red-800 focus:outline-none focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-60'
+
+  const secondaryBtn =
+    'touch-manipulation min-h-[44px] rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-800 transition hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-400 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#374151] dark:bg-[#1F2937] dark:text-gray-100 dark:hover:bg-[#374151]'
+
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4 backdrop-blur-[2px]"
+      className={overlay}
       role="presentation"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !busy) onCancel?.()
@@ -46,36 +63,40 @@ export default function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        aria-describedby={descId}
-        className="w-full max-w-md rounded-[28px] bg-[#fcfdf8] p-7 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.22),0_0_0_1px_rgba(0,0,0,0.04)]"
+        aria-describedby={message ? descId : undefined}
+        className={panel}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <h2 id={titleId} className="text-base font-bold text-gray-900">
+        <h2 id={titleId} className={titleCls}>
           {title}
         </h2>
-        <p id={descId} className="mt-3 text-[15px] leading-relaxed text-gray-900">
-          {message}
-        </p>
-        <div className={`mt-8 flex flex-wrap gap-3 ${showCancel ? 'justify-end' : 'justify-center'}`}>
-          <button
-            ref={okRef}
-            type="button"
-            disabled={busy}
-            onClick={() => onConfirm?.()}
-            className="min-h-[44px] rounded-full bg-[#1B4332] px-7 text-sm font-bold text-white shadow-[0_0_0_2px_#ffffff,0_0_0_4px_#1B4332] transition hover:bg-[#2d6a4f] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {confirmLabel}
-          </button>
+        {message ? (
+          <p id={descId} className={messageCls}>
+            {message}
+          </p>
+        ) : null}
+        <div
+          className={`mt-6 flex flex-wrap gap-3 ${showCancel ? 'justify-end' : 'justify-center sm:justify-end'}`}
+        >
           {showCancel ? (
             <button
               type="button"
               disabled={busy}
               onClick={() => onCancel?.()}
-              className="min-h-[44px] rounded-full bg-[#d8f3dc] px-7 text-sm font-semibold text-gray-900 transition hover:bg-[#c7f0db] disabled:cursor-not-allowed disabled:opacity-60"
+              className={secondaryBtn}
             >
               {cancelLabel}
             </button>
           ) : null}
+          <button
+            ref={okRef}
+            type="button"
+            disabled={busy}
+            onClick={() => onConfirm?.()}
+            className={primaryBtn}
+          >
+            {confirmLabel}
+          </button>
         </div>
       </div>
     </div>
