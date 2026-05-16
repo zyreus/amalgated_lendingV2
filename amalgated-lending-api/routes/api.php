@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\ActivityLogController;
+use App\Http\Controllers\Api\AdminCollectionsController;
 use App\Http\Controllers\Api\AdminAuthController;
 use App\Http\Controllers\Api\AdminChatController;
 use App\Http\Controllers\Api\AdminChatKnowledgeController;
@@ -240,6 +241,7 @@ Route::prefix('v1')->group(function () {
         });
 
         Route::middleware('permission:payments.manage')->group(function () {
+            Route::get('/collections/pipeline-summary', [AdminCollectionsController::class, 'pipelineSummary']);
             Route::get('/payments', [PaymentController::class, 'index']);
             Route::put('/payments/{payment}', [PaymentController::class, 'record']);
             Route::patch('/payments/{payment}/status', [PaymentController::class, 'updateStatus']);

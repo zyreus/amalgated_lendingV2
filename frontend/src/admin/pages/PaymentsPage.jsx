@@ -247,8 +247,18 @@ export default function PaymentsPage() {
     if (orArDebounced.or) qs.set('official_receipt_q', orArDebounced.or)
     if (orArDebounced.ar) qs.set('acknowledgement_receipt_q', orArDebounced.ar)
     if (apiStatus) qs.set('status', apiStatus)
+    else {
+      const stUrl = (searchParams.get('status') || '').trim()
+      if (stUrl) qs.set('status', stUrl)
+    }
     if (approvalStatus) qs.set('approval_status', approvalStatus)
     if (paymentMethod) qs.set('payment_method', paymentMethod)
+    const ov = searchParams.get('overdue')
+    if (ov === '1' || ov === 'true') qs.set('overdue', '1')
+    const dpdMin = searchParams.get('installment_dpd_min')
+    const dpdMax = searchParams.get('installment_dpd_max')
+    if (dpdMin) qs.set('installment_dpd_min', dpdMin)
+    if (dpdMax) qs.set('installment_dpd_max', dpdMax)
     return qs
   }, [
     loanSearchDebounced,
@@ -257,6 +267,7 @@ export default function PaymentsPage() {
     apiStatus,
     approvalStatus,
     paymentMethod,
+    searchParams,
   ])
 
   const loadPayments = async () => {
@@ -291,7 +302,7 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     void loadPayments()
-  }, [loanSearchDebounced, orArDebounced.or, orArDebounced.ar, apiStatus, approvalStatus, paymentMethod])
+  }, [loanSearchDebounced, orArDebounced.or, orArDebounced.ar, apiStatus, approvalStatus, paymentMethod, searchParams])
 
   const rows = useMemo(() => {
     const byId = new Map()

@@ -709,6 +709,16 @@ class PaymentController extends Controller
                 ->whereDate('due_date', '<', now()->toDateString());
         }
 
+        if ($request->filled('installment_dpd_min') || $request->filled('installment_dpd_max')) {
+            $minD = $request->filled('installment_dpd_min') ? max(0, (int) $request->query('installment_dpd_min')) : 0;
+            $maxD = $request->filled('installment_dpd_max') ? max($minD, (int) $request->query('installment_dpd_max')) : 3650;
+            $q->whereDate('due_date', '<', now()->toDateString())
+                ->whereNotIn('status', [Payment::STATUS_PAID, Payment::STATUS_WAIVED])
+                ->whereRaw('(amount_due - COALESCE(amount_paid, 0)) > 0.009')
+                ->whereDate('due_date', '<=', now()->copy()->subDays($minD)->toDateString())
+                ->whereDate('due_date', '>=', now()->copy()->subDays($maxD)->toDateString());
+        }
+
         if ($request->filled('payment_method')) {
             $q->where('payment_method', $request->query('payment_method'));
         }

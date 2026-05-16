@@ -221,12 +221,12 @@ export default function Header() {
           : 'border-red-100/35 bg-red-50/35 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1220]/90'
       }`}
     >
-      <div className="app-container relative flex min-h-[5.5rem] flex-wrap items-center justify-between gap-y-4 py-4 sm:gap-5 sm:py-5 lg:flex-nowrap lg:gap-8 lg:py-5 xl:gap-10">
-        <div className="relative z-30 flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
+      <div className="app-container relative flex min-h-[3.5rem] flex-nowrap items-center justify-between gap-x-2 gap-y-0 py-2.5 sm:min-h-[5.5rem] sm:gap-5 sm:py-5 lg:gap-8 lg:py-5 xl:gap-10">
+        <div className="relative z-30 flex min-w-0 flex-1 items-center gap-1.5 sm:gap-3">
         <button
           type="button"
           onClick={goHome}
-          className="group flex min-w-0 max-w-[min(100%,14rem)] shrink-0 items-center gap-2.5 rounded-2xl pr-1 text-left outline-none ring-brand-primary/0 transition hover:bg-black/[0.03] hover:ring-2 hover:ring-brand-primary/15 focus-visible:ring-2 focus-visible:ring-brand-primary/35 sm:max-w-[min(100%,17rem)] sm:gap-3 sm:pr-2 xl:gap-3.5 dark:hover:bg-white/[0.04]"
+          className="group flex min-w-0 max-w-full items-center gap-2 rounded-2xl pr-0.5 text-left outline-none ring-brand-primary/0 transition hover:bg-black/[0.03] hover:ring-2 hover:ring-brand-primary/15 focus-visible:ring-2 focus-visible:ring-brand-primary/35 sm:max-w-[min(100%,17rem)] sm:gap-3 sm:pr-2 xl:gap-3.5 dark:hover:bg-white/[0.04]"
         >
           <span className="relative shrink-0 rounded-2xl bg-white p-0.5 shadow-sm ring-1 ring-black/[0.06] transition group-hover:shadow-md group-hover:ring-brand-primary/25 dark:bg-white/10 dark:ring-white/10">
             <img
@@ -243,7 +243,7 @@ export default function Header() {
             <span className="truncate font-display text-[0.8125rem] font-bold tracking-tight text-brand-text sm:text-[0.9375rem] dark:text-white">
               Amalgated Lending Inc.
             </span>
-            <span className="mt-1 inline-flex max-w-full items-center gap-1.5 truncate text-[10px] font-medium leading-snug text-brand-text/55 sm:text-[11px] dark:text-white/55">
+            <span className="mt-1 hidden max-w-full items-center gap-1.5 truncate text-[10px] font-medium leading-snug text-brand-text/55 sm:inline-flex sm:text-[11px] dark:text-white/55">
               <span className="h-1 w-1 shrink-0 rounded-full bg-brand-primary" aria-hidden />
               <span className="truncate">Digital lending · Davao HQ, nationwide online</span>
             </span>
@@ -558,22 +558,22 @@ export default function Header() {
           </nav>
         </div>
 
-        <div className="relative z-30 ml-auto flex shrink-0 items-center gap-2 lg:hidden">
+        <div className="relative z-30 ml-auto flex shrink-0 items-center gap-1 sm:gap-2 lg:hidden">
           <Link
             to="/borrower/register"
-            className="rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-bold tracking-wide text-brand-text shadow-sm transition hover:border-brand-primary/30 sm:text-[13px]"
+            className="rounded-lg border border-black/10 bg-white px-2 py-1.5 text-[10px] font-bold leading-none tracking-wide text-brand-text shadow-sm transition hover:border-brand-primary/30 sm:rounded-xl sm:px-3 sm:py-2 sm:text-xs sm:text-[13px]"
           >
             Join
           </Link>
           <Link
             to="/borrower/login"
-            className="rounded-xl bg-[linear-gradient(135deg,#E63946,#FF6B6B)] px-3.5 py-2 text-xs font-bold tracking-wide text-white shadow-[0_6px_22px_rgba(230,57,70,0.35)] transition hover:brightness-105 sm:text-[13px]"
+            className="rounded-lg bg-[linear-gradient(135deg,#E63946,#FF6B6B)] px-2.5 py-1.5 text-[10px] font-bold leading-none tracking-wide text-white shadow-[0_6px_22px_rgba(230,57,70,0.35)] transition hover:brightness-105 sm:rounded-xl sm:px-3.5 sm:py-2 sm:text-xs sm:text-[13px]"
           >
             Log in
           </Link>
           <button
             type="button"
-            className="flex h-11 min-w-[44px] items-center justify-center rounded-xl border border-black/10 bg-white/80 text-brand-text shadow-sm transition hover:border-brand-primary/25 hover:bg-brand-background-alt dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
+            className="flex h-10 min-w-[40px] shrink-0 items-center justify-center rounded-lg border border-black/10 bg-white/80 text-brand-text shadow-sm transition hover:border-brand-primary/25 hover:bg-brand-background-alt sm:h-11 sm:min-w-[44px] sm:rounded-xl dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
             onClick={() => setMobileOpen((o) => !o)}
             aria-expanded={mobileOpen}
             aria-controls={`${baseId}-mobile-nav`}
