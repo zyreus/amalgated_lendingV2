@@ -59,7 +59,7 @@ export default function FeaturesPage() {
   }, [])
 
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="flex min-h-screen flex-col page-shell-bg">
       <SubPageHeader />
       <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 sm:py-24">
         <div className="border-l-4 border-red-600 pl-4">

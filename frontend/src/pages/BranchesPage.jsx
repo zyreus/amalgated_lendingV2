@@ -79,9 +79,9 @@ export default function BranchesPage() {
   }, [])
 
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="flex min-h-screen flex-col page-shell-bg">
       <SubPageHeader />
-      <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 sm:py-24">
+      <main className="app-container section-y flex-1">
         <div className="border-l-4 border-red-600 pl-4">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600">Branches</p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-black sm:text-3xl">

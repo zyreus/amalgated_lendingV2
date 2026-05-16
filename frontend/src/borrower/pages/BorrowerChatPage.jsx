@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { borrowerApi } from '../api/client.js'
 import { SkeletonLine } from '../../components/AppSkeletons.jsx'
 
@@ -10,6 +11,7 @@ function formatTime(iso) {
 }
 
 export default function BorrowerChatPage() {
+  const [searchParams] = useSearchParams()
   const [text, setText] = useState('')
   const [file, setFile] = useState(null)
   const [messages, setMessages] = useState([])
@@ -39,6 +41,11 @@ export default function BorrowerChatPage() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    const q = (searchParams.get('q') || '').trim()
+    if (q) setText(q)
+  }, [searchParams])
 
   useEffect(() => {
     let mounted = true

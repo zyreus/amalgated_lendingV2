@@ -87,9 +87,9 @@ export default function ContactPage() {
   }, [])
 
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="flex min-h-screen flex-col page-shell-bg">
       <SubPageHeader />
-      <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 sm:py-24">
+      <main className="app-container section-y flex-1">
         <div ref={cardRef} className="rounded-2xl border border-black/10 bg-white p-8 shadow-md sm:p-10 lg:grid lg:grid-cols-2 lg:gap-12">
           <div className="contact-col">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600">Contact</p>

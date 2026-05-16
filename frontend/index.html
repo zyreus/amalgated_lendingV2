@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#dc2626" />
+    <meta name="theme-color" content="#E63946" />
     <!--
       Real Amalgated Lending Inc. logo (180 KB PNG). Preloaded at high priority so the
       sticky header / splash screen LCP element is decoded the moment the HTML lands,
@@ -16,7 +16,7 @@
     <!--
       Speed up the very first paint:
       * preconnect to Google Fonts on both domains so DNS / TLS finish before we ever ask for a font;
-      * load Inter non-blocking via media="print" + onload swap so the CSS does NOT block rendering;
+      * load Inter + Poppins + Sora non-blocking via media="print" + onload swap so the CSS does NOT block rendering;
       * keep a <noscript> fallback so users without JS still get the webfont.
     -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -24,18 +24,18 @@
     <link
       rel="preload"
       as="style"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&family=Sora:wght@500;600;700&display=swap"
     />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&family=Sora:wght@500;600;700&display=swap"
       media="print"
       onload="this.media='all'; this.onload=null;"
     />
     <noscript>
       <link
         rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&family=Sora:wght@500;600;700&display=swap"
       />
     </noscript>
 

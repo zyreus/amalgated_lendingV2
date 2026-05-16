@@ -16,8 +16,20 @@ export const ADMIN_NAV_GROUPS = [
       { to: '/admin/borrowers', label: 'Borrowers', perm: 'borrowers.view', icon_key: 'borrowers' },
       { to: '/admin/loan-products', label: 'Loan products', perm: 'loans.view', icon_key: 'products' },
       { to: '/admin/printable-forms', label: 'Printable PDF forms', perm: 'forms.printable.manage', icon_key: 'forms' },
+      { to: '/admin/underwriting-queue', label: 'Underwriting queue', perm: 'loans.view', icon_key: 'loans' },
+      { to: '/admin/document-verification', label: 'Document verification', perm: 'loans.view', icon_key: 'forms' },
       { to: '/admin/loans', label: 'Applications', perm: 'loans.view', icon_key: 'loans' },
       { to: '/admin/payments', label: 'Payments', perm: 'payments.manage', icon_key: 'pay' },
+      { to: '/admin/collections', label: 'Collections', perm: 'payments.manage', icon_key: 'pay' },
+    ],
+  },
+  {
+    id: 'risk',
+    label: 'Risk & analytics',
+    items: [
+      { to: '/admin/risk-analytics', label: 'Risk analytics', perm: 'reports.view', icon_key: 'report' },
+      { to: '/admin/credit-wellness', label: 'Credit & wellness', perm: 'reports.view', icon_key: 'report' },
+      { to: '/admin/compliance', label: 'Compliance', perm: 'activity.view', icon_key: 'activity' },
     ],
   },
   {

@@ -3,7 +3,7 @@
  */
 export default function RouteLoadingFallback() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f8fafc] text-slate-700">
+    <div className="flex min-h-screen items-center justify-center page-shell-bg text-slate-700">
       <div className="flex flex-col items-center gap-3 px-4 text-center">
         <div
           className="h-10 w-10 animate-spin rounded-full border-2 border-[#C41E3A] border-t-transparent"

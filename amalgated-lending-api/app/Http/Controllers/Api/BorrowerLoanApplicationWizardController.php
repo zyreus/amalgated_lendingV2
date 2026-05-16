@@ -7,6 +7,7 @@ use App\Mail\GeneralLoanApplicationStatusMail;
 use App\Models\Loan;
 use App\Models\LoanApplication;
 use App\Models\LoanProduct;
+use App\Services\CreditWellnessService;
 use App\Services\LoanApplicationWorkflowValidator;
 use App\Services\LoanCalculator;
 use App\Services\NotificationCenter;
@@ -402,10 +403,16 @@ class BorrowerLoanApplicationWizardController extends Controller
         }
         $this->notifyBorrowerApplicationStatus($fresh, LoanApplication::STATUS_PENDING);
 
+        $borrower = $request->user();
+        $eligibility = app(CreditWellnessService::class)->eligibilityImpactForUser($borrower);
+
         return response()->json([
             'ok' => true,
             'data' => $this->serializeApplication($loanApplication->fresh()),
-            'message' => 'Application submitted. Our team will review it shortly.',
+            'credit_wellness' => $eligibility,
+            'message' => $eligibility['requires_manual_approval'] ?? false
+                ? 'Application submitted. Additional review may be required based on your credit wellness profile.'
+                : 'Application submitted. Our team will review it shortly.',
         ]);
     }
 

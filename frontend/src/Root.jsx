@@ -20,6 +20,7 @@ import UnauthorizedPage from './pages/UnauthorizedPage.jsx'
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx'
 import CookieBanner from './components/privacy/CookieBanner.jsx'
 import CookiePreferencesModal, { COOKIE_PREFERENCES_EVENT } from './components/privacy/CookiePreferencesModal.jsx'
+import { LogoutConfirmProvider } from './context/LogoutConfirmProvider.jsx'
 
 const ContactPage = lazy(() => import('./pages/ContactPage.jsx'))
 const LoanProductsPage = lazy(() => import('./pages/LoanProductsPage.jsx'))
@@ -62,6 +63,22 @@ const AdminLoanProductsPage = lazy(() => import('./admin/pages/AdminLoanProducts
 const PrintableFormsPage = lazy(() => import('./admin/pages/PrintableFormsPage.jsx'))
 const ApplicationFlowPage = lazy(() => import('./pages/ApplicationFlowPage.jsx'))
 const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage.jsx'))
+const AdminUnderwritingQueuePage = lazy(() => import('./admin/pages/AdminUnderwritingQueuePage.jsx'))
+const AdminCollectionsPipelinePage = lazy(() => import('./admin/pages/AdminCollectionsPipelinePage.jsx'))
+const AdminRiskAnalyticsPage = lazy(() => import('./admin/pages/AdminRiskAnalyticsPage.jsx'))
+const AdminCreditWellnessPage = lazy(() => import('./admin/pages/AdminCreditWellnessPage.jsx'))
+const AdminComplianceCenterPage = lazy(() => import('./admin/pages/AdminComplianceCenterPage.jsx'))
+const AdminDocumentVerificationHubPage = lazy(() => import('./admin/pages/AdminDocumentVerificationHubPage.jsx'))
+const BorrowerCreditHealthPage = lazy(() => import('./borrower/pages/BorrowerCreditHealthPage.jsx'))
+const BorrowerOffersPage = lazy(() => import('./borrower/pages/BorrowerOffersPage.jsx'))
+const BorrowerDocumentsHubPage = lazy(() => import('./borrower/pages/BorrowerDocumentsHubPage.jsx'))
+const BorrowerHelpCenterPage = lazy(() => import('./borrower/pages/BorrowerHelpCenterPage.jsx'))
+const BorrowerTicketsPage = lazy(() => import('./borrower/pages/BorrowerTicketsPage.jsx'))
+const BorrowerAutopayPage = lazy(() => import('./borrower/pages/BorrowerAutopayPage.jsx'))
+const BorrowerStatementsPage = lazy(() => import('./borrower/pages/BorrowerStatementsPage.jsx'))
+const BorrowerLoanToolsPage = lazy(() => import('./borrower/pages/BorrowerLoanToolsPage.jsx'))
+const BorrowerBankingPage = lazy(() => import('./borrower/pages/BorrowerBankingPage.jsx'))
+const BorrowerPrivacyPrefsPage = lazy(() => import('./borrower/pages/BorrowerPrivacyPrefsPage.jsx'))
 
 /** Lazy on public pages only — chat UI is not needed for admin/borrower shells. */
 const LendingChatWidget = lazy(() => import('./components/LendingChatWidget.jsx'))
@@ -156,6 +173,7 @@ export default function Root() {
         <AdminMuiProvider>
           <BorrowerAuthProvider>
             <AdminApiAuthProvider>
+              <LogoutConfirmProvider>
               <ToastProvider>
                 <Suspense fallback={<RouteLoadingFallback />}>
                   <Routes>
@@ -178,6 +196,12 @@ export default function Root() {
                     <Route path="loans/:id" element={<LoanDetailPage />} />
                     <Route path="loan-products" element={<AdminLoanProductsPage />} />
                     <Route path="printable-forms" element={<PrintableFormsPage />} />
+                    <Route path="underwriting-queue" element={<AdminUnderwritingQueuePage />} />
+                    <Route path="document-verification" element={<AdminDocumentVerificationHubPage />} />
+                    <Route path="collections" element={<AdminCollectionsPipelinePage />} />
+                    <Route path="risk-analytics" element={<AdminRiskAnalyticsPage />} />
+                    <Route path="credit-wellness" element={<AdminCreditWellnessPage />} />
+                    <Route path="compliance" element={<AdminComplianceCenterPage />} />
                     <Route path="reports" element={<ReportsPage />} />
                     <Route path="leads" element={<Navigate to="/admin/chat-crm?view=leads" replace />} />
                     <Route path="payments" element={<PaymentsPage />} />
@@ -199,6 +223,16 @@ export default function Root() {
                 <Route element={<BorrowerLayout />}>
                   <Route index element={<Navigate to="/borrower/dashboard" replace />} />
                   <Route path="dashboard" element={<BorrowerDashboardPage />} />
+                  <Route path="credit-health" element={<BorrowerCreditHealthPage />} />
+                  <Route path="offers" element={<BorrowerOffersPage />} />
+                  <Route path="documents" element={<BorrowerDocumentsHubPage />} />
+                  <Route path="autopay" element={<BorrowerAutopayPage />} />
+                  <Route path="statements" element={<BorrowerStatementsPage />} />
+                  <Route path="tools" element={<BorrowerLoanToolsPage />} />
+                  <Route path="help" element={<BorrowerHelpCenterPage />} />
+                  <Route path="tickets" element={<BorrowerTicketsPage />} />
+                  <Route path="banking" element={<BorrowerBankingPage />} />
+                  <Route path="settings/privacy" element={<BorrowerPrivacyPrefsPage />} />
                   <Route path="applications" element={<BorrowerApplicationsPage />} />
                   <Route path="notifications" element={<Navigate to="/borrower/dashboard" replace />} />
                   <Route path="payments" element={<BorrowerPaymentsPage />} />
@@ -235,6 +269,7 @@ export default function Root() {
                 <LendingChatWidgetGate />
                 <CookieConsentGate cookieModalOpen={cookieModalOpen} setCookieModalOpen={setCookieModalOpen} />
               </ToastProvider>
+              </LogoutConfirmProvider>
             </AdminApiAuthProvider>
           </BorrowerAuthProvider>
         </AdminMuiProvider>

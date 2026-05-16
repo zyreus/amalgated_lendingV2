@@ -5,7 +5,7 @@ import PrivacyPolicyContent, { PRIVACY_POLICY_VERSION } from '../components/priv
 
 export default function PrivacyPolicyPage() {
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="flex min-h-screen flex-col page-shell-bg">
       <SeoMeta
         title="Privacy Policy | Amalgated Lending Inc."
         description="How Amalgated Lending Inc. collects, uses, secures, and protects personal information under the Data Privacy Act of 2012."

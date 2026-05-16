@@ -27,13 +27,14 @@ export function AdminMuiProvider({ children }) {
       createTheme({
         palette: {
           mode: 'light',
-          primary: { main: '#DC2626', dark: '#b91c1c', light: '#ef4444' },
-          error: { main: '#DC2626' },
-          background: { default: '#f3f4f6', paper: '#ffffff' },
-          text: { primary: '#111827', secondary: '#6b7280' },
-          divider: '#e5e7eb',
+          /** Matches Tailwind `@theme` — primary #E63946, surfaces #F8F9FA / #FFFFFF */
+          primary: { main: '#E63946', dark: '#C72F3A', light: '#FF6B6B' },
+          error: { main: '#E63946' },
+          background: { default: '#FFFFFF', paper: '#FFFFFF' },
+          text: { primary: '#1D1D1F', secondary: '#6B7280' },
+          divider: 'rgba(29, 29, 31, 0.08)',
         },
-        shape: { borderRadius: 12 },
+        shape: { borderRadius: 16 },
         transitions: { duration: { shortest: 200 } },
       }),
     [],

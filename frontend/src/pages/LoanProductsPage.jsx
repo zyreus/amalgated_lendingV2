@@ -7,6 +7,7 @@ import LoanProductsCalculator from '../components/loan/LoanProductsCalculator.js
 import EligibilityChecker from '../components/loan/EligibilityChecker.jsx'
 import { tierAccentClass, tierCardClass, tierIconWrapClass } from '../components/loan/loanProductStyles.js'
 import { getLoanProducts } from '../utils/loanProductsPublicApi.js'
+import { loanProductApplyPath } from '../utils/loanProductApplyPath.js'
 
 function ProductDetail({ product, onCheckEligibility }) {
   const tier = product.tier || 'blue'
@@ -39,15 +40,7 @@ function ProductDetail({ product, onCheckEligibility }) {
             Check eligibility
           </button>
           <Link
-            to={(() => {
-              const slug = String(product.slug || '').toLowerCase()
-              if (slug === 'chattel-mortgage') return '/loans/chattel-mortgage'
-              if (slug === 'real-estate-mortgage') return '/loans/real-estate-mortgage'
-              if (slug === 'salary-loan') return '/loans/salary-loan'
-              if (slug === 'travel-assistance-loan') return '/loans/travel-assistance-loan'
-              if (slug === 'sss-pension-loan') return '/loans/sss-pension-loan'
-              return `/apply?product=${encodeURIComponent(product.slug)}`
-            })()}
+            to={loanProductApplyPath(product.slug)}
             className="rounded-xl bg-brand-primary px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-brand-primary-hover"
           >
             Apply now
@@ -135,7 +128,7 @@ export default function LoanProductsPage() {
   const sampleProduct = products.find((p) => p.sample_monthly_pension != null) || products.find((p) => p.slug === 'sss-gsis')
 
   return (
-    <div className="flex min-h-screen flex-col bg-brand-background-alt text-brand-text">
+    <div className="flex min-h-screen flex-col page-shell-bg text-brand-text">
       <SubPageHeader />
       <main className="flex-1">
         <section className="border-b border-brand-secondary/30 bg-gradient-to-b from-white to-brand-background-alt py-12 dark:from-slate-900 dark:to-[#0b1120] sm:py-16">

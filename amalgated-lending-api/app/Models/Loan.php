@@ -139,4 +139,9 @@ class Loan extends Model
     {
         return $this->hasMany(EmailLog::class);
     }
+
+    public function healthMetric(): HasOne
+    {
+        return $this->hasOne(LoanHealthMetric::class, 'loan_id');
+    }
 }

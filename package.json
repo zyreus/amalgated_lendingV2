@@ -24,7 +24,8 @@
     "perf:baseline": "node scripts/perf-baseline.cjs",
     "composer:install": "composer install --optimize-autoloader --working-dir=amalgated-lending-api",
     "composer:install:prod": "composer install --optimize-autoloader --no-dev --working-dir=amalgated-lending-api",
-    "api:cache": "cd amalgated-lending-api && php artisan config:cache && php artisan route:cache && php artisan view:cache"
+    "api:clear": "cd amalgated-lending-api && php artisan route:clear && php artisan config:clear && php artisan view:clear",
+    "api:cache": "cd amalgated-lending-api && php artisan route:clear && php artisan config:cache && php artisan route:cache && php artisan view:cache"
   },
   "dependencies": {
     "@aws-amplify/ui-react": "6.15.2",

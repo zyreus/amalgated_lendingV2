@@ -155,7 +155,7 @@ export default function RealEstateMortgagePage() {
   const tier = 'blue'
 
   return (
-    <div className="flex min-h-screen flex-col bg-brand-background-alt text-brand-text">
+    <div className="flex min-h-screen flex-col page-shell-bg text-brand-text">
       <SubPageHeader />
       <main className="flex-1">
         <div className="app-container max-w-6xl py-10 sm:py-14">

@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { api } from '../api/client.js'
 import { useToast } from '../context/ToastContext.jsx'
 import { DashboardStatSkeleton, admin } from '../components/AdminUi.jsx'
+import AdminCrmModuleStrip from '../components/AdminCrmModuleStrip.jsx'
 
 const DashboardCharts = lazy(() => import('./DashboardCharts.jsx'))
 
@@ -88,6 +89,7 @@ export default function DashboardPage() {
             Portfolio overview — principal released, loan health, and collections.
           </p>
         </div>
+        <AdminCrmModuleStrip />
         <DashboardStatSkeleton />
         <ChartsFallback />
       </div>
@@ -102,6 +104,8 @@ export default function DashboardPage() {
           Portfolio overview — principal released, loan health, and collections.
         </p>
       </div>
+
+      <AdminCrmModuleStrip />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard

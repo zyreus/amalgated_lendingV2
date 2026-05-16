@@ -26,7 +26,7 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-gray-100 text-gray-900 transition-colors duration-300">
+    <div className="relative flex min-h-screen flex-col portal-shell-bg text-gray-900 transition-colors duration-300">
       <div className="flex flex-1 items-center justify-center px-4 py-10">
         <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-8 shadow-xl transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827]">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#DC2626]">Admin Portal</p>

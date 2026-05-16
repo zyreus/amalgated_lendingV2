@@ -41,10 +41,10 @@ export default function BorrowerLoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-gray-100 text-gray-900 transition-colors duration-300">
+    <div className="relative flex min-h-screen flex-col page-shell-bg text-gray-900 transition-colors duration-300">
       <div className="flex flex-1 items-center justify-center px-4 py-10">
         <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 shadow-xl transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827]">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#DC2626]">Borrower Portal</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-primary">Borrower Portal</p>
           <h1 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">Borrower sign in</h1>
           <p className="mt-2 text-sm text-gray-500 transition-colors duration-300 dark:text-gray-400">
             Use your borrower account credentials.

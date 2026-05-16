@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\ChattelMortgageController;
 use App\Http\Controllers\Api\CmsController;
 use App\Http\Controllers\Api\ContactController;
+use App\Http\Controllers\Api\CreditWellnessController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DocumentLoanAdminController;
 use App\Http\Controllers\Api\DocumentLoanApplicationController;
@@ -55,6 +56,7 @@ use App\Http\Controllers\Api\SystemSettingController;
 use App\Http\Controllers\Api\TravelAssistanceController;
 use App\Http\Controllers\Api\TravelLoanApplicationAdminController;
 use App\Http\Controllers\Api\TravelLoanWizardController;
+use App\Http\Controllers\Api\UnderwritingQueueController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -180,6 +182,7 @@ Route::prefix('v1')->group(function () {
         });
 
         Route::middleware('permission:loans.view')->group(function () {
+            Route::get('/underwriting-queue', [UnderwritingQueueController::class, 'index']);
             Route::get('/loans', [LoanController::class, 'index']);
             Route::get('/loans/{loan}', [LoanController::class, 'show']);
         });
@@ -207,6 +210,13 @@ Route::prefix('v1')->group(function () {
             Route::get('/borrowers', [BorrowerController::class, 'index']);
             Route::get('/borrowers/{borrower}/uploaded-files', [BorrowerController::class, 'uploadedFiles']);
             Route::get('/borrowers/{borrower}', [BorrowerController::class, 'show']);
+            Route::get('/borrowers/{borrower}/credit-wellness', [CreditWellnessController::class, 'showBorrower']);
+            Route::post('/borrowers/{borrower}/credit-wellness/recalculate', [CreditWellnessController::class, 'recalculate']);
+        });
+
+        Route::middleware('permission:reports.view')->group(function () {
+            Route::get('/credit-wellness/portfolio', [CreditWellnessController::class, 'portfolio']);
+            Route::get('/credit-wellness/reports/{type}', [CreditWellnessController::class, 'report']);
         });
 
         Route::middleware('permission:users.manage')->group(function () {
@@ -379,6 +389,8 @@ Route::prefix('v1')->group(function () {
             ->middleware('throttle:6,1');
         Route::post('/change-password', [BorrowerAuthController::class, 'changePassword']);
         Route::get('/dashboard', [BorrowerPortalController::class, 'dashboard']);
+        Route::get('/credit-wellness', [CreditWellnessController::class, 'borrowerDashboard']);
+        Route::get('/credit-wellness/eligibility', [CreditWellnessController::class, 'borrowerEligibility']);
         Route::get('/payments', [BorrowerPortalController::class, 'payments']);
         Route::get('/payments/history', [BorrowerPortalController::class, 'paymentHistory']);
         Route::get('/payments/{payment}/official-receipt', [BorrowerPortalController::class, 'downloadOfficialReceipt']);

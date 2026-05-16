@@ -38,6 +38,8 @@ class NotificationCenter
 
     public const CATEGORY_PAYMENT_OVERDUE = 'payment_overdue';
 
+    public const CATEGORY_CREDIT_WELLNESS = 'credit_wellness';
+
     public const CATEGORY_CRM_INQUIRY = 'crm_customer_inquiry';
 
     public const CATEGORY_ADMIN_INTERNAL = 'admin_internal';
@@ -67,6 +69,8 @@ class NotificationCenter
     public const MODULE_AUTH = 'auth';
 
     public const MODULE_SYSTEM = 'system';
+
+    public const MODULE_CREDIT_WELLNESS = 'credit_wellness';
 
     public function preferencesFor(User $user): NotificationPreference
     {
@@ -315,7 +319,7 @@ class NotificationCenter
     {
         return match ($category) {
             self::CATEGORY_SECURITY => 5,
-            self::CATEGORY_PAYMENT_OVERDUE, self::CATEGORY_CRM_INQUIRY => 4,
+            self::CATEGORY_PAYMENT_OVERDUE, self::CATEGORY_CRM_INQUIRY, self::CATEGORY_CREDIT_WELLNESS => 4,
             self::CATEGORY_PAYMENT_DUE, self::CATEGORY_VERIFICATION_REQUIRED, self::CATEGORY_MISSING_DOCUMENTS => 3,
             default => 2,
         };

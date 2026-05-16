@@ -19,10 +19,18 @@ return new class extends Migration
                 }
             });
             Schema::table('activity_logs', function (Blueprint $table): void {
-                if (Schema::hasColumn('activity_logs', 'module') && Schema::hasColumn('activity_logs', 'created_at')) {
+                if (
+                    Schema::hasColumn('activity_logs', 'module')
+                    && Schema::hasColumn('activity_logs', 'created_at')
+                    && ! $this->hasIndex('activity_logs', 'activity_logs_module_created_idx')
+                ) {
                     $table->index(['module', 'created_at'], 'activity_logs_module_created_idx');
                 }
-                if (Schema::hasColumn('activity_logs', 'user_id') && Schema::hasColumn('activity_logs', 'created_at')) {
+                if (
+                    Schema::hasColumn('activity_logs', 'user_id')
+                    && Schema::hasColumn('activity_logs', 'created_at')
+                    && ! $this->hasIndex('activity_logs', 'activity_logs_user_created_idx')
+                ) {
                     $table->index(['user_id', 'created_at'], 'activity_logs_user_created_idx');
                 }
             });
@@ -65,10 +73,10 @@ return new class extends Migration
                 DB::table('messages')->whereNull('sent_at')->update(['sent_at' => DB::raw('COALESCE(created_at, CURRENT_TIMESTAMP)')]);
             }
             Schema::table('messages', function (Blueprint $table): void {
-                if (Schema::hasColumn('messages', 'sent_at')) {
+                if (Schema::hasColumn('messages', 'sent_at') && ! $this->hasIndex('messages', 'messages_chat_sent_id_idx')) {
                     $table->index(['chat_id', 'sent_at', 'id'], 'messages_chat_sent_id_idx');
                 }
-                if (Schema::hasColumn('messages', 'read_at')) {
+                if (Schema::hasColumn('messages', 'read_at') && ! $this->hasIndex('messages', 'messages_chat_read_idx')) {
                     $table->index(['chat_id', 'read_at'], 'messages_chat_read_idx');
                 }
             });
@@ -90,13 +98,13 @@ return new class extends Migration
                 DB::table('chat_messages')->whereNull('sent_at')->update(['sent_at' => DB::raw('COALESCE(created_at, CURRENT_TIMESTAMP)')]);
             }
             Schema::table('chat_messages', function (Blueprint $table): void {
-                if (Schema::hasColumn('chat_messages', 'sent_at')) {
+                if (Schema::hasColumn('chat_messages', 'sent_at') && ! $this->hasIndex('chat_messages', 'chat_messages_sess_sent_id_idx')) {
                     $table->index(['session_id', 'sent_at', 'id'], 'chat_messages_sess_sent_id_idx');
                 }
-                if (Schema::hasColumn('chat_messages', 'delivered_at')) {
+                if (Schema::hasColumn('chat_messages', 'delivered_at') && ! $this->hasIndex('chat_messages', 'chat_messages_sess_deliv_idx')) {
                     $table->index(['session_id', 'delivered_at'], 'chat_messages_sess_deliv_idx');
                 }
-                if (Schema::hasColumn('chat_messages', 'read_at')) {
+                if (Schema::hasColumn('chat_messages', 'read_at') && ! $this->hasIndex('chat_messages', 'chat_messages_sess_read_idx')) {
                     $table->index(['session_id', 'read_at'], 'chat_messages_sess_read_idx');
                 }
             });
@@ -118,7 +126,11 @@ return new class extends Migration
                 DB::table('lead_messages')->whereNull('sent_at')->update(['sent_at' => DB::raw('COALESCE(created_at, CURRENT_TIMESTAMP)')]);
             }
             Schema::table('lead_messages', function (Blueprint $table): void {
-                if (Schema::hasColumn('lead_messages', 'lead_id') && Schema::hasColumn('lead_messages', 'sent_at')) {
+                if (
+                    Schema::hasColumn('lead_messages', 'lead_id')
+                    && Schema::hasColumn('lead_messages', 'sent_at')
+                    && ! $this->hasIndex('lead_messages', 'lead_messages_lead_sent_id_idx')
+                ) {
                     $table->index(['lead_id', 'sent_at', 'id'], 'lead_messages_lead_sent_id_idx');
                 }
             });
@@ -139,10 +151,22 @@ return new class extends Migration
         if (Schema::hasTable('payments')) {
             Schema::table('payments', function (Blueprint $table): void {
                 if (! Schema::hasColumn('payments', 'reminder_sent_at')) {
-                    $table->timestamp('reminder_sent_at')->nullable()->after('paid_at')->index();
+                    $column = $table->timestamp('reminder_sent_at')->nullable();
+                    if (Schema::hasColumn('payments', 'paid_at')) {
+                        $column->after('paid_at');
+                    }
+                    $column->index();
                 }
                 if (! Schema::hasColumn('payments', 'rejected_at')) {
-                    $table->timestamp('rejected_at')->nullable()->after('approved_at')->index();
+                    $column = $table->timestamp('rejected_at')->nullable();
+                    if (Schema::hasColumn('payments', 'approved_at')) {
+                        $column->after('approved_at');
+                    } elseif (Schema::hasColumn('payments', 'verified_at')) {
+                        $column->after('verified_at');
+                    } elseif (Schema::hasColumn('payments', 'paid_at')) {
+                        $column->after('paid_at');
+                    }
+                    $column->index();
                 }
             });
         }
@@ -188,11 +212,50 @@ return new class extends Migration
                 DB::table('notification_delivery_logs')->whereNull('sent_at')->update(['sent_at' => DB::raw('COALESCE(created_at, CURRENT_TIMESTAMP)')]);
             }
             Schema::table('notification_delivery_logs', function (Blueprint $table): void {
-                if (Schema::hasColumn('notification_delivery_logs', 'delivered_at')) {
+                if (
+                    Schema::hasColumn('notification_delivery_logs', 'delivered_at')
+                    && ! $this->hasIndex('notification_delivery_logs', 'notif_deliv_logs_status_deliv_idx')
+                ) {
                     $table->index(['status', 'delivered_at'], 'notif_deliv_logs_status_deliv_idx');
                 }
             });
         }
+    }
+
+    private function hasIndex(string $table, string $indexName): bool
+    {
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver === 'mysql' || $driver === 'mariadb') {
+            $rows = DB::select(
+                'SELECT 1 FROM information_schema.statistics
+                 WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?
+                 LIMIT 1',
+                [$table, $indexName],
+            );
+
+            return ! empty($rows);
+        }
+
+        if ($driver === 'pgsql') {
+            $rows = DB::select(
+                'SELECT 1 FROM pg_indexes WHERE tablename = ? AND indexname = ? LIMIT 1',
+                [$table, $indexName],
+            );
+
+            return ! empty($rows);
+        }
+
+        if ($driver === 'sqlite') {
+            $rows = DB::select(
+                "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ? LIMIT 1",
+                [$indexName],
+            );
+
+            return ! empty($rows);
+        }
+
+        return false;
     }
 
     public function down(): void

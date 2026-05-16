@@ -1,7 +1,8 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet } from 'react-router-dom'
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock.js'
 import { useBorrowerAuth } from './context/useBorrowerAuth.js'
+import { useLogoutConfirm } from '../context/useLogoutConfirm.js'
 import { borrowerApi } from './api/client.js'
 import { getLaravelStorageFileUrl } from '../utils/lendingLaravelApi.js'
 import { COOKIE_PREFERENCES_EVENT } from '../components/privacy/CookiePreferencesModal.jsx'
@@ -46,19 +47,57 @@ function CookiePrefsIcon({ className = 'h-5 w-5' }) {
   )
 }
 
-const nav = [
-  { to: '/borrower/dashboard', label: 'Dashboard' },
-  { to: '/borrower/applications', label: 'Applications' },
-  { to: '/borrower/apply-loan', label: 'Apply (wizard)' },
-  { to: '/borrower/payments', label: 'Payments' },
-  { to: '/borrower/chat', label: 'Chat' },
-  { to: '/borrower/profile', label: 'Profile' },
-  { to: '/borrower/security', label: 'Security' },
+const navGroups = [
+  {
+    label: 'Overview',
+    items: [
+      { to: '/borrower/dashboard', label: 'Dashboard' },
+      { to: '/borrower/credit-health', label: 'Credit & wellness' },
+      { to: '/borrower/offers', label: 'Offers' },
+    ],
+  },
+  {
+    label: 'Loans',
+    items: [
+      { to: '/borrower/applications', label: 'Applications' },
+      { to: '/borrower/apply-loan', label: 'Apply' },
+    ],
+  },
+  {
+    label: 'Money',
+    items: [
+      { to: '/borrower/payments', label: 'Payments' },
+      { to: '/borrower/autopay', label: 'Autopay' },
+      { to: '/borrower/statements', label: 'Statements' },
+      { to: '/borrower/tools', label: 'Calculators' },
+    ],
+  },
+  {
+    label: 'Documents',
+    items: [{ to: '/borrower/documents', label: 'Document center' }],
+  },
+  {
+    label: 'Support',
+    items: [
+      { to: '/borrower/chat', label: 'Live chat' },
+      { to: '/borrower/help', label: 'Help center' },
+      { to: '/borrower/tickets', label: 'Tickets' },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      { to: '/borrower/profile', label: 'Profile' },
+      { to: '/borrower/banking', label: 'Banking' },
+      { to: '/borrower/settings/privacy', label: 'Privacy' },
+      { to: '/borrower/security', label: 'Password' },
+    ],
+  },
 ]
 
 export default function BorrowerLayout() {
-  const { user, logout } = useBorrowerAuth()
-  const navigate = useNavigate()
+  const { user } = useBorrowerAuth()
+  const { openLogoutModal } = useLogoutConfirm()
   const [mobileOpen, setMobileOpen] = useState(false)
   useBodyScrollLock(mobileOpen)
   const [notifUnread, setNotifUnread] = useState(null)
@@ -114,11 +153,11 @@ export default function BorrowerLayout() {
   }, [notifModalOpen])
 
   const asideBase =
-    'fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-56 flex-col border-r border-gray-200 bg-white shadow-xl transition duration-300 ease-out dark:border-[#1F2937] dark:bg-gradient-to-b dark:from-[#0F172A] dark:via-[#0c1220] dark:to-[#020617] lg:translate-x-0'
+    'fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-56 flex-col border-r border-black/[0.06] bg-white/95 shadow-[4px_0_40px_rgba(29,29,31,0.07)] backdrop-blur-xl transition duration-300 ease-out dark:border-[#1F2937] dark:bg-gradient-to-b dark:from-[#0F172A] dark:via-[#0c1220] dark:to-[#020617] lg:translate-x-0'
   const sidebarTransform = mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
 
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden bg-gray-100 text-gray-900 transition-colors duration-300 dark:bg-[#0F172A] dark:text-gray-100">
+    <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden portal-shell-bg text-gray-900 transition-colors duration-300 dark:bg-[#0F172A] dark:text-gray-100">
       {/* Mobile: dim background when drawer open */}
       {mobileOpen ? (
         <button
@@ -132,7 +171,8 @@ export default function BorrowerLayout() {
       <aside className={`${asideBase} ${sidebarTransform}`}>
         <div className="flex h-full min-h-0 flex-col">
           <div className="shrink-0 border-b border-gray-200 px-5 py-5 dark:border-[#1F2937]">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#DC2626]">Borrower Portal</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand-primary">Borrower Portal</p>
+            <p className="mt-1 text-[9px] font-medium leading-snug text-gray-500 dark:text-gray-400">Amalgated Lending Inc.</p>
             <div className="mt-2 flex items-center gap-3">
               {avatarUrl ? (
                 <img
@@ -160,24 +200,48 @@ export default function BorrowerLayout() {
             className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 space-y-0.5"
             aria-label="Borrower portal navigation"
           >
-            {nav.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                onClick={() => setMobileOpen(false)}
-                className={({ isActive }) =>
-                  [
-                    'flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-200',
-                    isActive
-                      ? 'bg-red-600 text-white'
-                      : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5',
-                  ].join(' ')
-                }
-              >
-                {item.label}
-              </NavLink>
+            {navGroups.map((group) => (
+              <div key={group.label} className="mb-4 last:mb-0">
+                <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">{group.label}</p>
+                <div className="space-y-0.5">
+                  {group.items.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.to === '/borrower/dashboard'}
+                      onClick={() => setMobileOpen(false)}
+                      className={({ isActive }) =>
+                        [
+                          'flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-200',
+                          isActive
+                            ? 'bg-brand-primary text-white shadow-[0_4px_16px_rgba(230,57,70,0.38)]'
+                            : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5',
+                        ].join(' ')
+                      }
+                    >
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
             ))}
           </nav>
+
+          <div className="shrink-0 border-t border-gray-200 bg-gray-50/50 p-3 dark:border-[#1F2937] dark:bg-black/10">
+            <button
+              type="button"
+              onClick={() => {
+                setMobileOpen(false)
+                openLogoutModal('borrower')
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950/30"
+            >
+              <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Log out
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -187,13 +251,13 @@ export default function BorrowerLayout() {
           className="sticky top-0 z-20 border-b border-gray-200/90 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.05),0_6px_20px_-4px_rgba(15,23,42,0.08)] backdrop-blur-md transition-[box-shadow,background-color] duration-300 dark:border-[#1F2937] dark:bg-[#0F172A]/95 dark:shadow-[0_1px_0_rgba(255,255,255,0.04),0_8px_28px_-6px_rgba(0,0,0,0.45)]"
           role="banner"
         >
-          <div className="mx-auto flex w-full max-w-[min(100%,var(--width-content-standard))] 2xl:max-w-[min(100%,var(--width-content-wide))] min-w-0 items-center justify-between gap-2 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:gap-3">
+          <div className="mx-auto flex min-h-24 w-full max-w-[min(100%,var(--width-content-standard))] 2xl:max-w-[min(100%,var(--width-content-wide))] min-w-0 items-center justify-between gap-2 px-6 pb-4 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:gap-3 lg:px-16 xl:px-24">
             {/* Left: menu (mobile) → avatar → name, then portal label */}
             <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
               <button
                 type="button"
                 onClick={() => setMobileOpen((v) => !v)}
-                className="inline-flex h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-800 shadow-sm transition-colors hover:bg-gray-50 active:bg-gray-100 lg:hidden dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-100 dark:hover:bg-[#1F2937] dark:active:bg-[#111827] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#DC2626] touch-manipulation"
+                className="inline-flex h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-800 shadow-sm transition-colors hover:bg-gray-50 active:bg-gray-100 lg:hidden dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-100 dark:hover:bg-[#1F2937] dark:active:bg-[#111827] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary touch-manipulation"
                 aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
                 aria-expanded={mobileOpen}
                 aria-controls="borrower-sidebar-nav"
@@ -232,7 +296,7 @@ export default function BorrowerLayout() {
                 >
                   {user?.name || 'Borrower'}
                 </p>
-                <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#DC2626] sm:text-[11px] sm:tracking-[0.2em]">
+                <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-primary sm:text-[11px] sm:tracking-[0.2em]">
                   Borrower Portal
                 </p>
               </div>
@@ -246,7 +310,7 @@ export default function BorrowerLayout() {
                 <button
                   type="button"
                   onClick={() => setNotifModalOpen((v) => !v)}
-                  className="relative inline-flex h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-800 shadow-sm transition-colors hover:bg-gray-50 active:bg-gray-100 dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-100 dark:hover:bg-[#1F2937] dark:active:bg-[#111827] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#DC2626] touch-manipulation"
+                  className="relative inline-flex h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-800 shadow-sm transition-colors hover:bg-gray-50 active:bg-gray-100 dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-100 dark:hover:bg-[#1F2937] dark:active:bg-[#111827] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary touch-manipulation"
                   aria-label={
                     notifUnread != null && notifUnread > 0
                       ? `Notifications, ${notifUnread} unread`
@@ -263,7 +327,7 @@ export default function BorrowerLayout() {
                     />
                   </svg>
                   {notifUnread != null && notifUnread > 0 ? (
-                    <span className="absolute right-1 top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#DC2626] px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white dark:ring-[#0F172A]">
+                    <span className="absolute right-1 top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brand-primary px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white dark:ring-[#0F172A]">
                       {notifUnread > 99 ? '99+' : notifUnread}
                     </span>
                   ) : null}
@@ -307,7 +371,7 @@ export default function BorrowerLayout() {
               <button
                 type="button"
                 onClick={() => window.dispatchEvent(new CustomEvent(COOKIE_PREFERENCES_EVENT))}
-                className="inline-flex h-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-gray-800 shadow-sm transition-colors hover:bg-gray-50 active:bg-gray-100 max-[480px]:w-11 max-[480px]:px-0 min-[481px]:px-3.5 dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-200 dark:hover:bg-[#1F2937] dark:active:bg-[#111827] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#DC2626] touch-manipulation"
+                className="inline-flex h-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-gray-800 shadow-sm transition-colors hover:bg-gray-50 active:bg-gray-100 max-[480px]:w-11 max-[480px]:px-0 min-[481px]:px-3.5 dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-200 dark:hover:bg-[#1F2937] dark:active:bg-[#111827] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary touch-manipulation"
                 aria-label="Cookie and privacy preferences"
               >
                 <CookiePrefsIcon className="h-5 w-5 shrink-0 min-[481px]:hidden" />
@@ -317,11 +381,8 @@ export default function BorrowerLayout() {
 
               <button
                 type="button"
-                onClick={async () => {
-                  await logout()
-                  navigate('/borrower/login', { replace: true })
-                }}
-                className="inline-flex h-11 min-h-[44px] shrink-0 items-center justify-center rounded-xl bg-[#DC2626] px-3.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 active:bg-red-800 sm:px-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#DC2626] touch-manipulation whitespace-nowrap"
+                onClick={() => openLogoutModal('borrower')}
+                className="inline-flex h-11 min-h-[44px] shrink-0 items-center justify-center rounded-xl bg-brand-primary px-3.5 text-sm font-semibold text-white shadow-brand-primary transition-colors hover:bg-brand-primary-hover active:opacity-95 sm:px-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary touch-manipulation whitespace-nowrap"
                 aria-label="Log out of borrower portal"
               >
                 Logout
@@ -330,8 +391,8 @@ export default function BorrowerLayout() {
           </div>
         </header>
 
-        <main className="min-h-0 min-w-0 max-w-full flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] [-webkit-overflow-scrolling:touch] sm:p-6 lg:px-8 lg:py-6">
-          <div className="mx-auto flex w-full min-w-0 max-w-[min(100%,var(--width-content-standard))] 2xl:max-w-[min(100%,var(--width-content-wide))] flex-col gap-4">
+        <main className="min-h-0 min-w-0 max-w-full flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-6 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-6 [-webkit-overflow-scrolling:touch] sm:px-8 sm:pt-8 lg:px-16 lg:py-8 xl:px-24">
+          <div className="mx-auto flex w-full min-w-0 max-w-[min(100%,var(--width-content-standard))] 2xl:max-w-[min(100%,var(--width-content-wide))] flex-col gap-6">
             <Outlet />
           </div>
         </main>

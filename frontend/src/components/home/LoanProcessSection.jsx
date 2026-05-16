@@ -12,12 +12,14 @@ const steps = [
 export default function LoanProcessSection() {
   const reduceMotion = useReducedMotion()
   return (
-    <section id="loan-process" className="app-container py-8 sm:py-12">
-      <FadeInView>
+    <section id="loan-process" className="app-container landing-section">
+      <FadeInView className="landing-section-header">
         <p className="section-title">How It Works</p>
-        <h2 className="mt-2 text-3xl font-semibold text-brand-text">Simple step-by-step loan process</h2>
+        <h2 className="landing-section-heading">
+          Simple step-by-step loan process
+        </h2>
       </FadeInView>
-      <div className="relative mt-6">
+      <div className="relative landing-content-after-header">
         <motion.div
           aria-hidden
           className="absolute left-4 right-4 top-6 hidden h-0.5 bg-brand-primary/20 xl:block"
@@ -27,26 +29,21 @@ export default function LoanProcessSection() {
           transition={{ duration: 0.9, ease: 'easeOut' }}
           style={{ transformOrigin: 'left' }}
         />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="landing-card-grid md:grid-cols-2 xl:grid-cols-5">
           {steps.map(([title, desc], index) => (
             <motion.article
               key={title}
-              className="surface-card-light p-5"
+              className="landing-panel h-full"
               initial={reduceMotion ? false : { opacity: 0, y: 16 }}
               whileInView={reduceMotion ? {} : { opacity: 1, y: 0 }}
               viewport={{ once: true, margin: '-80px' }}
               transition={{ duration: 0.45, delay: reduceMotion ? 0 : index * 0.08 }}
             >
-              <motion.div
-                className="mb-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand-primary/15 text-xs font-semibold text-brand-primary"
-                initial={reduceMotion ? false : { scale: 0.9, opacity: 0.6 }}
-                whileInView={reduceMotion ? {} : { scale: 1, opacity: 1 }}
-                transition={{ duration: 0.35, delay: reduceMotion ? 0 : index * 0.08 + 0.1 }}
-              >
+              <div className="mb-6 inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-primary/15 text-xs font-semibold text-brand-primary">
                 {index + 1}
-              </motion.div>
+              </div>
               <h3 className="font-semibold text-brand-text">{title}</h3>
-              <p className="mt-2 text-sm text-brand-text/70">{desc}</p>
+              <p className="mt-4 text-sm leading-relaxed text-brand-text/70">{desc}</p>
             </motion.article>
           ))}
         </div>

@@ -55,7 +55,7 @@ function IconChevron({ open, className = '' }) {
 }
 
 function megaPanelClass() {
-  return 'rounded-2xl border border-black/[0.08] bg-white/[0.97] p-5 shadow-[0_12px_40px_rgba(0,0,0,0.07)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0f172a]/96'
+  return 'rounded-3xl border border-black/[0.07] bg-white/[0.98] p-5 shadow-[0_24px_60px_rgba(29,29,31,0.1),0_0_0_1px_rgba(230,57,70,0.04)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0f172a]/98'
 }
 
 export default function Header() {
@@ -175,14 +175,23 @@ export default function Header() {
     )
   }
 
-  const triggerBtn = (menuKey, label) => {
+  const triggerBtn = (menuKey, label, opts = {}) => {
+    const { bare = false } = opts
     const isOpen = openMenu === menuKey
+    const bareClasses = `nav-mega-trigger inline-flex h-10 shrink-0 items-center gap-1 rounded-xl px-3 text-[13px] font-semibold leading-none tracking-tight transition-all duration-200 ${
+      isOpen
+        ? 'bg-brand-primary/10 text-brand-primary shadow-[inset_0_0_0_1px_rgba(230,57,70,0.18)]'
+        : 'text-brand-text/65 hover:bg-black/[0.04] hover:text-brand-primary dark:text-white/60 dark:hover:text-white'
+    }`
+    const pillClasses = `nav-mega-trigger inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-3 text-[12px] font-semibold leading-none tracking-tight text-brand-text/65 transition-all duration-200 xl:gap-2 xl:px-4 xl:text-[13px] 2xl:px-5 ${
+      isOpen
+        ? 'bg-brand-primary/10 text-brand-primary shadow-[inset_0_0_0_1px_rgba(230,57,70,0.2)]'
+        : 'hover:bg-black/[0.05] hover:text-brand-primary'
+    }`
     return (
       <button
         type="button"
-        className={`nav-mega-trigger inline-flex items-center gap-1 rounded-md px-2 py-2 text-[12px] font-medium leading-none tracking-normal text-brand-text transition-colors duration-200 xl:gap-1.5 xl:rounded-lg xl:px-3 xl:py-2.5 xl:text-[13px] xl:tracking-wide 2xl:px-3.5 ${
-          isOpen ? 'bg-black/[0.04] text-brand-primary' : 'hover:bg-black/[0.03] hover:text-brand-primary'
-        }`}
+        className={bare ? bareClasses : pillClasses}
         aria-expanded={isOpen}
         aria-haspopup="true"
         aria-controls={isOpen ? `${baseId}-${menuKey}-mega` : undefined}
@@ -208,88 +217,112 @@ export default function Header() {
       ref={headerRef}
       className={`sticky top-0 z-[60] w-full border-b transition-[box-shadow,background-color,border-color] duration-300 ${
         scrolled
-          ? 'border-black/[0.07] bg-white/[0.94] shadow-[0_4px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1220]/94'
-          : 'border-black/[0.06] bg-brand-background-alt/[0.92] backdrop-blur-md dark:border-white/10 dark:bg-[#0b1220]/90'
+          ? 'border-red-100/45 bg-[#fdf6f6]/88 shadow-[0_12px_40px_rgba(230,57,70,0.08)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1220]/94'
+          : 'border-red-100/35 bg-red-50/35 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1220]/90'
       }`}
     >
-      <div className="app-container flex items-center justify-between gap-2 py-3 sm:gap-3 sm:py-3.5 lg:gap-4 lg:py-3.5 xl:gap-6 xl:py-4">
+      <div className="app-container relative flex min-h-[5.5rem] flex-wrap items-center justify-between gap-y-4 py-4 sm:gap-5 sm:py-5 lg:flex-nowrap lg:gap-8 lg:py-5 xl:gap-10">
+        <div className="relative z-30 flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
         <button
           type="button"
           onClick={goHome}
-          className="group mr-1 flex min-w-0 max-w-[min(100%,14rem)] shrink-0 items-center gap-2 pr-0.5 text-left transition-opacity hover:opacity-[0.92] sm:max-w-[min(100%,16rem)] sm:gap-2.5 sm:pr-1 lg:mr-2 lg:max-w-[min(100%,17rem)] xl:mr-3 xl:max-w-none xl:gap-3.5 xl:pr-2 2xl:mr-4"
+          className="group flex min-w-0 max-w-[min(100%,14rem)] shrink-0 items-center gap-2.5 rounded-2xl pr-1 text-left outline-none ring-brand-primary/0 transition hover:bg-black/[0.03] hover:ring-2 hover:ring-brand-primary/15 focus-visible:ring-2 focus-visible:ring-brand-primary/35 sm:max-w-[min(100%,17rem)] sm:gap-3 sm:pr-2 xl:gap-3.5 dark:hover:bg-white/[0.04]"
         >
-          <img
-            src="/amalgated-lending-logo.png"
-            alt="Amalgated Lending Inc."
-            width={48}
-            height={48}
-            decoding="async"
-            fetchPriority="high"
-            className="h-9 w-9 shrink-0 object-contain sm:h-[2.75rem] sm:w-[2.75rem]"
-          />
+          <span className="relative shrink-0 rounded-2xl bg-white p-0.5 shadow-sm ring-1 ring-black/[0.06] transition group-hover:shadow-md group-hover:ring-brand-primary/25 dark:bg-white/10 dark:ring-white/10">
+            <img
+              src="/amalgated-lending-logo.png"
+              alt="Amalgated Lending Inc."
+              width={48}
+              height={48}
+              decoding="async"
+              fetchPriority="high"
+              className="h-9 w-9 rounded-[0.875rem] object-contain sm:h-11 sm:w-11"
+            />
+          </span>
           <span className="flex min-w-0 flex-col border-l border-black/[0.08] pl-2.5 leading-tight sm:pl-3 dark:border-white/10">
-            <span className="truncate text-[0.8125rem] font-bold tracking-tight text-brand-text sm:text-[0.9375rem] dark:text-white">
+            <span className="truncate font-display text-[0.8125rem] font-bold tracking-tight text-brand-text sm:text-[0.9375rem] dark:text-white">
               Amalgated Lending Inc.
             </span>
-            <span className="mt-0.5 truncate text-[10px] font-medium leading-snug text-brand-text/60 sm:text-[11px] dark:text-white/60">
-              Trusted Lending · Davao &amp; Nationwide
+            <span className="mt-1 inline-flex max-w-full items-center gap-1.5 truncate text-[10px] font-medium leading-snug text-brand-text/55 sm:text-[11px] dark:text-white/55">
+              <span className="h-1 w-1 shrink-0 rounded-full bg-brand-primary" aria-hidden />
+              <span className="truncate">Digital lending · Davao HQ, nationwide online</span>
             </span>
           </span>
         </button>
+        </div>
 
-        <div className="hidden min-w-0 flex-1 items-center justify-center lg:flex">
+        <div className="relative z-20 hidden min-h-10 min-w-0 flex-1 items-center justify-start pl-2 sm:pl-3 lg:flex">
           <nav
-            className="relative isolate z-0 flex min-w-0 max-w-full flex-nowrap items-center justify-center gap-x-1.5 px-0.5 sm:px-0 xl:gap-x-2 2xl:gap-x-2.5"
-            aria-label="Main menu"
+            className="relative isolate z-0 flex w-fit min-w-0 max-w-full shrink-0 flex-nowrap items-center justify-start gap-x-1 px-0 sm:gap-x-1.5 sm:px-1 xl:gap-x-2 2xl:gap-x-3"
+            aria-label="Main navigation"
           >
             <div
-            className="relative flex shrink-0 self-stretch items-center"
-            onMouseEnter={() => {
-              clearCloseTimer()
-              setOpenMenu('trust')
-            }}
-            onMouseLeave={scheduleClose}
-          >
-            {triggerBtn('trust', 'Trust')}
-            <MegaPanel menuKey="trust">
-              <div className="grid gap-6 sm:grid-cols-2">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">Security &amp; trust</p>
-                  <p className="mt-2 text-sm leading-relaxed text-brand-text/75 dark:text-white/75">
-                    Licensed operations, encrypted borrower portal, and transparent terms — scroll to our trust pillars on the
-                    homepage.
-                  </p>
-                  <button
-                    type="button"
-                    className="mt-4 inline-flex rounded-full bg-brand-primary px-4 py-2 text-xs font-semibold text-white hover:bg-brand-primary-hover"
-                    onClick={() => {
-                      goToSection('trust')
-                      setOpenMenu(null)
-                    }}
-                  >
-                    View trust section
-                  </button>
+              className="relative z-30 flex h-10 shrink-0 items-center"
+              onMouseEnter={() => {
+                clearCloseTimer()
+                setOpenMenu('trust')
+              }}
+              onMouseLeave={scheduleClose}
+            >
+              {triggerBtn('trust', 'Trust')}
+              <MegaPanel menuKey="trust">
+                <div className="grid gap-6 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">Security &amp; trust</p>
+                    <p className="mt-2 text-sm leading-relaxed text-brand-text/75 dark:text-white/75">
+                      Licensed operations, encrypted borrower portal, and transparent terms — scroll to our trust pillars on the
+                      homepage.
+                    </p>
+                    <button
+                      type="button"
+                      className="mt-4 inline-flex rounded-full bg-brand-primary px-4 py-2 text-xs font-semibold text-white hover:bg-brand-primary-hover"
+                      onClick={() => {
+                        goToSection('trust')
+                        setOpenMenu(null)
+                      }}
+                    >
+                      View trust section
+                    </button>
+                  </div>
+                  <div className="rounded-xl bg-black/[0.03] p-4 dark:bg-white/5">
+                    <p className="text-xs font-semibold text-brand-text/60 dark:text-white/55">Also explore</p>
+                    <ul className="mt-2 space-y-2 text-sm">
+                      <li>
+                        <button
+                          type="button"
+                          className="font-medium text-brand-primary hover:underline"
+                          onClick={() => {
+                            goToSection('partners')
+                            setOpenMenu(null)
+                          }}
+                        >
+                          Partner &amp; stack overview
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          className="font-medium text-brand-primary hover:underline"
+                          onClick={() => {
+                            goToSection('testimonials')
+                            setOpenMenu(null)
+                          }}
+                        >
+                          Borrower testimonials
+                        </button>
+                      </li>
+                      <li>
+                        <Link to="/privacy-policy" className="font-medium text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
+                          Privacy &amp; data protection
+                        </Link>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
-                <div className="rounded-xl bg-black/[0.03] p-4 dark:bg-white/5">
-                  <p className="text-xs font-semibold text-brand-text/60 dark:text-white/55">Also explore</p>
-                  <ul className="mt-2 space-y-2 text-sm">
-                    <li>
-                      <button type="button" className="font-medium text-brand-primary hover:underline" onClick={() => { goToSection('customer-feedback'); setOpenMenu(null) }}>
-                        Borrower testimonials
-                      </button>
-                    </li>
-                    <li>
-                      <Link to="/privacy-policy" className="font-medium text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
-                        Privacy &amp; data protection
-                      </Link>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </MegaPanel>
-          </div>
+              </MegaPanel>
+            </div>
 
-            <div className="relative flex shrink-0 self-stretch items-center" onMouseEnter={() => { clearCloseTimer(); setOpenMenu('calculator') }} onMouseLeave={scheduleClose}>
+            <div className="relative flex h-10 shrink-0 items-center" onMouseEnter={() => { clearCloseTimer(); setOpenMenu('calculator') }} onMouseLeave={scheduleClose}>
             {triggerBtn('calculator', 'Calculator')}
             <MegaPanel menuKey="calculator">
               <div className="grid gap-6 sm:grid-cols-[1fr_220px]">
@@ -307,8 +340,15 @@ export default function Header() {
                       setOpenMenu(null)
                     }}
                   >
-                    Open calculator
+                    Jump to homepage calculator
                   </button>
+                  <Link
+                    to="/loan-calculator"
+                    className="mt-2 inline-flex text-xs font-semibold text-brand-primary hover:underline"
+                    onClick={() => setOpenMenu(null)}
+                  >
+                    Full calculator page →
+                  </Link>
                 </div>
                 <div className="flex flex-col justify-center rounded-xl border border-dashed border-black/15 p-4 text-center dark:border-white/15">
                   <p className="text-xs text-brand-text/60 dark:text-white/55">Need a product-specific page?</p>
@@ -320,7 +360,7 @@ export default function Header() {
             </MegaPanel>
           </div>
 
-          <div className="relative flex shrink-0 self-stretch items-center" onMouseEnter={() => { clearCloseTimer(); setOpenMenu('news') }} onMouseLeave={scheduleClose}>
+          <div className="relative flex h-10 shrink-0 items-center" onMouseEnter={() => { clearCloseTimer(); setOpenMenu('news') }} onMouseLeave={scheduleClose}>
             {triggerBtn('news', 'News')}
             <MegaPanel menuKey="news">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">News &amp; announcements</p>
@@ -340,7 +380,7 @@ export default function Header() {
             </MegaPanel>
           </div>
 
-          <div className="relative flex shrink-0 self-stretch items-center" onMouseEnter={() => { clearCloseTimer(); setOpenMenu('loans') }} onMouseLeave={scheduleClose}>
+          <div className="relative flex h-10 shrink-0 items-center" onMouseEnter={() => { clearCloseTimer(); setOpenMenu('loans') }} onMouseLeave={scheduleClose}>
             {triggerBtn('loans', 'Loan products')}
             <MegaPanel menuKey="loans" align="right" widthClass="w-[min(100vw-2rem,680px)] sm:w-[min(100vw-2rem,820px)]">
               <div className="flex flex-wrap items-end justify-between gap-3 border-b border-black/[0.06] pb-4 dark:border-white/10">
@@ -369,7 +409,7 @@ export default function Header() {
               <div className="mt-5 border-t border-black/[0.06] pt-4 dark:border-white/10">
                 <Link
                   to="/loan-products"
-                  className="inline-flex w-full items-center justify-center rounded-xl bg-brand-primary px-4 py-3 text-sm font-semibold text-white shadow-[0_3px_14px_rgba(220,38,38,0.28)] transition hover:bg-brand-primary-hover hover:shadow-[0_5px_20px_rgba(220,38,38,0.32)] sm:w-auto"
+                  className="inline-flex w-full items-center justify-center rounded-xl bg-[linear-gradient(135deg,#E63946,#FF6B6B)] px-4 py-3 text-sm font-bold text-white shadow-[0_8px_28px_rgba(230,57,70,0.35)] transition hover:brightness-105 sm:w-auto"
                   onClick={() => setOpenMenu(null)}
                 >
                   View all loan products
@@ -378,7 +418,7 @@ export default function Header() {
             </MegaPanel>
           </div>
 
-          <div className="relative flex shrink-0 self-stretch items-center" onMouseEnter={() => { clearCloseTimer(); setOpenMenu('resources') }} onMouseLeave={scheduleClose}>
+          <div className="relative flex h-10 shrink-0 items-center" onMouseEnter={() => { clearCloseTimer(); setOpenMenu('resources') }} onMouseLeave={scheduleClose}>
             {triggerBtn('resources', 'Resources')}
             <MegaPanel menuKey="resources" align="right" widthClass="w-[min(100vw-2rem,700px)] sm:w-[min(100vw-2rem,900px)]">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">Resources</p>
@@ -413,25 +453,38 @@ export default function Header() {
                     </span>
                     <span className="mt-auto pt-3 text-xs font-semibold text-brand-primary">Read policy →</span>
                   </Link>
-                  <button
-                    type="button"
-                    className={`${resourceNavCardClass} w-full text-left`}
-                    onClick={() => {
-                      setOpenMenu(null)
-                      goToSection('about-us')
-                    }}
-                  >
+                  <Link to="/about" className={resourceNavCardClass} onClick={() => setOpenMenu(null)}>
                     <span className="text-sm font-semibold tracking-tight text-brand-text group-hover:text-brand-primary dark:text-white">
-                      About Us
+                      About us
                     </span>
                     <span className="mt-1.5 block text-xs font-medium leading-snug text-brand-primary/95 dark:text-brand-primary/90">
-                      Learn who we are, our mission, values, and commitment to transparent lending.
+                      Mission, governance, and how our Laravel-backed platform serves Mindanao and beyond.
                     </span>
                     <span className="mt-2 block text-xs leading-relaxed text-brand-text/65 dark:text-white/62">
                       Licensed financial solutions focused on secure, transparent, and borrower-friendly services.
                     </span>
-                    <span className="mt-auto pt-3 text-xs font-semibold text-brand-primary">Explore company →</span>
-                  </button>
+                    <span className="mt-auto pt-3 text-xs font-semibold text-brand-primary">Company profile →</span>
+                  </Link>
+                </div>
+                <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-black/[0.06] pt-4 text-[13px] font-semibold dark:border-white/10">
+                  <Link to="/eligibility" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
+                    Eligibility
+                  </Link>
+                  <Link to="/loan-calculator" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
+                    Calculator
+                  </Link>
+                  <Link to="/blog" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
+                    Blog
+                  </Link>
+                  <Link to="/careers" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
+                    Careers
+                  </Link>
+                  <Link to="/loans/personal" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
+                    Personal loans
+                  </Link>
+                  <Link to="/loans/business" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
+                    Business loans
+                  </Link>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:gap-4">
                   <div className="flex min-h-[9.5rem] flex-col rounded-xl border border-brand-primary/20 bg-gradient-to-br from-brand-primary/[0.11] via-white to-white p-4 transition-colors duration-300 dark:border-brand-primary/25 dark:from-brand-primary/18 dark:via-[#111827] dark:to-[#0f172a]">
@@ -461,9 +514,9 @@ export default function Header() {
             </MegaPanel>
           </div>
 
-            <span className="h-4 w-px shrink-0 self-center bg-black/[0.12] dark:bg-white/15" aria-hidden />
+            <span className="mx-0.5 h-5 w-px shrink-0 self-center bg-gradient-to-b from-transparent via-black/15 to-transparent dark:via-white/20" aria-hidden />
 
-            <div className="relative flex shrink-0 self-stretch items-center" onMouseEnter={() => { clearCloseTimer(); setOpenMenu('branches') }} onMouseLeave={scheduleClose}>
+            <div className="relative flex h-10 shrink-0 items-center" onMouseEnter={() => { clearCloseTimer(); setOpenMenu('branches') }} onMouseLeave={scheduleClose}>
             {triggerBtn('branches', 'Branches')}
             <MegaPanel menuKey="branches" align="right">
               <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
@@ -498,23 +551,29 @@ export default function Header() {
 
           <Link
             to="/borrower/login"
-            className="relative z-0 inline-flex min-h-[44px] shrink-0 self-stretch items-center justify-center whitespace-nowrap rounded-lg border border-black/15 bg-brand-primary px-3 py-2 text-[12px] font-semibold tracking-wide text-white shadow-[0_4px_20px_rgba(220,38,38,0.38)] transition hover:bg-brand-primary-hover hover:shadow-[0_6px_26px_rgba(220,38,38,0.42)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary xl:rounded-xl xl:px-4 xl:text-[13px] 2xl:px-5"
+            className="relative z-0 mr-0.5 inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-[linear-gradient(135deg,#E63946,#FF6B6B)] px-3.5 text-[12px] font-bold leading-none tracking-wide text-white shadow-[0_8px_28px_rgba(230,57,70,0.38)] transition hover:brightness-105 hover:shadow-[0_10px_32px_rgba(230,57,70,0.45)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary active:scale-[0.98] xl:rounded-xl xl:px-4 xl:text-[13px] 2xl:px-5"
           >
             Borrower login
           </Link>
           </nav>
         </div>
 
-        <div className="flex items-center gap-2.5 lg:hidden">
+        <div className="relative z-30 ml-auto flex shrink-0 items-center gap-2 lg:hidden">
+          <Link
+            to="/borrower/register"
+            className="rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-bold tracking-wide text-brand-text shadow-sm transition hover:border-brand-primary/30 sm:text-[13px]"
+          >
+            Join
+          </Link>
           <Link
             to="/borrower/login"
-            className="rounded-xl border border-black/15 bg-brand-primary px-3.5 py-2 text-xs font-semibold tracking-wide text-white shadow-[0_4px_18px_rgba(220,38,38,0.35)] sm:text-[13px]"
+            className="rounded-xl bg-[linear-gradient(135deg,#E63946,#FF6B6B)] px-3.5 py-2 text-xs font-bold tracking-wide text-white shadow-[0_6px_22px_rgba(230,57,70,0.35)] transition hover:brightness-105 sm:text-[13px]"
           >
             Log in
           </Link>
           <button
             type="button"
-            className="flex h-11 min-w-[44px] items-center justify-center rounded-lg text-brand-text hover:bg-black/10 dark:text-white dark:hover:bg-white/10"
+            className="flex h-11 min-w-[44px] items-center justify-center rounded-xl border border-black/10 bg-white/80 text-brand-text shadow-sm transition hover:border-brand-primary/25 hover:bg-brand-background-alt dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
             onClick={() => setMobileOpen((o) => !o)}
             aria-expanded={mobileOpen}
             aria-controls={`${baseId}-mobile-nav`}
@@ -537,7 +596,7 @@ export default function Header() {
         {mobileOpen ? (
           <motion.nav
             id={`${baseId}-mobile-nav`}
-            className="border-t border-black/10 bg-white/98 backdrop-blur-xl lg:hidden dark:border-white/10 dark:bg-[#0b1220]/98"
+            className="border-t border-black/10 bg-white/[0.97] backdrop-blur-xl lg:hidden dark:border-white/10 dark:bg-[#0b1220]/98"
             initial={reduceMotion ? false : { opacity: 0, height: 0 }}
             animate={reduceMotion ? {} : { opacity: 1, height: 'auto' }}
             exit={reduceMotion ? {} : { opacity: 0, height: 0 }}
@@ -634,22 +693,36 @@ export default function Header() {
                     <Link to="/privacy-policy" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
                       Privacy policy
                     </Link>
+                    <Link to="/about" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
+                      About us
+                    </Link>
+                    <Link to="/eligibility" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
+                      Eligibility checker
+                    </Link>
+                    <Link to="/loan-calculator" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
+                      Loan calculator
+                    </Link>
+                    <Link to="/blog" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
+                      Blog &amp; resources
+                    </Link>
+                    <Link to="/careers" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
+                      Careers
+                    </Link>
+                    <Link to="/loans/personal" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
+                      Personal loans hub
+                    </Link>
+                    <Link to="/loans/business" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
+                      Business &amp; collateral hub
+                    </Link>
                     <button
                       type="button"
-                      className="block w-full rounded-xl border border-black/[0.08] bg-white px-2.5 py-3 text-left transition hover:border-brand-primary/45 hover:shadow-sm dark:border-white/10 dark:bg-[#111827]/60 dark:hover:border-brand-primary/50"
+                      className="block w-full rounded-lg px-2 py-2 text-left text-sm font-semibold text-brand-text/80 hover:bg-black/[0.04] dark:text-white/80 dark:hover:bg-white/5"
                       onClick={() => {
                         setMobileOpen(false)
                         goToSection('about-us')
                       }}
                     >
-                      <span className="text-sm font-semibold text-brand-text dark:text-white">About Us</span>
-                      <span className="mt-1 block text-[11px] font-medium leading-snug text-brand-primary">
-                        Learn who we are, our mission, values, and commitment to transparent lending.
-                      </span>
-                      <span className="mt-1.5 block text-[11px] leading-relaxed text-brand-text/70 dark:text-white/65">
-                        Licensed financial solutions focused on secure, transparent, and borrower-friendly services.
-                      </span>
-                      <span className="mt-2 text-xs font-semibold text-brand-primary">Explore company →</span>
+                      About section on homepage
                     </button>
                     <p className="rounded-lg bg-brand-primary/10 px-2 py-2 text-xs leading-relaxed text-brand-text/80 dark:text-white/75">
                       <span className="font-semibold text-brand-text dark:text-white">Simple. Fast. Secure.</span> Apply online and track your application in the borrower portal.
@@ -670,7 +743,7 @@ export default function Header() {
               </button>
               <Link
                 to="/borrower/login"
-                className="block w-full rounded-xl border border-black/15 bg-brand-primary py-3.5 text-center text-[13px] font-semibold tracking-wide text-white shadow-[0_4px_20px_rgba(220,38,38,0.38)]"
+                className="block w-full rounded-xl bg-[linear-gradient(135deg,#E63946,#FF6B6B)] py-3.5 text-center text-[13px] font-bold tracking-wide text-white shadow-[0_8px_28px_rgba(230,57,70,0.35)] transition hover:brightness-105"
                 onClick={() => setMobileOpen(false)}
               >
                 Borrower login

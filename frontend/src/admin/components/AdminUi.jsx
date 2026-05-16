@@ -15,11 +15,11 @@ export const admin = {
   chartCard:
     'rounded-xl border border-gray-200 bg-white p-4 shadow-md transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:p-4 dark:shadow-lg sm:p-6',
   btnPrimary:
-    'touch-manipulation rounded-xl bg-[#DC2626] px-4 py-2.5 text-sm font-semibold text-white shadow-md transition duration-200 hover:bg-red-700 hover:shadow-lg',
+    'touch-manipulation rounded-xl bg-[#E63946] px-4 py-2.5 text-sm font-semibold text-white shadow-md transition duration-200 hover:bg-[#C72F3A] hover:shadow-lg',
   btnSecondary:
     'touch-manipulation rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 transition duration-200 hover:bg-gray-100 dark:border-[#1F2937] dark:bg-[#1F2937] dark:text-gray-100 dark:hover:bg-gray-800',
   input:
-    'rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition duration-300 placeholder:text-gray-500 focus:border-[#DC2626]/40 focus:ring-2 focus:ring-[#DC2626]/15 dark:border-[#1F2937] dark:bg-[#111827] dark:text-gray-100 dark:placeholder:text-gray-400',
+    'rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition duration-300 placeholder:text-gray-500 focus:border-[#E63946]/40 focus:ring-2 focus:ring-[#E63946]/15 dark:border-[#1F2937] dark:bg-[#111827] dark:text-gray-100 dark:placeholder:text-gray-400',
   tableWrap:
     'w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] rounded-xl border border-gray-200 bg-white shadow-md transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg',
   /** Scroll strip only (e.g. inside an existing card). Always pair <table> with tableMin* — never min-w-full alone or columns squash on small screens. */
@@ -54,7 +54,7 @@ export const admin = {
     'rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 transition-colors duration-300 hover:bg-gray-100 disabled:opacity-40 dark:border-[#1F2937] dark:bg-[#111827] dark:text-gray-100 dark:hover:bg-[#1F2937]',
   filterInactive:
     'border border-gray-200 bg-white text-gray-600 transition-colors duration-300 hover:bg-gray-100 dark:border-[#1F2937] dark:bg-[#111827] dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-100',
-  filterActive: 'bg-[#DC2626] text-white shadow-md ring-1 ring-red-500/30',
+  filterActive: 'bg-[#E63946] text-white shadow-md ring-1 ring-[#E63946]/30',
 }
 
 export function TableSkeletonRows({ cols = 4, rows = 5 }) {

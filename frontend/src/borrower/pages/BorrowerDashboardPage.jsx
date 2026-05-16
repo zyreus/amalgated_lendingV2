@@ -271,7 +271,7 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {!emailVerified ? (
         <div
           className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/40"
@@ -297,20 +297,49 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
         </div>
       ) : null}
 
-      <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-100 p-5 shadow-md transition-colors duration-300 dark:border-[#1F2937] dark:from-[#111827] dark:to-[#0F172A] dark:shadow-lg">
-        <p className="text-xs uppercase tracking-[0.2em] text-[#DC2626]">Borrower Dashboard</p>
-        <h2 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">Loan overview</h2>
-        <p className={`mt-1 text-sm ${ui.textMuted}`}>Your current loan health, due dates, and payment actions.</p>
-        <Link
-          to="/borrower/apply-loan"
-          className="mt-3 inline-flex rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
-        >
-          New loan application (wizard)
-        </Link>
+      <div className="rounded-2xl border border-gray-200/90 bg-gradient-to-br from-white to-brand-background-alt p-8 shadow-[0_12px_40px_rgba(0,0,0,0.07)] transition-colors duration-300 dark:border-[#1F2937] dark:from-[#111827] dark:to-[#0F172A] dark:shadow-lg lg:p-10">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-primary">Borrower Dashboard</p>
+        <h2 className="mt-3 text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">Loan overview</h2>
+        <p className={`mt-2 text-sm leading-relaxed ${ui.textMuted}`}>
+          Your current loan health, due dates, and payment actions—aligned with Amalgated Lending Inc. digital servicing standards.
+        </p>
+        <div className="mt-6 flex flex-wrap gap-4">
+          <Link
+            to="/borrower/apply-loan"
+            className="inline-flex min-h-11 items-center justify-center rounded-full bg-brand-primary px-8 py-4 text-sm font-semibold text-white shadow-brand-primary transition hover:bg-brand-primary-hover"
+          >
+            New loan application (wizard)
+          </Link>
+          <Link
+            to="/application-flow"
+            className="inline-flex min-h-11 items-center justify-center rounded-full border border-gray-200 bg-white px-8 py-4 text-sm font-semibold text-gray-900 transition hover:border-brand-primary/40 hover:bg-brand-background-alt dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-100 dark:hover:border-brand-primary/50"
+          >
+            Check eligibility
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { to: '/borrower/credit-health', title: 'Credit & wellness', desc: 'Score, loan health, insights' },
+          { to: '/borrower/payments', title: 'Payments & schedule', desc: 'Due dates, SOA, receipts' },
+          { to: '/borrower/applications', title: 'Applications', desc: 'Track status & documents' },
+          { to: '/borrower/chat', title: 'AI + live chat', desc: 'CRM-threaded support' },
+          { to: '/borrower/profile', title: 'Profile & KYC', desc: 'IDs, contacts, extensions' },
+        ].map((tile) => (
+          <Link
+            key={tile.to}
+            to={tile.to}
+            className="rounded-2xl border border-gray-200/90 bg-white p-8 shadow-[0_8px_28px_rgba(0,0,0,0.06)] transition hover:border-brand-primary/35 hover:shadow-[0_14px_40px_rgba(217,4,41,0.1)] dark:border-[#1F2937] dark:bg-[#111827] dark:hover:border-brand-primary/45 lg:p-10"
+          >
+            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{tile.title}</p>
+            <p className={`mt-1 text-xs ${ui.textMuted}`}>{tile.desc}</p>
+          </Link>
+        ))}
       </div>
 
       {loansList.length > 0 ? (
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg">
+        <div className="rounded-2xl border border-gray-200/90 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.06)] transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg lg:p-10">
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Your loans &amp; applications</h3>
           <p className={`mt-1 text-sm ${ui.textMuted}`}>
             {loansList.length > 1
@@ -362,8 +391,8 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
       ) : null}
 
       {documentApps.length > 0 ? (
-        <div className="rounded-2xl border border-red-200 bg-gradient-to-br from-red-50 to-white p-5 shadow-sm transition-colors duration-300 dark:border-red-900/40 dark:from-red-950/30 dark:to-[#111827] dark:shadow-lg">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">📂 My documents &amp; document applications</h3>
+        <div className="rounded-2xl border border-red-200/90 bg-gradient-to-br from-red-50/90 to-white p-8 shadow-[0_10px_30px_rgba(217,4,41,0.08)] transition-colors duration-300 dark:border-red-900/40 dark:from-red-950/30 dark:to-[#111827] dark:shadow-lg lg:p-10">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">My documents &amp; document applications</h3>
           <p className={`mt-1 text-sm ${ui.textMuted}`}>
             Complete product requirements and upload the signed copy before final submission.
           </p>
@@ -385,7 +414,7 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
                   {app.product?.slug ? (
                     <Link
                       to={`/apply/documents/${encodeURIComponent(app.product.slug)}`}
-                      className="shrink-0 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700"
+                      className="shrink-0 rounded-lg bg-brand-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-primary-hover"
                     >
                       Open upload page
                     </Link>
@@ -439,7 +468,7 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
       {lendingApps.general.length > 0 ||
       (lendingApps.general_drafts && lendingApps.general_drafts.length > 0) ||
       lendingApps.travel.length > 0 ? (
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg">
+        <div className="rounded-2xl border border-gray-200/90 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.06)] transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg lg:p-10">
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Loan applications</h3>
           <p className={`mt-1 text-sm ${ui.textMuted}`}>
             Submitted general applications and travel assistance: document checklist and signatures. Drafts are listed separately
@@ -620,7 +649,7 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
         </div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Total Loan Balance" value={formatPeso(summary.total_loan_balance)} />
         <SummaryCard
           label={amortizationOnlyLoanUi ? 'Monthly amortization' : 'Monthly Payment'}
@@ -634,22 +663,22 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
         />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[2fr_1fr]">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg">
+      <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
+        <div className="rounded-2xl border border-gray-200/90 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.06)] transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg lg:p-10">
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Payment progress</h3>
           <p className={`mt-1 text-sm ${ui.textMuted}`}>
             {formatPeso(summary.paid_amount)} / {formatPeso(summary.total_payable)}
           </p>
           <div className="mt-4 h-3 overflow-hidden rounded-full bg-gray-200 dark:bg-white/10">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-500"
+              className="h-full rounded-full bg-gradient-to-r from-brand-primary to-red-500 transition-all duration-500"
               style={{ width: `${Math.max(0, Math.min(100, Number(summary.progress_percent || 0)))}%` }}
             />
           </div>
           <p className={`mt-2 text-xs ${ui.textMuted}`}>{Number(summary.progress_percent || 0).toFixed(2)}% complete</p>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg">
+        <div className="rounded-2xl border border-gray-200/90 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.06)] transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg lg:p-10">
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Notifications</h3>
           <div className="mt-3 space-y-2">
             {notifications.length ? (
@@ -668,8 +697,8 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[2fr_1fr]">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg">
+      <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
+        <div className="rounded-2xl border border-gray-200/90 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.06)] transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg lg:p-10">
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Pending payments</h3>
           <div className="mt-4 space-y-3 md:hidden">
             {pendingRows.length ? (
@@ -700,7 +729,7 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
                   </dl>
                   <button
                     type="button"
-                    className="mt-3 w-full rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700"
+                    className="mt-3 w-full rounded-lg bg-brand-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-brand-primary-hover"
                     onClick={() => setModalRow(p)}
                   >
                     Upload Payment
@@ -743,7 +772,7 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
                     <td className={ui.tableCell}>
                       <button
                         type="button"
-                        className="rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700 sm:px-3"
+                        className="rounded-lg bg-brand-primary px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-primary-hover sm:px-3"
                         onClick={() => setModalRow(p)}
                       >
                         Upload Payment
@@ -763,7 +792,7 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
           </div>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg">
+        <div className="rounded-2xl border border-gray-200/90 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.06)] transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg lg:p-10">
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Loan details</h3>
           <dl className="mt-3 space-y-2 text-sm">
             <Row label="Amount applied" value={formatPeso(loan?.applied_principal ?? loan?.requested_principal ?? loan?.principal)} />
@@ -827,7 +856,7 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
               </div>
               <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-[#1F2937]">
                 <div
-                  className="h-full rounded-full bg-red-600 transition-all dark:bg-red-500"
+                  className="h-full rounded-full bg-brand-primary transition-all dark:bg-brand-primary"
                   style={{ width: `${Math.min(100, Math.round(Number(summary.progress_percent || 0)))}%` }}
                 />
               </div>
@@ -877,7 +906,7 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
         </div>
       </div>
 
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg">
+      <div className="rounded-2xl border border-gray-200/90 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.06)] transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg lg:p-10">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Recent payment receipts</h3>
           <Link to="/borrower/payments" className="text-xs font-medium text-red-600 hover:underline dark:text-red-400">
@@ -911,10 +940,10 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
 
       {modalRow ? (
         <div className={ui.modalOverlay}>
-          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827]">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200/90 bg-white p-8 shadow-2xl transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] lg:p-10">
             <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Upload payment receipt</h4>
             <p className={`mt-1 text-sm ${ui.textMuted}`}>Installment #{modalRow.installment_no}</p>
-            <form className="mt-4 space-y-3" onSubmit={submitUpload}>
+            <form className="mt-4 space-y-6" onSubmit={submitUpload}>
               <input
                 required
                 placeholder="Reference number"
@@ -951,7 +980,7 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
                 <button
                   disabled={uploading}
                   type="submit"
-                  className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+                  className="rounded-lg bg-brand-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-primary-hover disabled:opacity-60"
                 >
                   {uploading ? 'Uploading...' : 'Submit'}
                 </button>
@@ -985,7 +1014,7 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
 
 function SummaryCard({ label, value, sub, danger = false }) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-px hover:shadow-md dark:border-[#1F2937] dark:bg-[#111827] dark:hover:border-gray-600">
+    <div className="rounded-2xl border border-gray-200/90 bg-white p-6 shadow-[0_8px_24px_rgba(0,0,0,0.05)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_12px_32px_rgba(0,0,0,0.08)] dark:border-[#1F2937] dark:bg-[#111827] dark:hover:border-gray-600 lg:p-8">
       <p className={`text-xs ${ui.textMuted}`}>{label}</p>
       <p
         className={`mt-1 text-lg font-semibold ${danger ? 'text-red-600 dark:text-red-300' : 'text-gray-900 dark:text-gray-100'}`}

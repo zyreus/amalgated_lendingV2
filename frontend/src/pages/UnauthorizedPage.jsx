@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 
 export default function UnauthorizedPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100 px-6 text-gray-900 transition-colors duration-300 dark:bg-[#0F172A] dark:text-gray-100">
+    <div className="flex min-h-screen items-center justify-center page-shell-bg px-6 text-gray-900 transition-colors duration-300 dark:bg-[#0F172A] dark:[background-image:none] dark:text-gray-100">
       <div className="max-w-md rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-xl transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827]">
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Unauthorized</h1>
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">

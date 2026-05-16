@@ -124,18 +124,18 @@ export default function AdminHeaderClock({ variant: variantProp }) {
 
   const shell = {
     minimal:
-      'group inline-flex shrink-0 flex-col justify-center gap-0.5 rounded-lg border border-gray-200/90 bg-white p-2 text-left shadow-sm transition-colors duration-150 hover:bg-gray-50/90 dark:border-white/10 dark:bg-gray-900 dark:hover:bg-gray-800/90',
+      'group inline-flex h-10 shrink-0 items-center rounded-lg border border-gray-200/90 bg-white px-2.5 text-left shadow-sm transition-colors duration-150 hover:bg-gray-50/90 dark:border-white/10 dark:bg-gray-900 dark:hover:bg-gray-800/90',
     glass:
-      'group inline-flex shrink-0 flex-col justify-center gap-0.5 rounded-lg border border-white/70 bg-white/65 p-2 text-left shadow-sm backdrop-blur-md transition-colors duration-150 hover:bg-white/80 dark:border-white/10 dark:bg-gray-950/50 dark:hover:bg-gray-950/70',
+      'group inline-flex h-10 shrink-0 items-center rounded-lg border border-white/70 bg-white/65 px-2.5 text-left shadow-sm backdrop-blur-md transition-colors duration-150 hover:bg-white/80 dark:border-white/10 dark:bg-gray-950/50 dark:hover:bg-gray-950/70',
     premium:
-      'group inline-flex shrink-0 flex-col justify-center gap-0.5 rounded-lg border border-gray-200/90 border-l-[3px] border-l-[#DC2626] bg-white p-2 text-left shadow-sm transition-colors duration-150 hover:bg-gray-50/90 dark:border-gray-700/80 dark:border-l-red-500 dark:bg-gray-900 dark:hover:bg-gray-800/90',
+      'group inline-flex h-10 shrink-0 items-center rounded-lg border border-gray-200/90 border-l-[3px] border-l-[#DC2626] bg-white px-2.5 text-left shadow-sm transition-colors duration-150 hover:bg-gray-50/90 dark:border-gray-700/80 dark:border-l-red-500 dark:bg-gray-900 dark:hover:bg-gray-800/90',
   }[variant]
 
   return (
     <div className={shell} aria-live="polite" aria-atomic="true" title={title}>
-      <div className="flex items-start gap-1.5">
-        <ClockIcon className="mt-0.5 h-3.5 w-3.5" />
-        <div className="flex min-w-0 flex-col gap-0.5 leading-none">
+      <div className="flex items-center gap-1.5">
+        <ClockIcon className="h-3.5 w-3.5" />
+        <div className="flex min-w-0 flex-col justify-center gap-0 leading-none">
           <p className="text-xs font-bold tabular-nums tracking-tight text-gray-900 dark:text-gray-50">{parts.time}</p>
           <p className="max-w-[6.5rem] truncate text-[9px] font-medium capitalize text-gray-500 dark:text-gray-400">
             {parts.compactLine}

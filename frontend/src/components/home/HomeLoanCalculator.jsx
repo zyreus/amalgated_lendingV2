@@ -107,18 +107,18 @@ export default function HomeLoanCalculator() {
   return (
     <motion.section
       id="calculator"
-      className="surface-card-light p-5 sm:p-6"
+      className="landing-panel h-full"
       initial={reduceMotion ? false : { opacity: 0, y: 16 }}
       whileInView={reduceMotion ? {} : { opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-80px' }}
       transition={{ duration: 0.45 }}
     >
       <h3 className="text-lg font-semibold text-brand-text">Loan Calculator</h3>
-      <p className="mt-1 text-sm text-brand-text/70">
+      <p className="mt-3 text-sm leading-relaxed text-brand-text/70">
         Estimate indicative monthly amortization. Final terms and deductions are confirmed during application.
       </p>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="mt-8 grid gap-5 sm:grid-cols-2">
         <select
           className={loanCalculatorSelectClass}
           value={productId}
@@ -207,7 +207,7 @@ export default function HomeLoanCalculator() {
       <button
         onClick={compute}
         disabled={loading || !productId}
-        className="mt-4 inline-flex items-center gap-2 rounded-full bg-brand-primary px-6 py-3 text-sm font-semibold text-white transition disabled:opacity-60"
+        className="landing-btn-primary mt-8 gap-2 disabled:opacity-60"
       >
         {loading ? (
           <>
@@ -228,7 +228,7 @@ export default function HomeLoanCalculator() {
       ) : null}
 
       {data?.breakdown?.monthly_amortization != null ? (
-        <dl className="mt-5 rounded-xl border border-black/10 bg-white p-4 text-sm">
+        <dl className="mt-8 rounded-xl border border-red-100/45 bg-white p-6 text-sm sm:p-8">
           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <dt className="text-brand-text/70">Monthly amortization</dt>
             <dd className="text-xl font-semibold tabular-nums text-brand-text">

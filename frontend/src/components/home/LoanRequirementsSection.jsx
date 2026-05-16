@@ -23,16 +23,22 @@ const requirements = [
 
 export default function LoanRequirementsSection() {
   return (
-    <section id="loan-requirements" className="app-container py-8 sm:py-12">
-      <div className="surface-card-light p-6 sm:p-7">
-        <p className="section-title">Loan Requirements</p>
-        <h2 className="mt-2 text-3xl font-semibold text-brand-text">Clear documentary requirements by loan type.</h2>
-        <p className="mt-2 text-sm text-brand-text/70">We keep requirements transparent so you can prepare confidently.</p>
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+    <section id="loan-requirements" className="app-container landing-section">
+      <div className="landing-panel">
+        <div className="landing-section-header">
+          <p className="section-title">Loan Requirements</p>
+          <h2 className="landing-section-heading">
+            Clear documentary requirements by loan type.
+          </h2>
+          <p className="landing-section-lead">
+            We keep requirements transparent so you can prepare confidently.
+          </p>
+        </div>
+        <div className="landing-content-after-header landing-card-grid lg:grid-cols-2">
           {requirements.map((group) => (
-            <article key={group.type} className="rounded-xl border border-black/10 bg-white p-5">
-              <h3 className="text-lg font-semibold">{group.type}</h3>
-              <ul className="mt-3 space-y-1 text-sm text-brand-text/80">
+            <article key={group.type} className="landing-inner-card">
+              <h3 className="text-lg font-semibold text-brand-text">{group.type}</h3>
+              <ul className="mt-4 flex-1 space-y-2 text-sm leading-relaxed text-brand-text/80">
                 {group.docs.map((doc) => (
                   <li key={doc}>• {doc}</li>
                 ))}

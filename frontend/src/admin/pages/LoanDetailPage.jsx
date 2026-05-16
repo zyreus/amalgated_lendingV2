@@ -415,7 +415,16 @@ export default function LoanDetailPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <div className={`text-sm ${admin.cardNoHover}`}>
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Borrower</h2>
-          <p className="mt-2 text-gray-800 dark:text-gray-100">{loan.borrower?.name}</p>
+          {loan.borrower?.id ? (
+            <Link
+              to={`/admin/borrowers/${loan.borrower.id}`}
+              className="mt-2 inline-block text-gray-800 hover:underline dark:text-gray-100"
+            >
+              {loan.borrower?.name}
+            </Link>
+          ) : (
+            <p className="mt-2 text-gray-800 dark:text-gray-100">{loan.borrower?.name}</p>
+          )}
           <p className={admin.textMuted}>{loan.borrower?.email}</p>
           <p className={`mt-4 ${admin.textMuted}`}>
             Principal ₱{Number(loan.principal).toLocaleString()} · {loan.term_months} months · Rate:{' '}

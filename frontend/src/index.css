@@ -7,22 +7,28 @@
 /* `dark:` variants are inert (`.dark` is never applied — app is light-only). */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Design system: red, black, white (Amalgated Lending Inc.) */
+/* Design system — Amalgated Lending Inc. (primary #E63946, Gen Z fintech refresh) */
 @theme {
   --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-display: "Inter", system-ui, sans-serif;
-  --color-brand-primary: #dc2626;
-  --color-brand-primary-hover: #b91c1c;
+  --font-display: "Poppins", "Inter", system-ui, sans-serif;
+  --font-accent: "Sora", "Inter", system-ui, sans-serif;
+  --color-brand-primary: #e63946;
+  --color-brand-primary-hover: #c72f3a;
+  --color-brand-primary-soft: #ff6b6b;
   --color-brand-secondary: #404040;
   --color-brand-background: #ffffff;
-  --color-brand-background-alt: #ffffff;
-  --color-brand-text: #000000;
-  --color-brand-green: #dc2626;
-  --color-brand-green-hover: #b91c1c;
-  --color-brand-dark: #0f172a;
+  --color-brand-background-alt: #f8f9fa;
+  --color-brand-text: #1d1d1f;
+  --color-brand-success: #059669;
+  --color-brand-success-hover: #047857;
+  --color-brand-warning: #d97706;
+  --color-brand-warning-hover: #b45309;
+  --color-brand-dark: #0a0a0a;
   --shadow-soft: 0 18px 45px rgba(0, 0, 0, 0.08);
-  --shadow-brand-primary: 0 2px 8px rgba(220, 38, 38, 0.35);
-  --shadow-brand-green: 0 2px 8px rgba(220, 38, 38, 0.35);
+  --shadow-brand-primary: 0 4px 24px rgba(230, 57, 70, 0.35);
+  --shadow-brand-success: 0 4px 18px rgba(5, 150, 105, 0.28);
+  /** Marketing / hero accent (matches floating CTAs and premium cards) */
+  --gradient-brand-accent: linear-gradient(135deg, #e63946, #ff6b6b);
   /** Ultra-wide layouts: use `3xl:` utilities alongside default `sm/md/lg/xl/2xl`. */
   --breakpoint-3xl: 120rem;
   /** Max content width tokens (use with max-w-[min(100%,var(--width-content-…))]). */
@@ -49,18 +55,32 @@ body,
   min-height: 100dvh;
 }
 
+/**
+ * Marketing canvas — soft blush / light rose (matches `HomeModernHero` mesh).
+ * Applied on `#root` (not `body`) so MUI `CssBaseline` does not replace it.
+ * Public pages use transparent `.page-shell-bg` so this shows through; portals use `.portal-shell-bg`.
+ */
+#root {
+  background-color: #fdf4f4;
+  background-image:
+    radial-gradient(ellipse 120% 85% at 100% -12%, rgba(230, 57, 70, 0.11), transparent 52%),
+    radial-gradient(ellipse 95% 70% at 0% 102%, rgba(230, 57, 70, 0.055), transparent 48%),
+    radial-gradient(circle at 80% 55%, rgba(255, 107, 107, 0.045), transparent 42%),
+    linear-gradient(180deg, #fdf4f4 0%, #fcf1f2 24%, #fdf6f6 52%, #fff8f8 78%, #fdf4f4 100%);
+}
+
 body {
   margin: 0;
   overflow-x: hidden;
   font-family: var(--font-sans);
-  background-color: var(--color-brand-background-alt);
+  background-color: #fdf4f4;
   color: var(--color-brand-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 ::selection {
-  background-color: rgba(220, 38, 38, 0.2);
+  background-color: rgba(230, 57, 70, 0.22);
 }
 
 .nav-link {
@@ -80,8 +100,121 @@ body {
 }
 
 @layer components {
+  /**
+   * Public marketing wrapper — inherits premium blush canvas from `#root` (no solid white band).
+   * Pair with `min-h-screen` on page wrappers where needed.
+   */
+  .page-shell-bg {
+    @apply bg-transparent;
+  }
+
+  /** Admin / borrower app chrome — neutral surface over `#root` (hides marketing canvas). */
+  .portal-shell-bg {
+    @apply bg-gray-50;
+  }
+
+  /** Unified marketing / landing page width (1280px) — navbar, sections, footer. */
   .app-container {
-    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-10 xl:px-12;
+  }
+
+  .section-y {
+    @apply py-16 sm:py-20 lg:py-24;
+  }
+
+  /**
+   * Landing sections — bottom padding only so adjacent blocks don't double-stack gaps.
+   * Pair with `app-container` on each `<section>`.
+   */
+  .landing-section {
+    @apply scroll-mt-28 pb-12 sm:scroll-mt-32 sm:pb-14 lg:pb-16;
+  }
+
+  /** Hero, bottom CTA, and other premium bands. */
+  .landing-section-lg {
+    @apply scroll-mt-28 pb-14 sm:scroll-mt-32 sm:pb-16 lg:pb-20;
+  }
+
+  /** Hero — room above; compact below before trust cards. */
+  .landing-hero-section {
+    @apply scroll-mt-28 pt-20 pb-6 sm:scroll-mt-32 sm:pt-24 sm:pb-8 lg:pt-28 lg:pb-10;
+  }
+
+  /** Trust band directly under hero. */
+  .landing-section-after-hero {
+    @apply scroll-mt-28 pb-10 sm:scroll-mt-32 sm:pb-12 lg:pb-14;
+  }
+
+  /** Sections with a top divider — small top pad + standard bottom. */
+  .landing-section-divided {
+    @apply scroll-mt-28 border-t border-red-100/40 pt-10 pb-12 sm:scroll-mt-32 sm:pt-12 sm:pb-14 lg:pb-16;
+  }
+
+  .landing-section-header {
+    @apply max-w-3xl;
+  }
+
+  .landing-section-header--center {
+    @apply mx-auto max-w-3xl text-center;
+  }
+
+  /** Space between section intro and content grid. */
+  .landing-content-after-header {
+    @apply mt-8 sm:mt-10;
+  }
+
+  /** Section H2 following `.section-title`. */
+  .landing-section-heading {
+    @apply mt-3 text-3xl font-semibold tracking-tight text-brand-text sm:mt-4 sm:text-4xl;
+  }
+
+  /** Lead paragraph under section headings. */
+  .landing-section-lead {
+    @apply mt-4 max-w-2xl text-sm leading-relaxed text-brand-text/70 sm:text-base sm:leading-relaxed;
+  }
+
+  /** Vertical stack rhythm inside panels. */
+  .landing-stack {
+    @apply space-y-5;
+  }
+
+  .landing-stack-lg {
+    @apply space-y-6;
+  }
+
+  /** Primary section panel (white card shell). */
+  .landing-panel {
+    @apply rounded-2xl border border-red-100/50 bg-white p-6 shadow-[0_10px_36px_rgba(230,57,70,0.07),0_4px_20px_rgba(0,0,0,0.05)] sm:p-8 lg:p-10;
+  }
+
+  /** Nested card inside a landing panel. */
+  .landing-inner-card {
+    @apply flex h-full flex-col rounded-2xl border border-red-100/45 bg-white p-6 shadow-[0_2px_14px_rgba(230,57,70,0.05),0_2px_12px_rgba(0,0,0,0.04)] sm:p-8;
+  }
+
+  .landing-card-grid {
+    @apply grid gap-5 sm:gap-6 lg:gap-8;
+  }
+
+  .landing-cta-banner {
+    @apply rounded-2xl border border-red-100/50 bg-white p-8 text-center shadow-[0_12px_40px_rgba(230,57,70,0.08),0_6px_24px_rgba(0,0,0,0.05)] sm:p-10 lg:p-12;
+  }
+
+  .landing-footer-pills {
+    @apply flex flex-wrap items-center justify-center gap-4 sm:gap-5;
+  }
+
+  /** Primary / secondary CTA buttons on the public site. */
+  .landing-btn-primary {
+    @apply inline-flex min-h-11 items-center justify-center rounded-full bg-brand-primary px-8 py-4 text-sm font-semibold text-white transition hover:bg-brand-primary-hover;
+  }
+
+  .landing-btn-secondary {
+    @apply inline-flex min-h-11 items-center justify-center rounded-full border border-red-200/50 px-8 py-4 text-sm font-semibold transition hover:bg-red-50/80 hover:border-red-300/60;
+  }
+
+  .landing-btn-group {
+    @apply flex flex-wrap gap-4;
   }
 
   /** Horizontal scroll strip for responsive tables (pair with `admin.tableBase` + `admin.tableMin*` in JSX). */
@@ -98,12 +231,43 @@ body {
     @apply rounded-2xl border border-white/10 bg-[#0c0c0c] shadow-[0_10px_30px_rgba(0,0,0,0.35)];
   }
 
-  .surface-card-light {
-    @apply rounded-2xl border border-black/10 bg-white shadow-[0_10px_30px_rgba(0,0,0,0.08)];
+  /**
+   * Light marketing / public card shell — no padding (prevents double-padding with nested layouts).
+   * Always add explicit `p-*` / `px-*` / `py-*` on the same element.
+   * `surface-card-light-tight` is an alias for the same shell.
+   */
+  .surface-card-light,
+  .surface-card-light-tight {
+    @apply rounded-2xl border border-red-100/45 bg-white shadow-[0_10px_34px_rgba(230,57,70,0.07),0_4px_18px_rgba(0,0,0,0.05)];
+  }
+
+  .section-gap {
+    @apply gap-12 lg:gap-16;
   }
 
   .section-title {
-    @apply text-xs font-semibold uppercase tracking-[0.2em] text-red-500;
+    @apply mb-0 text-xs font-semibold uppercase tracking-[0.2em] text-brand-primary;
+  }
+
+  /** Hero / CTA gradient — matches brand accent spec */
+  .bg-gradient-brand {
+    background-image: var(--gradient-brand-accent);
+  }
+
+  /** Glassmorphism shell for dashboards and marketing cards */
+  .surface-glass {
+    @apply rounded-2xl border border-black/[0.06] bg-white/80 shadow-soft backdrop-blur-xl dark:border-white/10 dark:bg-[#111827]/55;
+  }
+
+  /** Display headings (Poppins) — pair with `font-semibold` / weights as needed */
+  .heading-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  /** Accent labels (Sora) */
+  .font-accent {
+    font-family: var(--font-accent);
   }
 
   /** Minimum 44×44px touch target (WCAG 2.5.5); pair with icon-only controls on phones. */
@@ -142,6 +306,30 @@ body {
   to { opacity: 1; }
 }
 
+@keyframes logout-modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes logout-modal-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.logout-modal-backdrop {
+  animation: logout-modal-fade-in 220ms ease-out;
+}
+
+.logout-modal-panel {
+  animation: logout-modal-scale-in 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* Loan application: screen hides print layout; print shows only #loan-application-print-root */
 @media screen {
   .print-only-amalg {
@@ -166,14 +354,61 @@ body {
   html {
     scroll-behavior: auto;
   }
+  .hero-orb--a,
+  .hero-orb--b,
+  .hero-orb--c {
+    animation: none !important;
+  }
+}
+
+/* Premium landing: soft mesh + floating orbs (disabled when user prefers reduced motion) */
+@keyframes hero-orb-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -12px, 0) scale(1.03);
+  }
+}
+
+.hero-mesh-bg {
+  background-color: #0a0a0a;
+  background-image:
+    radial-gradient(ellipse 120% 80% at 10% -10%, rgba(230, 57, 70, 0.45), transparent 55%),
+    radial-gradient(ellipse 90% 70% at 100% 0%, rgba(255, 107, 107, 0.22), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 50% 100%, rgba(255, 255, 255, 0.06), transparent 45%);
+}
+
+.hero-orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(64px);
+  opacity: 0.85;
+  pointer-events: none;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero-orb--a {
+    animation: hero-orb-float 14s ease-in-out infinite;
+  }
+  .hero-orb--b {
+    animation: hero-orb-float 18s ease-in-out infinite 2s;
+  }
+  .hero-orb--c {
+    animation: hero-orb-float 20s ease-in-out infinite 4s;
+  }
 }
 
 @media print {
   body * {
     visibility: hidden;
   }
-  body {
+  body,
+  #root {
     background: #fff !important;
+    background-image: none !important;
     color: #000 !important;
   }
   #loan-application-print-root,

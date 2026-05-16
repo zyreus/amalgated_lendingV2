@@ -28,7 +28,7 @@ export default function LoanProductsPreviewSection() {
   }, [])
 
   return (
-    <section id="loan-preview" className="border-t border-brand-secondary/40 bg-brand-background-alt py-16 sm:py-20">
+    <section id="loan-preview" className="border-t border-red-100/40 bg-transparent py-16 sm:py-20">
       <div className="app-container">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>

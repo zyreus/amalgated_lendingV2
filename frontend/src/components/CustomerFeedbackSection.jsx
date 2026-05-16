@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
-import { laravelRequest } from '../utils/lendingLaravelApi.js'
+import { fetchWebsiteTestimonials } from '../utils/fetchWebsiteTestimonials.js'
 
 /** Max approved testimonials shown on the homepage grid. */
 const DISPLAY_LIMIT = 3
@@ -24,7 +24,7 @@ function TestimonialCard({ item, index, reduceMotion }) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-32px' }}
       transition={{ duration: 0.4, delay: reduceMotion ? 0 : Math.min(index, 5) * 0.05 }}
-      className="group flex min-h-[280px] flex-col rounded-2xl border border-black/[0.08] bg-white p-6 shadow-[0_2px_8px_rgba(0,0,0,0.04)] ring-1 ring-black/[0.03] transition-shadow duration-300 hover:shadow-[0_12px_40px_rgba(0,0,0,0.08)]"
+      className="group flex min-h-[280px] flex-col rounded-2xl border border-black/[0.08] bg-white p-8 shadow-[0_2px_8px_rgba(0,0,0,0.04)] ring-1 ring-black/[0.03] transition-shadow duration-300 hover:shadow-[0_12px_40px_rgba(0,0,0,0.08)] sm:p-10"
     >
       <div className="flex items-start justify-between gap-3">
         <Stars value={item.rating} />
@@ -63,23 +63,15 @@ export default function CustomerFeedbackSection() {
 
     const load = async () => {
       setLoadState('loading')
-      const { res } = await laravelRequest(`/public/website/testimonials?limit=${DISPLAY_LIMIT}`, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-      })
+      const { ok, data: rows, meta } = await fetchWebsiteTestimonials(DISPLAY_LIMIT)
       if (cancelled) return
 
-      if (!res?.ok) {
+      if (!ok) {
         setLoadState('error')
         setItems([])
         setMeta({ review_count: 0, rating_value: null })
         return
       }
-
-      const body = await res.json().catch(() => ({}))
-      const rows = Array.isArray(body?.data) ? body.data : []
-      const reviewCount = Number(body?.meta?.review_count)
-      const ratingValue = body?.meta?.rating_value
 
       const mapped = rows
         .map((d) => ({
@@ -96,8 +88,8 @@ export default function CustomerFeedbackSection() {
 
       setItems(mapped)
       setMeta({
-        review_count: Number.isFinite(reviewCount) ? reviewCount : mapped.length,
-        rating_value: ratingValue != null ? Number(ratingValue) : null,
+        review_count: Number.isFinite(meta.review_count) ? meta.review_count : mapped.length,
+        rating_value: meta.rating_value != null ? Number(meta.rating_value) : null,
       })
       setLoadState('ready')
     }
@@ -151,12 +143,12 @@ export default function CustomerFeedbackSection() {
 
   return (
     <section
-      className="border-t border-brand-secondary/20 bg-gradient-to-b from-brand-background via-white to-brand-background py-14 sm:py-20"
+      className="app-container landing-section-divided bg-gradient-to-b from-transparent via-red-50/20 to-transparent"
       aria-labelledby="customer-feedback-heading"
     >
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="w-full">
         <motion.div
           initial={{ opacity: 0, y: 14 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -167,7 +159,7 @@ export default function CustomerFeedbackSection() {
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-brand-primary">Customer Feedback</p>
           <h2
             id="customer-feedback-heading"
-            className="mt-3 text-3xl font-semibold tracking-tight text-brand-text sm:text-[2rem] sm:leading-tight"
+            className="landing-section-heading mt-3 sm:mt-4"
           >
             What our borrowers say
           </h2>
@@ -205,7 +197,7 @@ export default function CustomerFeedbackSection() {
             </p>
           </div>
         ) : (
-          <ul className="mx-auto mt-12 grid max-w-6xl list-none gap-5 sm:grid-cols-2 sm:gap-6 lg:mx-auto lg:mt-14 lg:grid-cols-3 lg:gap-6">
+          <ul className="landing-content-after-header grid list-none gap-6 sm:grid-cols-2 sm:gap-8 lg:grid-cols-3 lg:gap-10">
             {gridItems.map((item, index) => (
               <li key={item.id} className="min-w-0">
                 <TestimonialCard item={item} index={index} reduceMotion={reduceMotion} />

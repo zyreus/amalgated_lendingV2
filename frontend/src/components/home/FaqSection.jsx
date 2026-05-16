@@ -11,17 +11,24 @@ const faqs = [
 
 export default function FaqSection() {
   return (
-    <section id="faqs" className="app-container py-8 sm:py-12">
-      <div className="surface-card-light p-6 sm:p-7">
-        <p className="section-title">FAQs</p>
-        <h2 className="mt-2 text-3xl font-semibold text-brand-text">Frequently Asked Questions</h2>
-        <div className="mt-5 space-y-3">
+    <section id="faqs" className="app-container landing-section">
+      <div className="mx-auto w-full max-w-3xl">
+        <div className="landing-section-header--center">
+          <p className="section-title">FAQs</p>
+          <h2 className="landing-section-heading">
+            Frequently Asked Questions
+          </h2>
+          <p className="landing-section-lead mx-auto">
+            Clear answers before you apply — rates, requirements, and security in one place.
+          </p>
+        </div>
+        <div className="landing-content-after-header space-y-4 sm:space-y-5">
           {faqs.map(([q, a]) => (
-            <details key={q} className="rounded-xl border border-black/10 bg-white p-4 open:shadow-sm">
-              <summary className="cursor-pointer list-none pr-6 text-sm font-semibold text-brand-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary">
+            <details key={q} className="landing-inner-card open:shadow-md">
+              <summary className="cursor-pointer list-none py-1 pr-8 text-sm font-semibold leading-relaxed text-brand-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary sm:text-base">
                 {q}
               </summary>
-              <p className="mt-2 text-sm leading-relaxed text-brand-text/75">{a}</p>
+              <p className="mt-4 text-sm leading-relaxed text-brand-text/75 sm:leading-8">{a}</p>
             </details>
           ))}
         </div>

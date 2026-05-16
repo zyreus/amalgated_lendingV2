@@ -72,6 +72,11 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
         return $this->hasMany(Loan::class, 'borrower_id');
     }
 
+    public function creditWellness(): HasOne
+    {
+        return $this->hasOne(BorrowerCreditWellness::class, 'borrower_id');
+    }
+
     public function loanApplications(): HasMany
     {
         return $this->hasMany(LoanApplication::class, 'user_id');

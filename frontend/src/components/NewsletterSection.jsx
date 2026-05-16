@@ -19,17 +19,17 @@ function NewsletterLoadingSkeleton() {
   return (
     <section
       id="newsletter"
-      className="border-t border-brand-secondary/25 bg-brand-background py-16"
+      className="app-container landing-section-divided border-brand-secondary/25 bg-transparent"
       aria-busy="true"
       aria-label="Loading news and announcements"
     >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <div className="overflow-hidden rounded-2xl border border-brand-secondary/30 bg-brand-background-alt shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+      <div className="app-container">
+        <div className="overflow-hidden rounded-2xl border border-red-100/45 bg-white/75 shadow-[0_8px_32px_rgba(230,57,70,0.06)] backdrop-blur-[2px]">
           <div className="grid md:grid-cols-2 md:divide-x md:divide-brand-secondary/25">
             {['Announcements', 'News'].map((label) => (
-              <div key={label} className="flex flex-col p-6 sm:p-8">
+              <div key={label} className="flex flex-col p-8 sm:p-10">
                 <div className={`h-3 w-36 ${bar}`} />
-                <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3">
+                <div className="mt-6 flex min-h-0 flex-1 flex-col gap-5">
                   {[0, 1, 2].map((i) => (
                     <div
                       key={`${label}-${i}`}
@@ -141,7 +141,7 @@ export default function NewsletterSection() {
     items.map((item) => (
       <article
         key={item.id}
-        className="rounded-xl border border-brand-secondary/25 bg-white/80 p-4 shadow-sm backdrop-blur-sm"
+        className="rounded-xl border border-brand-secondary/25 bg-white/80 p-6 shadow-sm backdrop-blur-sm sm:p-8"
       >
         <p className="text-sm font-semibold text-brand-text">{item.title}</p>
         {item.summary ? <p className="mt-2 text-sm leading-relaxed text-brand-text/75">{item.summary}</p> : null}
@@ -150,20 +150,18 @@ export default function NewsletterSection() {
     ))
 
   return (
-    <section id="newsletter" className="border-t border-brand-secondary/25 bg-brand-background py-16">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <div className="overflow-hidden rounded-2xl border border-brand-secondary/30 bg-brand-background-alt shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+    <section id="newsletter" className="app-container landing-section-divided border-brand-secondary/25 bg-transparent">
+      <div className="overflow-hidden rounded-2xl border border-red-100/45 bg-white/75 shadow-[0_8px_32px_rgba(230,57,70,0.06)] backdrop-blur-[2px]">
           <div className="grid md:grid-cols-2 md:items-stretch md:divide-x md:divide-brand-secondary/25">
-            <div className="flex flex-col p-6 sm:p-8">
+            <div className="flex flex-col p-8 sm:p-10">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-primary">Announcements</p>
-              <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3">{renderCards(announcements)}</div>
+              <div className="mt-6 flex min-h-0 flex-1 flex-col gap-5">{renderCards(announcements)}</div>
             </div>
-            <div className="flex flex-col p-6 sm:p-8">
+            <div className="flex flex-col p-8 sm:p-10">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-primary">News</p>
-              <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3">{renderCards(news)}</div>
+              <div className="mt-6 flex min-h-0 flex-1 flex-col gap-5">{renderCards(news)}</div>
             </div>
           </div>
-        </div>
       </div>
     </section>
   )

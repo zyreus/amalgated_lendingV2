@@ -13,7 +13,7 @@ use App\Models\PaymentAdjustmentAudit;
 use App\Models\PaymentReceiptAudit;
 use App\Models\User;
 use App\Services\ActivityLogger;
-use App\Services\CreditScoreService;
+use App\Services\CreditWellnessService;
 use App\Services\FinalPaymentAdjustmentService;
 use App\Services\LoanPaymentBalanceService;
 use App\Services\NotificationCenter;
@@ -212,7 +212,7 @@ class PaymentController extends Controller
                 try {
                     $b = User::query()->find($borrowerIdForScore);
                     if ($b) {
-                        app(CreditScoreService::class)->recalculateForUser($b);
+                        app(CreditWellnessService::class)->recalculateForUser($b);
                     }
                 } catch (\Throwable $e) {
                     report($e);
@@ -389,7 +389,7 @@ class PaymentController extends Controller
                 try {
                     $b = User::query()->find($borrowerIdForScore);
                     if ($b) {
-                        app(CreditScoreService::class)->recalculateForUser($b);
+                        app(CreditWellnessService::class)->recalculateForUser($b);
                     }
                 } catch (\Throwable $e) {
                     report($e);
@@ -608,7 +608,7 @@ class PaymentController extends Controller
     /**
      * Adjust scheduled amount for the final installment only (penalties/discounts/settlement corrections).
      */
-    public function adjustFinal(Request $request, Payment $payment, ActivityLogger $logger, CreditScoreService $creditScore): JsonResponse
+    public function adjustFinal(Request $request, Payment $payment, ActivityLogger $logger, CreditWellnessService $creditWellness): JsonResponse
     {
         $data = $request->validate([
             'amount_due' => 'required|numeric|min:0',
@@ -625,7 +625,7 @@ class PaymentController extends Controller
         $fresh = $result['payment'];
         $loan = $fresh->loan()->with('borrower')->first();
         if ($loan?->borrower) {
-            $creditScore->recalculateForUser($loan->borrower);
+            $creditWellness->recalculateForUser($loan->borrower);
         }
 
         $logger->log($request->user(), 'payments.adjust_final', $fresh, [
