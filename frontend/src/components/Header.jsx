@@ -221,8 +221,8 @@ export default function Header() {
           : 'border-red-100/35 bg-red-50/35 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1220]/90'
       }`}
     >
-      <div className="app-container relative flex min-h-[3.5rem] flex-nowrap items-center justify-between gap-x-2 gap-y-0 py-2.5 sm:min-h-[5.5rem] sm:gap-5 sm:py-5 lg:gap-8 lg:py-5 xl:gap-10">
-        <div className="relative z-30 flex min-w-0 flex-1 items-center gap-1.5 sm:gap-3">
+      <div className="app-container relative flex min-h-[3.5rem] items-center py-2.5 sm:min-h-[5.5rem] sm:py-5 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center lg:gap-6 xl:gap-8">
+        <motion.div className="relative z-30 flex min-w-0 items-center justify-self-start lg:col-start-1">
         <button
           type="button"
           onClick={goHome}
@@ -239,21 +239,21 @@ export default function Header() {
               className="h-9 w-9 rounded-[0.875rem] object-contain sm:h-11 sm:w-11"
             />
           </span>
-          <span className="flex min-w-0 flex-col border-l border-black/[0.08] pl-2.5 leading-tight sm:pl-3 dark:border-white/10">
+          <span className="flex min-w-0 flex-col justify-center border-l border-black/[0.08] pl-2.5 leading-tight sm:pl-3 dark:border-white/10">
             <span className="truncate font-display text-[0.8125rem] font-bold tracking-tight text-brand-text sm:text-[0.9375rem] dark:text-white">
               Amalgated Lending Inc.
             </span>
-            <span className="mt-1 hidden max-w-full items-center gap-1.5 truncate text-[10px] font-medium leading-snug text-brand-text/55 sm:inline-flex sm:text-[11px] dark:text-white/55">
+            <span className="mt-0.5 hidden max-w-full items-center gap-1.5 truncate text-[10px] font-medium leading-snug text-brand-text/55 sm:inline-flex sm:text-[11px] dark:text-white/55">
               <span className="h-1 w-1 shrink-0 rounded-full bg-brand-primary" aria-hidden />
               <span className="truncate">Digital lending · Davao HQ, nationwide online</span>
             </span>
           </span>
         </button>
-        </div>
+        </motion.div>
 
-        <div className="relative z-20 hidden min-h-10 min-w-0 flex-1 items-center justify-start pl-2 sm:pl-3 lg:flex">
+        <motion.div className="relative z-20 hidden min-h-10 min-w-0 items-center justify-center lg:col-start-2 lg:flex lg:justify-self-center">
           <nav
-            className="relative isolate z-0 flex w-fit min-w-0 max-w-full shrink-0 flex-nowrap items-center justify-start gap-x-1 px-0 sm:gap-x-1.5 sm:px-1 xl:gap-x-2 2xl:gap-x-3"
+            className="relative isolate z-0 flex w-fit max-w-full flex-nowrap items-center justify-center gap-x-0.5 sm:gap-x-1 xl:gap-x-1.5 2xl:gap-x-2"
             aria-label="Main navigation"
           >
             <div
@@ -549,31 +549,31 @@ export default function Header() {
             </MegaPanel>
           </div>
 
+          </nav>
+        </motion.div>
+
+        <motion.div className="relative z-30 ml-auto flex shrink-0 items-center justify-end gap-1.5 sm:gap-2 lg:col-start-3 lg:ml-0 lg:justify-self-end">
           <Link
             to="/borrower/login"
-            className="relative z-0 mr-0.5 inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-[linear-gradient(135deg,#E63946,#FF6B6B)] px-3.5 text-[12px] font-bold leading-none tracking-wide text-white shadow-[0_8px_28px_rgba(230,57,70,0.38)] transition hover:brightness-105 hover:shadow-[0_10px_32px_rgba(230,57,70,0.45)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary active:scale-[0.98] xl:rounded-xl xl:px-4 xl:text-[13px] 2xl:px-5"
+            className="hidden h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-[linear-gradient(135deg,#E63946,#FF6B6B)] px-3.5 text-[12px] font-bold leading-none tracking-wide text-white shadow-[0_8px_28px_rgba(230,57,70,0.38)] transition hover:brightness-105 hover:shadow-[0_10px_32px_rgba(230,57,70,0.45)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary active:scale-[0.98] lg:inline-flex xl:px-4 xl:text-[13px] 2xl:px-5"
           >
             Borrower login
           </Link>
-          </nav>
-        </div>
-
-        <div className="relative z-30 ml-auto flex shrink-0 items-center gap-1 sm:gap-2 lg:hidden">
           <Link
             to="/borrower/register"
-            className="rounded-lg border border-black/10 bg-white px-2 py-1.5 text-[10px] font-bold leading-none tracking-wide text-brand-text shadow-sm transition hover:border-brand-primary/30 sm:rounded-xl sm:px-3 sm:py-2 sm:text-xs sm:text-[13px]"
+            className="inline-flex h-10 items-center justify-center rounded-lg border border-black/10 bg-white px-2.5 text-[10px] font-bold leading-none tracking-wide text-brand-text shadow-sm transition hover:border-brand-primary/30 sm:rounded-xl sm:px-3 sm:text-xs sm:text-[13px] lg:hidden"
           >
             Join
           </Link>
           <Link
             to="/borrower/login"
-            className="rounded-lg bg-[linear-gradient(135deg,#E63946,#FF6B6B)] px-2.5 py-1.5 text-[10px] font-bold leading-none tracking-wide text-white shadow-[0_6px_22px_rgba(230,57,70,0.35)] transition hover:brightness-105 sm:rounded-xl sm:px-3.5 sm:py-2 sm:text-xs sm:text-[13px]"
+            className="inline-flex h-10 items-center justify-center rounded-lg bg-[linear-gradient(135deg,#E63946,#FF6B6B)] px-2.5 text-[10px] font-bold leading-none tracking-wide text-white shadow-[0_6px_22px_rgba(230,57,70,0.35)] transition hover:brightness-105 sm:rounded-xl sm:px-3.5 sm:text-xs sm:text-[13px] lg:hidden"
           >
             Log in
           </Link>
           <button
             type="button"
-            className="flex h-10 min-w-[40px] shrink-0 items-center justify-center rounded-lg border border-black/10 bg-white/80 text-brand-text shadow-sm transition hover:border-brand-primary/25 hover:bg-brand-background-alt sm:h-11 sm:min-w-[44px] sm:rounded-xl dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
+            className="flex h-10 min-w-[40px] shrink-0 items-center justify-center rounded-lg border border-black/10 bg-white/80 text-brand-text shadow-sm transition hover:border-brand-primary/25 hover:bg-brand-background-alt sm:h-11 sm:min-w-[44px] sm:rounded-xl lg:hidden dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
             onClick={() => setMobileOpen((o) => !o)}
             aria-expanded={mobileOpen}
             aria-controls={`${baseId}-mobile-nav`}
@@ -589,7 +589,7 @@ export default function Header() {
               </svg>
             )}
           </button>
-        </div>
+        </motion.div>
       </div>
 
       <AnimatePresence>

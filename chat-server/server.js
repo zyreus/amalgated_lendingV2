@@ -3332,7 +3332,7 @@ if (fs.existsSync(clientDir)) {
   } else if (process.env.NODE_ENV === 'production') {
     console.warn('[chat] No ../dist — run `npm run build` in the amalgated-lending project root to serve the SPA from this server.');
   } else {
-    console.info('[chat] No ../dist (normal for dev). UI: Vite dev server (e.g. http://localhost:5173). Optional: set VITE_DEV_SERVER_URL in chat-server/.env to redirect :8010 → Vite.');
+    console.info('[chat] No ../dist (normal for dev). UI: Vite dev server (e.g. http://localhost:5174). Optional: set VITE_DEV_SERVER_URL in chat-server/.env to redirect :8010 → Vite.');
   }
 }
 
