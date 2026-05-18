@@ -226,6 +226,12 @@ class NotificationCenter
 
         $this->logAdminDelivery($row->id, 'in_app', 'sent');
 
+        try {
+            app(StaffEmailNotifier::class)->dispatchForAdminNotification($row);
+        } catch (\Throwable) {
+            // Never break primary flows on staff email failures.
+        }
+
         return $row;
     }
 

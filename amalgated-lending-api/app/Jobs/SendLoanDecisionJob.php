@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Mail\LoanDecisionMail;
 use App\Models\EmailLog;
 use App\Models\Loan;
+use App\Services\EmailSettingsService;
 use App\Services\TransactionalMailSender;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -51,7 +52,7 @@ class SendLoanDecisionJob implements ShouldBeUnique, ShouldQueue
         return 'loan_decision:'.$loanId.':'.$decision.':'.$decisionTs;
     }
 
-    public function handle(TransactionalMailSender $sender): void
+    public function handle(TransactionalMailSender $sender, EmailSettingsService $emailSettings): void
     {
         $dedupeKey = self::dedupeKey($this->loanId, $this->decision, $this->decisionTs);
 
@@ -108,8 +109,9 @@ class SendLoanDecisionJob implements ShouldBeUnique, ShouldQueue
 
         $loanRef = 'AL-'.str_pad((string) $loan->id, 7, '0', STR_PAD_LEFT);
         $subject = $this->decision === 'rejected'
-            ? 'Decision: not approved — '.$loanRef.' — '.config('app.name')
-            : 'Decision: approved — '.$loanRef.' — '.config('app.name');
+            ? $emailSettings->templateSubject('loan_rejected', 'Decision: not approved — '.$loanRef)
+            : $emailSettings->templateSubject('loan_approved', 'Decision: approved — '.$loanRef);
+        $subject .= ' — '.config('app.name');
 
         try {
             $send = $sender->sendHtmlMailable($mailable, $email, (string) $borrower->name, $subject, [

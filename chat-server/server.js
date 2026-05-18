@@ -2267,19 +2267,14 @@ app.delete('/api/admin/subscribers/:id', requireAdmin, async (req, res) => {
 // ── Admin: Email status & test send ──
 
 app.get('/api/admin/email/status', requireAdmin, (_req, res) => {
-  const key = (process.env.BREVO_API_KEY || '').trim()
-  const smtp = (process.env.SMTP_HOST || '').trim()
-  const provider = key ? 'brevo-api'
-    : (process.env.MAILERSEND_API_KEY || '').trim() ? 'mailersend'
-    : (process.env.RESEND_API_KEY || '').trim() ? 'resend'
-    : smtp ? 'smtp'
-    : null
+  const smtp = (process.env.SMTP_HOST || process.env.MAIL_HOST || 'smtp.gmail.com').trim()
   res.json({
     ok: true,
     configured: isEmailConfigured(),
-    provider,
-    from: process.env.MAIL_FROM || '(not set)',
-    smtp_host: smtp || null,
+    provider: 'google_workspace_smtp',
+    from: process.env.MAIL_FROM || process.env.MAIL_FROM_ADDRESS || process.env.SMTP_USER || '(not set)',
+    smtp_host: smtp,
+    smtp_port: Number(process.env.SMTP_PORT || process.env.MAIL_PORT) || 587,
   });
 });
 
@@ -2289,7 +2284,7 @@ app.post('/api/admin/email/test', requireAdmin, async (req, res) => {
     return res.status(400).json({ ok: false, message: 'A valid "to" email is required.' });
   }
   if (!isEmailConfigured()) {
-    return res.status(400).json({ ok: false, message: 'No email provider configured. Add BREVO_API_KEY or SMTP_HOST to .env' });
+    return res.status(400).json({ ok: false, message: 'SMTP not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS (Google App Password) in .env' });
   }
   try {
     await sendTestEmail(to.trim());
@@ -2312,7 +2307,7 @@ app.post('/api/admin/notifications/send', requireAdmin, async (req, res) => {
     return res.status(400).json({ ok: false, message: 'title required' });
   }
   if (!isEmailConfigured()) {
-    return res.status(400).json({ ok: false, message: 'Configure MailerSend (MAILERSEND_API_KEY), Brevo, or SMTP in .env' });
+    return res.status(400).json({ ok: false, message: 'Configure Google Workspace SMTP (SMTP_HOST, SMTP_USER, SMTP_PASS) in .env' });
   }
   try {
     const subs = await getSubscribersForNotification(type);

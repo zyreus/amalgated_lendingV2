@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SendPublicFormAcknowledgementJob;
 use App\Models\Lead;
 use App\Models\LeadMessage;
+use App\Services\NotificationCenter;
 use App\Support\PublicStorageUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,6 +41,32 @@ class PublicLeadController extends Controller
             'sender_type' => 'borrower',
             'message' => $data['message'],
         ]);
+
+        $formType = str_contains(mb_strtolower($data['message']), 'newsletter') ? 'newsletter' : 'contact';
+
+        app(NotificationCenter::class)->notifyStaff(
+            NotificationCenter::CATEGORY_CRM_INQUIRY,
+            'public_lead',
+            'New lead — '.$data['name'],
+            mb_substr(trim($data['message']), 0, 240),
+            [
+                'lead_id' => $lead->id,
+                'email' => $data['email'],
+            ],
+            null,
+            [
+                'module' => NotificationCenter::MODULE_CRM,
+                'dedupe_key' => 'public_lead:'.$lead->id,
+            ],
+        );
+
+        SendPublicFormAcknowledgementJob::dispatch(
+            $data['email'],
+            $data['name'],
+            $formType,
+            mb_substr(trim($data['message']), 0, 200),
+            ['reference_id' => $lead->id, 'lead_id' => $lead->id],
+        );
 
         return response()->json([
             'ok' => true,

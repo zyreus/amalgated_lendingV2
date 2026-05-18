@@ -6,7 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Mail\LeadContactMail;
 use App\Models\Lead;
 use App\Models\LeadMessage;
-use App\Services\BrevoMailService;
+use App\Services\SmtpMailService;
+use App\Services\TransactionalMailSender;
 use App\Support\PublicStorageUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -81,9 +82,9 @@ class AdminLeadController extends Controller
 
     /**
      * Send an email from the admin to the lead’s address.
-     * Uses Brevo HTTP API when BREVO_API_KEY is set; otherwise Laravel Mail (SMTP/log).
+     * Sends CRM email to a lead via Google Workspace SMTP.
      */
-    public function sendEmail(Request $request, string $leadRef, BrevoMailService $brevo): JsonResponse
+    public function sendEmail(Request $request, string $leadRef, TransactionalMailSender $mail, SmtpMailService $smtp): JsonResponse
     {
         $data = $request->validate([
             'subject' => 'required|string|max:200',
@@ -115,50 +116,43 @@ class AdminLeadController extends Controller
         $leadName = trim((string) ($data['name'] ?? $lead?->name ?? '')) ?: 'there';
         $senderName = (string) ($request->user()->name ?? 'Amalgated Lending Inc.');
 
+        $mailable = new LeadContactMail(
+            $data['subject'],
+            $leadName,
+            $data['body'],
+            $senderName,
+        );
+
         try {
-            if ($brevo->isConfigured()) {
-                $html = view('mail.lead-contact', [
-                    'subjectLine' => $data['subject'],
-                    'leadName' => $leadName,
-                    'bodyText' => $data['body'],
-                    'senderName' => $senderName,
-                ])->render();
-                $brevo->sendHtml($to, $leadName, $data['subject'], $html);
-            } else {
-                Mail::to($to)->send(new LeadContactMail(
-                    $data['subject'],
-                    $leadName,
-                    $data['body'],
-                    $senderName,
-                ));
+            $result = $mail->sendHtmlMailable($mailable, $to, $leadName, $data['subject'], [
+                'flow' => 'crm_lead_email',
+                'lead_ref' => $leadRef,
+            ]);
+            if (! ($result['ok'] ?? false)) {
+                if (! $smtp->isConfigured()) {
+                    try {
+                        Mail::mailer('log')->to($to)->send(clone $mailable);
+
+                        return response()->json([
+                            'ok' => true,
+                            'message' => 'Email logged (dev fallback). Configure MAIL_* in .env for Google Workspace SMTP delivery.',
+                        ]);
+                    } catch (\Throwable $fallbackError) {
+                        report($fallbackError);
+                    }
+                }
+
+                return response()->json([
+                    'ok' => false,
+                    'message' => (string) ($result['detail'] ?? 'Could not send email. Check MAIL_* in .env.'),
+                ], 500);
             }
         } catch (\Throwable $e) {
             report($e);
-            // Dev fallback: if SMTP/Brevo is unavailable, still persist the outgoing email to logs
-            // so CRM actions don't hard-fail while env is being configured.
-            if (! $brevo->isConfigured()) {
-                try {
-                    Mail::mailer('log')->to($to)->send(new LeadContactMail(
-                        $data['subject'],
-                        $leadName,
-                        $data['body'],
-                        $senderName,
-                    ));
-
-                    return response()->json([
-                        'ok' => true,
-                        'message' => 'Email logged (dev fallback). Configure BREVO_API_KEY or MAIL_* for real delivery.',
-                    ]);
-                } catch (\Throwable $fallbackError) {
-                    report($fallbackError);
-                }
-            }
 
             return response()->json([
                 'ok' => false,
-                'message' => $brevo->isConfigured()
-                    ? ('Brevo: '.($e->getMessage() ?: 'Could not send email.'))
-                    : ('Could not send email. '.($e->getMessage() ?: 'Set BREVO_API_KEY or configure MAIL_* in .env.')),
+                'message' => $e->getMessage() ?: 'Could not send email.',
             ], 500);
         }
 

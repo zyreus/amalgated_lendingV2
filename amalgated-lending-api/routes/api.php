@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AdminCollectionsController;
 use App\Http\Controllers\Api\AdminAuthController;
 use App\Http\Controllers\Api\AdminChatController;
 use App\Http\Controllers\Api\AdminChatKnowledgeController;
+use App\Http\Controllers\Api\AdminEmailController;
 use App\Http\Controllers\Api\AdminFeedbackController;
 use App\Http\Controllers\Api\AdminLeadController;
 use App\Http\Controllers\Api\AuthController;
@@ -71,6 +72,8 @@ Route::prefix('v1')->group(function () {
     Route::post('/admin/login', [AdminAuthController::class, 'login'])->middleware('throttle:auth-login');
     Route::post('/borrower/login', [BorrowerAuthController::class, 'login'])->middleware('throttle:auth-login');
     Route::post('/borrower/register', [BorrowerAuthController::class, 'register'])->middleware('throttle:auth-register');
+    Route::post('/borrower/otp/request', [BorrowerAuthController::class, 'requestOtp'])->middleware('throttle:auth-password-reset');
+    Route::post('/borrower/otp/verify', [BorrowerAuthController::class, 'verifyOtpLogin'])->middleware('throttle:auth-login');
     Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:auth-login');
     Route::post('/borrower/forgot-password', [PasswordResetController::class, 'requestBorrower'])->middleware('throttle:auth-password-reset');
     Route::post('/admin/forgot-password', [PasswordResetController::class, 'requestAdmin'])->middleware('throttle:auth-password-reset');
@@ -265,6 +268,11 @@ Route::prefix('v1')->group(function () {
             Route::get('/settings', [SystemSettingController::class, 'index']);
             Route::get('/settings/{key}', [SystemSettingController::class, 'show']);
             Route::post('/settings/{key}', [SystemSettingController::class, 'upsert']);
+            Route::get('/admin/email/status', [AdminEmailController::class, 'status']);
+            Route::get('/admin/email/health', [AdminEmailController::class, 'health']);
+            Route::get('/admin/email/logs', [AdminEmailController::class, 'logs']);
+            Route::get('/admin/email/analytics', [AdminEmailController::class, 'analytics']);
+            Route::post('/admin/email/test', [AdminEmailController::class, 'test'])->middleware('throttle:6,1');
         });
 
         Route::middleware('permission:activity.view')->group(function () {

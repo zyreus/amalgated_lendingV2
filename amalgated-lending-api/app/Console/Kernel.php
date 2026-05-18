@@ -16,6 +16,7 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule)
     {
         $schedule->command('chat:knowledge-sync')->dailyAt('02:15');
+        $schedule->command('emails:payment-reminders')->dailyAt('08:00');
     }
 
     /**

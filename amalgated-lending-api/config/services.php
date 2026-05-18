@@ -32,21 +32,6 @@ return [
     ],
 
     /*
-    | Brevo (https://www.brevo.com/) transactional email API.
-    | Create an API key in Brevo → SMTP & API → API keys.
-    | Sender email must be verified in Brevo (Domains or single sender).
-    */
-    'brevo' => [
-        'api_key' => env('BREVO_API_KEY'),
-        'endpoint' => env('BREVO_API_ENDPOINT', 'https://api.brevo.com/v3'),
-        'sender_email' => env('BREVO_SENDER_EMAIL'),
-        'sender_name' => env('BREVO_SENDER_NAME'),
-        'timeout' => (int) env('BREVO_TIMEOUT', 30),
-        // Verify HTTPS to api.brevo.com (Windows dev: set false if cURL error 60 until php.ini curl.cainfo is set).
-        'verify_ssl' => filter_var(env('BREVO_HTTP_VERIFY_SSL', true), FILTER_VALIDATE_BOOL),
-    ],
-
-    /*
     | AWS credentials for Rekognition (liveness / face compare).
     | Uses same env vars as Laravel docs: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION.
     */

@@ -36,28 +36,12 @@ return [
     'mailers' => [
         'smtp' => [
             'transport' => 'smtp',
-            'host' => env('MAIL_HOST', 'smtp.mailgun.org'),
+            'host' => env('MAIL_HOST', 'smtp.gmail.com'),
             'port' => env('MAIL_PORT', 587),
             'encryption' => env('MAIL_ENCRYPTION', 'tls'),
             'username' => env('MAIL_USERNAME'),
             'password' => env('MAIL_PASSWORD'),
-            'timeout' => null,
-            'local_domain' => env('MAIL_EHLO_DOMAIN'),
-        ],
-
-        /*
-        | Brevo SMTP relay (https://help.brevo.com/hc/en-us/articles/209467485).
-        | Set MAIL_MAILER=brevo and BREVO_SMTP_LOGIN + BREVO_SMTP_KEY from Brevo → SMTP & API.
-        | Alternatively use generic MAIL_USERNAME / MAIL_PASSWORD with this mailer.
-        */
-        'brevo' => [
-            'transport' => 'smtp',
-            'host' => env('BREVO_SMTP_HOST', 'smtp-relay.brevo.com'),
-            'port' => env('BREVO_SMTP_PORT', 587),
-            'encryption' => env('BREVO_SMTP_ENCRYPTION', 'tls'),
-            'username' => env('BREVO_SMTP_LOGIN', env('MAIL_USERNAME')),
-            'password' => env('BREVO_SMTP_KEY', env('MAIL_PASSWORD')),
-            'timeout' => null,
+            'timeout' => (int) env('MAIL_TIMEOUT', 30),
             'local_domain' => env('MAIL_EHLO_DOMAIN'),
         ],
 
@@ -89,10 +73,10 @@ return [
 
         'failover' => [
             'transport' => 'failover',
-            'mailers' => [
+            'mailers' => array_values(array_filter([
                 'smtp',
-                'log',
-            ],
+                env('MAIL_FALLBACK_MAILER', 'log'),
+            ])),
         ],
     ],
 
@@ -108,8 +92,8 @@ return [
     */
 
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
-        'name' => env('MAIL_FROM_NAME', 'Example'),
+        'address' => env('MAIL_FROM_ADDRESS', 'support@amalgatedlending.com'),
+        'name' => env('MAIL_FROM_NAME', 'Amalgated Lending'),
     ],
 
     /*

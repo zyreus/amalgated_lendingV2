@@ -3,13 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Mail\LoanApplicationReceivedMail;
 use App\Models\Loan;
 use App\Models\LoanApplication;
 use App\Models\LoanDocument;
 use App\Models\Role;
 use App\Models\User;
-use App\Services\BrevoMailService;
+use App\Services\LoanApplicationMailNotifier;
 use App\Services\LoanProductRateResolver;
 use App\Services\NotificationCenter;
 use Carbon\Carbon;
@@ -17,7 +16,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 class TravelAssistanceController extends Controller
@@ -27,7 +25,7 @@ class TravelAssistanceController extends Controller
     private const BANK_STATEMENT_MONTHS_REQUIRED = 4;
 
     public function __construct(
-        private BrevoMailService $brevo,
+        private LoanApplicationMailNotifier $loanMail,
         private LoanProductRateResolver $loanProductRates,
     ) {}
 
@@ -299,29 +297,10 @@ class TravelAssistanceController extends Controller
 
     private function notifyBorrower(User $borrower, Loan $loan): void
     {
-        $email = trim((string) $borrower->email);
-        if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            return;
-        }
-
-        $mailable = new LoanApplicationReceivedMail($loan, (string) $borrower->name);
-        $subject = 'We received your Travel Assistance Loan application — Amalgated Lending Inc.';
-
-        if ($this->brevo->isConfigured()) {
-            try {
-                $html = $mailable->render();
-                $this->brevo->sendHtml($email, $borrower->name, $subject, $html);
-
-                return;
-            } catch (\Throwable $e) {
-                report($e);
-            }
-        }
-
-        try {
-            Mail::to($email)->send($mailable);
-        } catch (\Throwable $e) {
-            report($e);
-        }
+        $this->loanMail->sendReceived(
+            $borrower,
+            $loan,
+            'We received your Travel Assistance Loan application — Amalgated Lending Inc.',
+        );
     }
 }

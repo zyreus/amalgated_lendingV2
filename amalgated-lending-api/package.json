@@ -1,6 +1,7 @@
 {
     "private": true,
     "scripts": {
+        "artisan": "node ../scripts/artisan.cjs",
         "dev": "vite",
         "build": "vite build"
     },

@@ -2,27 +2,36 @@
 
 namespace App\Services;
 
+use App\Jobs\SendTransactionalEmailJob;
 use Illuminate\Mail\Mailable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 
 /**
- * Central Brevo + Laravel mail fallback with structured logging for transactional flows.
+ * Central Google Workspace SMTP delivery with retry, rate limiting, and structured logging.
  */
 class TransactionalMailSender
 {
     public function __construct(
-        private readonly BrevoMailService $brevo,
         private readonly NotificationCenter $notifications,
+        private readonly SmtpMailService $smtp,
     ) {}
 
     /**
-     * @param  array<string, mixed>  $failureMeta  Stored when both transports fail (FailedNotification.payload).
-     * @param  array<int, array{name: string, path: string}>  $brevoFileAttachments  Files read and sent as Brevo base64 attachments (not used on Laravel mail fallback).
+     * @param  array<string, mixed>  $failureMeta
+     * @param  array<int, array{name: string, path: string}>  $fileAttachments
      * @return array{ok: bool, detail: ?string}
      */
-    public function sendHtmlMailable(Mailable $mailable, string $toEmail, string $toName, string $subject, array $failureMeta = [], array $brevoFileAttachments = []): array
-    {
+    public function sendHtmlMailable(
+        Mailable $mailable,
+        string $toEmail,
+        string $toName,
+        string $subject,
+        array $failureMeta = [],
+        array $fileAttachments = [],
+    ): array {
         $trimmed = trim($toEmail);
         if ($trimmed === '' || ! filter_var($trimmed, FILTER_VALIDATE_EMAIL)) {
             Log::notice('Transactional mail skipped — invalid recipient.', ['meta' => $failureMeta]);
@@ -30,51 +39,95 @@ class TransactionalMailSender
             return ['ok' => false, 'detail' => 'invalid_recipient'];
         }
 
-        try {
-            if ($this->brevo->isConfigured()) {
-                $html = $mailable->render();
-                $brevoAttachments = [];
-                foreach ($brevoFileAttachments as $row) {
+        if (! app(EmailSettingsService::class)->maySendTransactional()) {
+            Log::notice('Transactional mail skipped — disabled in notification settings.', ['meta' => $failureMeta]);
+
+            return ['ok' => false, 'detail' => 'email_disabled'];
+        }
+
+        if (! $this->smtp->isConfigured()) {
+            Log::warning('Transactional mail skipped — SMTP not configured.', ['meta' => $failureMeta]);
+
+            return ['ok' => false, 'detail' => 'smtp_not_configured'];
+        }
+
+        $rateKey = 'mail-send:'.Str::lower($trimmed);
+        $perMinute = (int) config('mail_delivery.rate_limit_per_minute', 40);
+        if (RateLimiter::tooManyAttempts($rateKey, $perMinute)) {
+            Log::warning('Transactional mail rate limited.', ['recipient' => $trimmed, 'meta' => $failureMeta]);
+
+            return ['ok' => false, 'detail' => 'rate_limited'];
+        }
+        RateLimiter::hit($rateKey, 60);
+
+        if (config('mail_delivery.queue_transactional', false)) {
+            SendTransactionalEmailJob::dispatch($trimmed, $toName, $subject, $mailable::class, serialize($mailable), $fileAttachments, $failureMeta);
+
+            return ['ok' => true, 'detail' => 'queued'];
+        }
+
+        return $this->deliverNow($mailable, $trimmed, $toName, $subject, $failureMeta, $fileAttachments);
+    }
+
+    /**
+     * @param  array<string, mixed>  $failureMeta
+     * @param  array<int, array{name: string, path: string}>  $fileAttachments
+     * @return array{ok: bool, detail: ?string}
+     */
+    public function deliverNow(
+        Mailable $mailable,
+        string $toEmail,
+        string $toName,
+        string $subject,
+        array $failureMeta = [],
+        array $fileAttachments = [],
+    ): array {
+        $attempts = max(1, (int) config('mail_delivery.retry_attempts', 3));
+        $delayMs = max(100, (int) config('mail_delivery.retry_delay_ms', 750));
+        $lastError = null;
+
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            try {
+                $sendable = clone $mailable;
+                foreach ($fileAttachments as $row) {
                     $name = isset($row['name']) ? (string) $row['name'] : 'attachment.bin';
                     $path = isset($row['path']) ? (string) $row['path'] : '';
-                    if ($path === '' || ! is_readable($path)) {
-                        continue;
+                    if ($path !== '' && is_readable($path)) {
+                        $sendable->attach($path, ['as' => $name]);
                     }
-                    $raw = @file_get_contents($path);
-                    if ($raw === false || $raw === '') {
-                        continue;
-                    }
-                    $brevoAttachments[] = [
-                        'name' => $name,
-                        'content' => base64_encode($raw),
-                    ];
                 }
-                $this->brevo->sendHtml($trimmed, $toName ?: $trimmed, $subject, $html, $brevoAttachments);
 
-                return ['ok' => true, 'detail' => 'brevo'];
+                Mail::to($toEmail, $toName !== '' ? $toName : null)->send($sendable);
+
+                return ['ok' => true, 'detail' => 'google_workspace_smtp'];
+            } catch (\Throwable $e) {
+                $lastError = $e;
+                Log::warning('SMTP transactional mail attempt failed.', [
+                    'attempt' => $attempt,
+                    'subject' => $subject,
+                    'error' => $e->getMessage(),
+                ]);
+                if ($attempt < $attempts) {
+                    usleep($delayMs * 1000 * $attempt);
+                }
             }
-        } catch (\Throwable $e) {
-            Log::warning('Brevo transactional mail failed.', [
-                'subject' => $subject,
-                'error' => $e->getMessage(),
-            ]);
-            $this->notifications->recordFailure('system', null, 'email', $e, array_merge($failureMeta, ['stage' => 'brevo']));
         }
 
-        try {
-            // Send immediately so transactional flows (e.g. payment receipts) do not depend on a
-            // second queue worker for `Mail::queue` when Brevo is unavailable.
-            Mail::to($trimmed)->send($mailable);
+        $fallbackMailer = (string) config('mail_delivery.fallback_mailer', 'log');
+        if ($fallbackMailer !== '' && $fallbackMailer !== (string) config('mail.default')) {
+            try {
+                Mail::mailer($fallbackMailer)->to($toEmail)->send(clone $mailable);
 
-            return ['ok' => true, 'detail' => 'laravel_smtp'];
-        } catch (\Throwable $e) {
-            Log::error('Default mail send failed.', [
-                'subject' => $subject,
-                'error' => $e->getMessage(),
-            ]);
-            $this->notifications->recordFailure('system', null, 'email', $e, array_merge($failureMeta, ['stage' => 'laravel_mail']));
-
-            return ['ok' => false, 'detail' => $e->getMessage()];
+                return ['ok' => true, 'detail' => 'fallback_'.$fallbackMailer];
+            } catch (\Throwable $fallbackError) {
+                Log::error('Fallback mailer failed.', ['error' => $fallbackError->getMessage()]);
+            }
         }
+
+        if ($lastError) {
+            $this->notifications->recordFailure('system', null, 'email', $lastError, array_merge($failureMeta, ['stage' => 'smtp']));
+        }
+
+        return ['ok' => false, 'detail' => $lastError?->getMessage() ?? 'send_failed'];
     }
 }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Lead;
 use App\Models\LeadMessage;
+use App\Jobs\SendPublicFormAcknowledgementJob;
 use App\Services\NotificationCenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -151,6 +152,14 @@ class PublicInquiryController extends Controller
                 'module' => NotificationCenter::MODULE_CRM,
                 'dedupe_key' => 'lead_inquiry:'.$lead->id,
             ],
+        );
+
+        SendPublicFormAcknowledgementJob::dispatch(
+            $email,
+            $name,
+            'loan_inquiry',
+            $loanType.' · estimated ₱'.number_format($estimatedAmount, 2),
+            ['reference_id' => $lead->id, 'lead_id' => $lead->id],
         );
 
         return response()->json([

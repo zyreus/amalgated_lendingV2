@@ -19,6 +19,18 @@ class EmailLog extends Model
 
     public const NOTIFICATION_PAYMENT_RECEIPT = 'payment_receipt';
 
+    public const NOTIFICATION_PUBLIC_ACK = 'public_ack';
+
+    public const NOTIFICATION_STAFF_ALERT = 'staff_alert';
+
+    public const NOTIFICATION_PAYMENT_REMINDER = 'payment_reminder';
+
+    public const NOTIFICATION_PAYMENT_OVERDUE = 'payment_overdue';
+
+    public const NOTIFICATION_BORROWER_OTP = 'borrower_otp';
+
+    public const NOTIFICATION_REGISTRATION = 'registration_welcome';
+
     protected $fillable = [
         'dedupe_key',
         'loan_id',

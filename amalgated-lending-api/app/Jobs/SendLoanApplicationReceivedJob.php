@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Mail\LoanApplicationReceivedMail;
 use App\Models\User;
+use App\Services\EmailSettingsService;
 use App\Services\TransactionalMailSender;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,7 +32,7 @@ class SendLoanApplicationReceivedJob implements ShouldQueue
         $this->onQueue('notifications');
     }
 
-    public function handle(TransactionalMailSender $sender): void
+    public function handle(TransactionalMailSender $sender, EmailSettingsService $emailSettings): void
     {
         $dedupeKey = 'email_sent:loan_app_received:'.$this->loanId;
         if (Cache::has($dedupeKey)) {
@@ -55,7 +56,8 @@ class SendLoanApplicationReceivedJob implements ShouldQueue
 
         $mailable = new LoanApplicationReceivedMail($loan, (string) $borrower->name);
         $loanRef = 'AL-'.str_pad((string) $loan->id, 7, '0', STR_PAD_LEFT);
-        $subject = 'Application received — '.$loanRef.' — '.config('app.name', 'Amalgated Lending Inc.');
+        $subject = $emailSettings->templateSubject('loan_submitted', 'Application received — '.$loanRef)
+            .' — '.config('app.name', 'Amalgated Lending Inc.');
 
         $ok = $sender->sendHtmlMailable($mailable, $email, (string) $borrower->name, $subject, [
             'job' => __CLASS__,

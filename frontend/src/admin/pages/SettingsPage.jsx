@@ -25,11 +25,11 @@ const DEFAULTS = {
   interest_settings: { mode: 'reducing_balance', compounding: false },
   notifications: { email_enabled: true, sms_enabled: false, auto_send: true },
   email_settings: {
-    smtp_host: '',
+    smtp_host: 'smtp.gmail.com',
     smtp_port: 587,
-    smtp_user: '',
-    smtp_from_name: 'Amalgated Lending Inc.',
-    smtp_from_email: '',
+    smtp_user: 'support@amalgatedlending.com',
+    smtp_from_name: 'Amalgated Lending',
+    smtp_from_email: 'support@amalgatedlending.com',
     template_loan_submitted_subject: 'Loan application submitted',
     template_loan_approved_subject: 'Your loan was approved',
     template_loan_rejected_subject: 'Your loan was rejected',
@@ -199,6 +199,12 @@ export default function SettingsPage() {
   const [query, setQuery] = useState('')
   const [activeKey, setActiveKey] = useState('company')
   const sectionRefs = useRef({})
+  const [smtpStatus, setSmtpStatus] = useState(null)
+  const [smtpHealth, setSmtpHealth] = useState(null)
+  const [testEmailTo, setTestEmailTo] = useState('')
+  const [emailOpsLoading, setEmailOpsLoading] = useState(false)
+  const [emailLogs, setEmailLogs] = useState([])
+  const [emailAnalytics, setEmailAnalytics] = useState(null)
 
   useEffect(() => {
     ;(async () => {
@@ -219,6 +225,47 @@ export default function SettingsPage() {
       }
     })()
   }, [showToast])
+
+  const refreshSmtpDiagnostics = async () => {
+    setEmailOpsLoading(true)
+    try {
+      const [statusRes, healthRes, logsRes, analyticsRes] = await Promise.all([
+        api('/admin/email/status'),
+        api('/admin/email/health').catch(() => ({ health: { ok: false, message: 'Health check unavailable' } })),
+        api('/admin/email/logs?limit=25').catch(() => ({ email_logs: [] })),
+        api('/admin/email/analytics').catch(() => ({ analytics: null })),
+      ])
+      setSmtpStatus(statusRes.smtp || null)
+      setSmtpHealth(healthRes.health || null)
+      setEmailLogs(logsRes.email_logs || [])
+      setEmailAnalytics(analyticsRes.analytics || null)
+    } catch (e) {
+      showToast(e.message || 'Could not load SMTP status', 'error')
+    } finally {
+      setEmailOpsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    refreshSmtpDiagnostics()
+  }, [])
+
+  const sendTestEmail = async () => {
+    const to = testEmailTo.trim()
+    if (!to) {
+      showToast('Enter a recipient email for the test.', 'error')
+      return
+    }
+    setEmailOpsLoading(true)
+    try {
+      const res = await api('/admin/email/test', { method: 'POST', body: JSON.stringify({ to }) })
+      showToast(res.message || 'Test email sent', 'success')
+    } catch (e) {
+      showToast(e.message || 'Test email failed', 'error')
+    } finally {
+      setEmailOpsLoading(false)
+    }
+  }
 
   const patch = (key, partial) => {
     setSections((prev) => {
@@ -303,7 +350,7 @@ export default function SettingsPage() {
         key: 'email_settings',
         title: 'Email & Notification Settings',
         icon: 'email',
-        subtitle: 'SMTP and template defaults (UI-ready).',
+        subtitle: 'Google Workspace SMTP status, templates, and delivery tools.',
       },
       {
         key: 'credit_scoring',
@@ -702,7 +749,64 @@ export default function SettingsPage() {
             </div>
           </SectionCard>
 
-          <SectionCard id="email_settings" title="SMTP Configuration" icon="email" subtitle="SMTP credentials and email template defaults.">
+          <SectionCard id="email_settings" title="Google Workspace SMTP" icon="email" subtitle="Production mail via smtp.gmail.com (configure MAIL_* in the API .env).">
+            <div className="mb-6 rounded-2xl border border-[#2F6FA3]/25 bg-gradient-to-br from-[#2F6FA3]/10 via-transparent to-[#ff0000]/5 p-4 md:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#2F6FA3]">Mail provider</p>
+                  <h3 className="mt-1 text-lg font-semibold text-white">Google Workspace</h3>
+                  <p className="mt-1 max-w-xl text-sm text-zinc-400">
+                    Transactional email uses support@amalgatedlending.com with a Google App Password. Credentials stay in server .env only.
+                  </p>
+                </div>
+                <button type="button" onClick={refreshSmtpDiagnostics} disabled={emailOpsLoading} className={`${admin.btnSecondary} shrink-0`}>
+                  {emailOpsLoading ? 'Checking…' : 'Refresh status'}
+                </button>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-zinc-500">Configured</p>
+                  <p className={`mt-0.5 text-sm font-medium ${smtpStatus?.configured ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {smtpStatus?.configured ? 'Yes' : 'No — set MAIL_* in .env'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-zinc-500">SMTP health</p>
+                  <p className={`mt-0.5 text-sm font-medium ${smtpHealth?.ok ? 'text-emerald-400' : 'text-zinc-300'}`}>
+                    {smtpHealth?.ok ? `OK (${smtpHealth.latency_ms ?? '—'} ms)` : String(smtpHealth?.message || '—').slice(0, 48)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-zinc-500">From</p>
+                  <p className="mt-0.5 truncate text-sm font-medium text-zinc-200">
+                    {smtpStatus?.from_name || sections.email_settings.smtp_from_name} &lt;{smtpStatus?.from_address || sections.email_settings.smtp_from_email}&gt;
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-zinc-500">Host</p>
+                  <p className="mt-0.5 text-sm font-medium text-zinc-200">
+                    {smtpStatus?.host || sections.email_settings.smtp_host}:{smtpStatus?.port || sections.email_settings.smtp_port}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="min-w-0 flex-1">
+                  <FieldLabel label="Send test email" htmlFor="smtp-test-to" helper="Verifies live SMTP from the API server." />
+                  <input
+                    id="smtp-test-to"
+                    type="email"
+                    className={`mt-1 w-full ${admin.input}`}
+                    value={testEmailTo}
+                    onChange={(e) => setTestEmailTo(e.target.value)}
+                    placeholder="you@company.com"
+                  />
+                </div>
+                <button type="button" onClick={sendTestEmail} disabled={emailOpsLoading} className={`${admin.btnPrimary} sm:mb-0.5`}>
+                  Send test
+                </button>
+              </div>
+              <p className="mt-3 text-xs text-zinc-500">DNS: configure SPF, DKIM, and DMARC — see deploy/GOOGLE_WORKSPACE_SMTP.md.</p>
+            </div>
             <div className="grid min-w-0 gap-4 md:grid-cols-2">
               <div className="min-w-0">
                 <FieldLabel label="SMTP host" htmlFor="smtp-host" />
@@ -711,7 +815,7 @@ export default function SettingsPage() {
                   className={`mt-1 w-full ${admin.input}`}
                   value={sections.email_settings.smtp_host}
                   onChange={(e) => patch('email_settings', { smtp_host: e.target.value })}
-                  placeholder="smtp.mailserver.com"
+                  placeholder="smtp.gmail.com"
                 />
               </div>
               <div className="min-w-0">
@@ -749,7 +853,7 @@ export default function SettingsPage() {
                   className={`mt-1 w-full ${admin.input}`}
                   value={sections.email_settings.smtp_from_email}
                   onChange={(e) => patch('email_settings', { smtp_from_email: e.target.value })}
-                  placeholder="no-reply@yourdomain.com"
+                  placeholder="support@amalgatedlending.com"
                 />
               </div>
               <div className="min-w-0 md:col-span-2">
@@ -776,6 +880,68 @@ export default function SettingsPage() {
                   />
                 </div>
               </div>
+            </div>
+            {emailAnalytics ? (
+              <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-zinc-500">Sent (24h)</p>
+                  <p className="mt-0.5 text-sm font-medium text-emerald-400">{emailAnalytics.sent_last_24_hours ?? 0}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-zinc-500">Failed (7d)</p>
+                  <p className="mt-0.5 text-sm font-medium text-amber-400">{emailAnalytics.failed_last_7_days ?? 0}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-zinc-500">Queue depth</p>
+                  <p className="mt-0.5 text-sm font-medium text-zinc-200">{emailAnalytics.notifications_queue_depth ?? 0}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-zinc-500">Period</p>
+                  <p className="mt-0.5 text-sm font-medium text-zinc-200">{emailAnalytics.period_days ?? 30} days</p>
+                </div>
+              </div>
+            ) : null}
+            <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="text-sm font-semibold text-zinc-200">Recent delivery log</p>
+              <p className="mt-0.5 text-xs text-zinc-500">Failed, queued, and recent sent messages.</p>
+              {emailLogs.length === 0 ? (
+                <p className="mt-4 text-sm text-zinc-500">No delivery records yet.</p>
+              ) : (
+                <div className="mt-3 max-h-64 overflow-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="sticky top-0 bg-[#0a0a0a] text-zinc-500">
+                      <tr>
+                        <th className="py-2 pr-2">Status</th>
+                        <th className="py-2 pr-2">Type</th>
+                        <th className="py-2 pr-2">Recipient</th>
+                        <th className="py-2">When</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {emailLogs.map((row) => (
+                        <tr key={row.id} className="border-t border-white/5 text-zinc-300">
+                          <td className="py-2 pr-2">
+                            <span
+                              className={
+                                row.status === 'sent'
+                                  ? 'text-emerald-400'
+                                  : row.status === 'failed'
+                                    ? 'text-red-400'
+                                    : 'text-amber-400'
+                              }
+                            >
+                              {row.status}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-2">{row.notification_type}</td>
+                          <td className="py-2 pr-2 truncate max-w-[140px]">{row.recipient_email}</td>
+                          <td className="py-2 text-zinc-500">{row.sent_at || row.updated_at || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </SectionCard>
 
@@ -900,7 +1066,7 @@ export default function SettingsPage() {
                   className={`mt-1 w-full font-mono text-xs ${admin.input}`}
                   value={sections.integrations.api_keys}
                   onChange={(e) => patch('integrations', { api_keys: e.target.value })}
-                  placeholder="BREVO_API_KEY=...\nCRM_TOKEN=..."
+                  placeholder="CRM_TOKEN=...\nCHAT_INTERNAL_BROADCAST_SECRET=..."
                 />
               </div>
             </div>

@@ -3,9 +3,8 @@
 namespace App\Models;
 
 use App\Jobs\SendBorrowerEmailVerificationJob;
-use App\Services\BrevoMailService;
 use Illuminate\Auth\MustVerifyEmail as MustVerifyEmailTrait;
-use Illuminate\Auth\Notifications\ResetPassword as ResetPasswordNotification;
+use App\Notifications\BrandedResetPassword;
 use Illuminate\Auth\Passwords\CanResetPassword;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Contracts\Auth\CanResetPassword as CanResetPasswordContract;
@@ -130,34 +129,9 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
         return false;
     }
 
-    /**
-     * Prefer Brevo REST when BREVO_API_KEY is set (same as loan emails); otherwise Laravel mail/SMTP.
-     */
     public function sendPasswordResetNotification($token): void
     {
-        $brevo = app(BrevoMailService::class);
-        if ($brevo->isConfigured()) {
-            try {
-                $base = rtrim((string) config('app.frontend_url', 'http://localhost:5173'), '/');
-                $email = $this->getEmailForPasswordReset();
-                $url = $base.'/reset-password?token='.urlencode($token).'&email='.urlencode($email);
-                $name = trim((string) ($this->name ?? ''));
-                $appName = (string) config('app.name', 'Amalgated Lending Inc.');
-                $greeting = $name !== '' ? 'Hi '.$name : 'Hello';
-                $html = '<p>'.e($greeting).',</p>'
-                    .'<p>We received a request to reset your password for your '.e($appName).' borrower account.</p>'
-                    .'<p><a href="'.e($url).'">Reset your password</a></p>'
-                    .'<p>This link expires in 60 minutes. If you did not request a reset, you can ignore this email.</p>';
-
-                $brevo->sendHtml($email, $name !== '' ? $name : null, 'Reset your password — '.$appName, $html);
-
-                return;
-            } catch (\Throwable $e) {
-                report($e);
-            }
-        }
-
-        $this->notify(new ResetPasswordNotification($token));
+        $this->notify(new BrandedResetPassword($token));
     }
 
     /**

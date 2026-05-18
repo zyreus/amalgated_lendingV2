@@ -28,7 +28,7 @@ class PasswordResetController extends Controller
                     Log::warning('borrower.password_reset_link_not_sent', [
                         'email' => $user->email,
                         'status' => $status,
-                        'hint' => 'Check mail/Brevo config, throttle, or password broker.',
+                        'hint' => 'Check Google Workspace SMTP (MAIL_*), throttle, or password broker.',
                     ]);
                 } else {
                     Log::info('borrower.password_reset_link_sent', ['email' => $user->email]);

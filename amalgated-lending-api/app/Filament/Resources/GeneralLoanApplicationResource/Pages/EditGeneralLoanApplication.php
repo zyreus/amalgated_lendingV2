@@ -5,12 +5,10 @@ namespace App\Filament\Resources\GeneralLoanApplicationResource\Pages;
 use App\Filament\Resources\GeneralLoanApplicationResource;
 use App\Mail\GeneralLoanApplicationStatusMail;
 use App\Models\LoanApplication;
-use App\Services\BrevoMailService;
+use App\Services\TransactionalMailSender;
 use Filament\Forms;
 use Filament\Actions\Action;
 use Filament\Resources\Pages\EditRecord;
-use Illuminate\Support\Facades\Mail;
-
 class EditGeneralLoanApplication extends EditRecord
 {
     protected static string $resource = GeneralLoanApplicationResource::class;
@@ -78,21 +76,12 @@ class EditGeneralLoanApplication extends EditRecord
             default => 'Loan application submitted — Amalgated Lending Inc.',
         };
 
-        $brevo = app(BrevoMailService::class);
-        if ($brevo->isConfigured()) {
-            try {
-                $brevo->sendHtml($email, (string) $borrower->name, $subject, $mailable->render());
-
-                return;
-            } catch (\Throwable $e) {
-                report($e);
-            }
-        }
-
-        try {
-            Mail::to($email)->send($mailable);
-        } catch (\Throwable $e) {
-            report($e);
-        }
+        app(TransactionalMailSender::class)->sendHtmlMailable(
+            $mailable,
+            $email,
+            (string) $borrower->name,
+            $subject,
+            ['flow' => 'filament_general_loan_status', 'application_id' => $application->id],
+        );
     }
 }

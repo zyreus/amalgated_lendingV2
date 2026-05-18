@@ -121,23 +121,12 @@ class SendPaymentReceiptJob implements ShouldQueue
         $invoiceNumber = 'INV-'.str_pad((string) $payment->id, 6, '0', STR_PAD_LEFT);
         $subject = 'Payment confirmed — '.$invoiceNumber.' ('.$this->receiptNumber.') — '.config('app.name', 'Amalgated Lending Inc.');
 
-        $brevoFiles = [];
-        if ($pdfPath) {
-            $abs = Storage::disk('public')->path($pdfPath);
-            if (is_readable($abs)) {
-                $brevoFiles[] = [
-                    'name' => 'Official-Receipt-'.$this->receiptNumber.'.pdf',
-                    'path' => $abs,
-                ];
-            }
-        }
-
         try {
             $send = $sender->sendHtmlMailable($mailable, $email, (string) ($borrower?->name ?: $email), $subject, [
                 'job' => __CLASS__,
                 'payment_id' => $payment->id,
                 'dedupe_key' => $dedupeKey,
-            ], $brevoFiles);
+            ]);
             $ok = $send['ok'] ?? false;
             $detail = (string) ($send['detail'] ?? '');
 

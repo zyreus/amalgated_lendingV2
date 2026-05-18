@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\AuthSecurityRecorder;
+use App\Services\BorrowerOtpService;
 use App\Support\PublicStorageUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -179,6 +180,75 @@ class BorrowerAuthController extends Controller
         auth('api')->logout();
 
         return response()->json(['ok' => true]);
+    }
+
+    public function requestOtp(Request $request, BorrowerOtpService $otp): JsonResponse
+    {
+        $data = $request->validate([
+            'username' => 'required|string|max:255',
+        ]);
+
+        $user = $otp->resolveUserByLogin($data['username']);
+        if (! $user || ! $user->canUseBorrowerPortal()) {
+            return response()->json(['ok' => true, 'message' => 'If an account exists, a sign-in code was sent.']);
+        }
+
+        if (! $user->is_active) {
+            return response()->json(['ok' => false, 'message' => 'Account is deactivated.'], 403);
+        }
+
+        $result = $otp->requestCode($user);
+        if (! ($result['ok'] ?? false)) {
+            $status = isset($result['cooldown_seconds']) ? 429 : 422;
+
+            return response()->json([
+                'ok' => false,
+                'message' => $result['message'] ?? 'Could not send code.',
+                'cooldown_seconds' => $result['cooldown_seconds'] ?? null,
+            ], $status);
+        }
+
+        return response()->json(['ok' => true, 'message' => $result['message']]);
+    }
+
+    public function verifyOtpLogin(Request $request, BorrowerOtpService $otp, ActivityLogger $logger, AuthSecurityRecorder $security): JsonResponse
+    {
+        $data = $request->validate([
+            'username' => 'required|string|max:255',
+            'code' => 'required|string|min:4|max:12',
+        ]);
+
+        $user = $otp->resolveUserByLogin($data['username']);
+        if (! $user || ! $user->canUseBorrowerPortal() || ! $user->is_active) {
+            return response()->json(['ok' => false, 'message' => 'Invalid code or account.'], 401);
+        }
+
+        if (! $otp->verifyCode($user, $data['code'])) {
+            $security->recordFailure('borrower_otp', $data['username']);
+
+            return response()->json(['ok' => false, 'message' => 'Invalid or expired code.'], 401);
+        }
+
+        $token = auth('api')->login($user);
+        $authUser = auth('api')->user();
+        $logger->log($authUser, 'auth.borrower_otp_login');
+        $security->recordSuccess('borrower_otp', $authUser);
+
+        return response()->json([
+            'ok' => true,
+            'token' => $token,
+            'access_token' => $token,
+            'token_type' => 'bearer',
+            'expires_in' => auth('api')->factory()->getTTL() * 60,
+            'user' => [
+                'id' => $authUser->id,
+                'name' => $authUser->name,
+                'username' => $authUser->username,
+                'email' => $authUser->email,
+                'email_verified' => (bool) $authUser->email_verified_at,
+                'role' => $authUser->role,
+            ],
+        ]);
     }
 
     public function changePassword(Request $request, ActivityLogger $logger): JsonResponse

@@ -8,6 +8,7 @@
     "predev:full": "node scripts/clear-laravel-bind.cjs",
     "dev": "concurrently -n laravel,chat,vite -c blue,magenta,green \"npm run serve:laravel\" \"npm run serve:chat\" \"npm run dev:vite:full\"",
     "dev:laravel-vite": "concurrently -n laravel,vite -c blue,green \"npm run serve:laravel\" \"npm run dev:vite\"",
+    "artisan": "node scripts/artisan.cjs",
     "serve:laravel": "node scripts/serve-laravel.cjs",
     "serve:chat": "cd chat-server && node server.js",
     "dev:vite": "npx vite --config frontend/vite.config.js",

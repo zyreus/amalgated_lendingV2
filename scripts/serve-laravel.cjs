@@ -17,6 +17,11 @@ const {
   writeStartStatus,
 } = require('./laravel-active-port.cjs')
 const { loadDotenvLite } = require('./load-dotenv-lite.cjs')
+const {
+  MIN_PHP_MAJOR,
+  MIN_PHP_MINOR,
+  resolvePhpBinary,
+} = require('./resolve-php-binary.cjs')
 
 const apiDir = path.resolve(__dirname, '..', 'amalgated-lending-api')
 const artisan = path.join(apiDir, 'artisan')
@@ -39,66 +44,30 @@ if (!fs.existsSync(routerScript)) {
   process.exit(1)
 }
 
-const MIN_PHP_MAJOR = 8
-const MIN_PHP_MINOR = 2
-
-function parsePhpVersion(text) {
-  const match = String(text || '').match(/PHP\s+(\d+)\.(\d+)\.(\d+)/i)
-  if (!match) return null
-  return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    patch: Number(match[3]),
-  }
-}
-
-function isSupportedPhp(version) {
-  if (!version) return false
-  if (version.major > MIN_PHP_MAJOR) return true
-  if (version.major < MIN_PHP_MAJOR) return false
-  return version.minor >= MIN_PHP_MINOR
-}
-
-function resolvePhpVersion(phpBinary) {
-  return new Promise((resolve) => {
-    const probe = spawn(phpBinary, ['-v'], { shell: false })
-    let out = ''
-    let err = ''
-    probe.stdout.on('data', (chunk) => {
-      out += String(chunk || '')
-    })
-    probe.stderr.on('data', (chunk) => {
-      err += String(chunk || '')
-    })
-    probe.on('error', () => resolve({ ok: false, version: null, output: '' }))
-    probe.on('exit', () => {
-      const output = `${out}\n${err}`.trim()
-      resolve({ ok: true, version: parsePhpVersion(output), output })
-    })
-  })
-}
-
 async function main() {
   clearBindPort()
   clearStartStatus()
   writeStartStatus({ state: 'starting' })
-  const php = process.env.PHP_BINARY || 'php'
-  const phpCheck = await resolvePhpVersion(php)
-  if (!phpCheck.ok || !isSupportedPhp(phpCheck.version)) {
-    const detected = phpCheck.version
-      ? `${phpCheck.version.major}.${phpCheck.version.minor}.${phpCheck.version.patch}`
+  const resolved = await resolvePhpBinary()
+  const php = resolved.binary
+  if (!php) {
+    const detected = resolved.version
+      ? `${resolved.version.major}.${resolved.version.minor}.${resolved.version.patch}`
       : 'unknown'
     process.stderr.write(
       `Laravel in amalgated-lending-api requires PHP ${MIN_PHP_MAJOR}.${MIN_PHP_MINOR}+.\n` +
-        `Detected PHP version: ${detected} (binary: ${php}).\n` +
-        `Set PHP_BINARY to a PHP ${MIN_PHP_MAJOR}.${MIN_PHP_MINOR}+ executable and retry.\n`,
+        `Detected PHP version: ${detected} (default \`php\` on PATH is too old).\n` +
+        `Install PHP ${MIN_PHP_MAJOR}.${MIN_PHP_MINOR}+ (e.g. winget install PHP.PHP.8.3) or set PHP_BINARY in .env to your php.exe path.\n`,
     )
     writeStartStatus({
       state: 'failed',
-      reason: `PHP ${MIN_PHP_MAJOR}.${MIN_PHP_MINOR}+ is required; detected ${detected} (${php}).`,
+      reason: `PHP ${MIN_PHP_MAJOR}.${MIN_PHP_MINOR}+ is required; detected ${detected}.`,
       code: 'UNSUPPORTED_PHP',
     })
     process.exit(1)
+  }
+  if (!process.env.PHP_BINARY) {
+    process.stderr.write(`Using PHP ${resolved.version.major}.${resolved.version.minor}.${resolved.version.patch} (${php})\n`)
   }
   const memoryLimit = process.env.LARAVEL_PHP_MEMORY_LIMIT || '256M'
   const runtimePhpFlags = ['-d', `memory_limit=${memoryLimit}`]
