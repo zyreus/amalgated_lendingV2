@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 export default function StickyMobileApplyCta() {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 lg:hidden">
-      <div className="pointer-events-auto border-t border-red-100/45 bg-[#fdf6f6]/92 px-4 py-3 shadow-[0_-8px_32px_rgba(230,57,70,0.08)] backdrop-blur-md pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="pointer-events-auto border-t border-slate-200/80 bg-brand-cream/95 px-4 py-3 shadow-[0_-8px_32px_rgba(217,34,67,0.08)] backdrop-blur-md pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto flex max-w-lg items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-xs font-semibold uppercase tracking-wide text-brand-primary">Amalgated</p>

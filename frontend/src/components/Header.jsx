@@ -55,7 +55,7 @@ function IconChevron({ open, className = '' }) {
 }
 
 function megaPanelClass() {
-  return 'rounded-3xl border border-black/[0.07] bg-white/[0.98] p-5 shadow-[0_24px_60px_rgba(29,29,31,0.1),0_0_0_1px_rgba(230,57,70,0.04)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0f172a]/98'
+  return 'rounded-3xl border border-black/[0.07] bg-white/[0.98] p-5 shadow-[0_24px_60px_rgba(15,23,42,0.1),0_0_0_1px_rgba(217,34,67,0.06)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0f172a]/98'
 }
 
 export default function Header() {
@@ -180,12 +180,12 @@ export default function Header() {
     const isOpen = openMenu === menuKey
     const bareClasses = `nav-mega-trigger inline-flex h-10 shrink-0 items-center gap-1 rounded-xl px-3 text-[13px] font-semibold leading-none tracking-tight transition-all duration-200 ${
       isOpen
-        ? 'bg-brand-primary/10 text-brand-primary shadow-[inset_0_0_0_1px_rgba(230,57,70,0.18)]'
+        ? 'bg-brand-primary/10 text-brand-primary shadow-[inset_0_0_0_1px_rgba(217,34,67,0.14)]'
         : 'text-brand-text/65 hover:bg-black/[0.04] hover:text-brand-primary dark:text-white/60 dark:hover:text-white'
     }`
     const pillClasses = `nav-mega-trigger inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-3 text-[12px] font-semibold leading-none tracking-tight text-brand-text/65 transition-all duration-200 xl:gap-2 xl:px-4 xl:text-[13px] 2xl:px-5 ${
       isOpen
-        ? 'bg-brand-primary/10 text-brand-primary shadow-[inset_0_0_0_1px_rgba(230,57,70,0.2)]'
+        ? 'bg-brand-primary/10 text-brand-primary shadow-[inset_0_0_0_1px_rgba(217,34,67,0.16)]'
         : 'hover:bg-black/[0.05] hover:text-brand-primary'
     }`
     return (
@@ -217,11 +217,11 @@ export default function Header() {
       ref={headerRef}
       className={`sticky top-0 z-[60] w-full border-b transition-[box-shadow,background-color,border-color] duration-300 ${
         scrolled
-          ? 'border-red-100/45 bg-[#fdf6f6]/88 shadow-[0_12px_40px_rgba(230,57,70,0.08)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1220]/94'
-          : 'border-red-100/35 bg-red-50/35 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1220]/90'
+          ? 'border-slate-200/80 bg-[#f8fafc]/92 shadow-[0_12px_40px_rgba(217,34,67,0.08)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1220]/94'
+          : 'border-slate-200/50 bg-[#f8fafc]/55 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1220]/90'
       }`}
     >
-      <div className="app-container relative flex min-h-[3.5rem] items-center py-2.5 sm:min-h-[5.5rem] sm:py-5 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center lg:gap-6 xl:gap-8">
+      <div className="app-container relative flex min-h-[3.5rem] items-center py-2.5 sm:min-h-[5.5rem] sm:py-5 lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-4 xl:gap-6">
         <motion.div className="relative z-30 flex min-w-0 items-center justify-self-start lg:col-start-1">
         <button
           type="button"
@@ -251,9 +251,9 @@ export default function Header() {
         </button>
         </motion.div>
 
-        <motion.div className="relative z-20 hidden min-h-10 min-w-0 items-center justify-center lg:col-start-2 lg:flex lg:justify-self-center">
+        <motion.div className="relative z-30 ml-auto flex min-w-0 max-w-full items-center justify-end gap-1.5 sm:gap-2 lg:col-start-2 lg:ml-0 lg:max-w-none lg:justify-self-end lg:gap-2 xl:gap-3 2xl:gap-4">
           <nav
-            className="relative isolate z-0 flex w-fit max-w-full flex-nowrap items-center justify-center gap-x-0.5 sm:gap-x-1 xl:gap-x-1.5 2xl:gap-x-2"
+            className="relative isolate z-0 mr-1 hidden min-w-0 max-w-[min(100%,52rem)] flex-nowrap items-center justify-end gap-x-0.5 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] [scrollbar-width:none] sm:gap-x-1 sm:mr-2 xl:gap-x-1.5 2xl:gap-x-2 lg:flex [&::-webkit-scrollbar]:hidden"
             aria-label="Main navigation"
           >
             <div
@@ -409,7 +409,7 @@ export default function Header() {
               <div className="mt-5 border-t border-black/[0.06] pt-4 dark:border-white/10">
                 <Link
                   to="/loan-products"
-                  className="inline-flex w-full items-center justify-center rounded-xl bg-[linear-gradient(135deg,#E63946,#FF6B6B)] px-4 py-3 text-sm font-bold text-white shadow-[0_8px_28px_rgba(230,57,70,0.35)] transition hover:brightness-105 sm:w-auto"
+                  className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-brand px-4 py-3 text-sm font-bold text-white shadow-[0_8px_28px_rgba(217,34,67,0.32)] transition hover:brightness-105 sm:w-auto"
                   onClick={() => setOpenMenu(null)}
                 >
                   View all loan products
@@ -550,12 +550,10 @@ export default function Header() {
           </div>
 
           </nav>
-        </motion.div>
 
-        <motion.div className="relative z-30 ml-auto flex shrink-0 items-center justify-end gap-1.5 sm:gap-2 lg:col-start-3 lg:ml-0 lg:justify-self-end">
           <Link
             to="/borrower/login"
-            className="hidden h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-[linear-gradient(135deg,#E63946,#FF6B6B)] px-3.5 text-[12px] font-bold leading-none tracking-wide text-white shadow-[0_8px_28px_rgba(230,57,70,0.38)] transition hover:brightness-105 hover:shadow-[0_10px_32px_rgba(230,57,70,0.45)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary active:scale-[0.98] lg:inline-flex xl:px-4 xl:text-[13px] 2xl:px-5"
+            className="hidden h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-gradient-brand px-3.5 text-[12px] font-bold leading-none tracking-wide text-white shadow-[0_8px_28px_rgba(217,34,67,0.35)] transition hover:brightness-105 hover:shadow-[0_10px_32px_rgba(246,157,57,0.28)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary active:scale-[0.98] lg:inline-flex xl:px-4 xl:text-[13px] 2xl:px-5"
           >
             Borrower login
           </Link>
@@ -567,7 +565,7 @@ export default function Header() {
           </Link>
           <Link
             to="/borrower/login"
-            className="inline-flex h-10 items-center justify-center rounded-lg bg-[linear-gradient(135deg,#E63946,#FF6B6B)] px-2.5 text-[10px] font-bold leading-none tracking-wide text-white shadow-[0_6px_22px_rgba(230,57,70,0.35)] transition hover:brightness-105 sm:rounded-xl sm:px-3.5 sm:text-xs sm:text-[13px] lg:hidden"
+            className="inline-flex h-10 items-center justify-center rounded-lg bg-gradient-brand px-2.5 text-[10px] font-bold leading-none tracking-wide text-white shadow-[0_6px_22px_rgba(217,34,67,0.3)] transition hover:brightness-105 sm:rounded-xl sm:px-3.5 sm:text-xs sm:text-[13px] lg:hidden"
           >
             Log in
           </Link>
@@ -743,7 +741,7 @@ export default function Header() {
               </button>
               <Link
                 to="/borrower/login"
-                className="block w-full rounded-xl bg-[linear-gradient(135deg,#E63946,#FF6B6B)] py-3.5 text-center text-[13px] font-bold tracking-wide text-white shadow-[0_8px_28px_rgba(230,57,70,0.35)] transition hover:brightness-105"
+                className="block w-full rounded-xl bg-gradient-brand py-3.5 text-center text-[13px] font-bold tracking-wide text-white shadow-[0_8px_28px_rgba(217,34,67,0.32)] transition hover:brightness-105"
                 onClick={() => setMobileOpen(false)}
               >
                 Borrower login

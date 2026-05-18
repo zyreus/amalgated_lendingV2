@@ -14,6 +14,7 @@ import KpiStat from '../../components/portal/KpiStat.jsx'
 import { BorrowerPageHeader } from '../../components/portal/BorrowerPageHeader.jsx'
 import { borrowerApi } from '../api/client.js'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
+import { fintechPalette } from '../../theme/designTokens.js'
 
 const CATEGORY_LABELS = {
   excellent: 'Excellent',
@@ -204,15 +205,15 @@ export default function BorrowerCreditHealthPage() {
                 <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="wellnessFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#E63946" stopOpacity={0.35} />
-                      <stop offset="100%" stopColor="#E63946" stopOpacity={0} />
+                      <stop offset="0%" stopColor={fintechPalette.orange.main} stopOpacity={0.35} />
+                      <stop offset="100%" stopColor={fintechPalette.orange.main} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} />
                   <Tooltip />
-                  <Area type="monotone" dataKey="score" stroke="#E63946" fill="url(#wellnessFill)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="score" stroke={fintechPalette.crimson.main} fill="url(#wellnessFill)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             </Box>
@@ -277,7 +278,7 @@ export default function BorrowerCreditHealthPage() {
         <PortalCard title="Application impact" subtitle="How wellness affects your next loan">
           <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
             {data.eligibility_impact.fast_track_eligible ? (
-              <li className="text-emerald-700 dark:text-emerald-300">✓ You may qualify for faster approval.</li>
+              <li className="text-brand-success dark:text-emerald-300">✓ You may qualify for faster approval.</li>
             ) : null}
             {data.eligibility_impact.requires_manual_approval ? (
               <li className="text-amber-700 dark:text-amber-300">Additional manual review may be required.</li>

@@ -339,7 +339,7 @@ export default function AdminLayout() {
   const navInactive =
     'border-transparent text-gray-600 hover:bg-brand-primary/[0.06] hover:text-brand-text'
   const navActive =
-    'border-brand-primary bg-brand-primary/10 text-brand-primary shadow-[inset_0_0_0_1px_rgba(230,57,70,0.18)]'
+    'border-brand-primary bg-brand-primary/10 text-brand-primary shadow-[inset_0_0_0_1px_rgba(217,34,67,0.14)]'
   const sidebarTransform = mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
   const asideWidthClass = sidebarCollapsed ? 'w-[17.5rem] lg:w-[4.75rem]' : 'w-[17.5rem]'
   const mainPlClass = sidebarCollapsed ? 'lg:pl-[4.75rem]' : 'lg:pl-[17.5rem]'

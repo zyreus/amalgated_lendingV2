@@ -30,7 +30,7 @@ function isImagePath(path) {
 }
 
 function fallbackAvatar(name) {
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'Borrower')}&background=fee2e2&color=b91c1c&size=96&bold=true`
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'Borrower')}&background=e2e8f0&color=0f2744&size=96&bold=true`
 }
 
 /** Privacy / cookie preferences — compact for sub-480px headers. */
@@ -214,7 +214,7 @@ export default function BorrowerLayout() {
                         [
                           'flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-200',
                           isActive
-                            ? 'bg-brand-primary text-white shadow-[0_4px_16px_rgba(230,57,70,0.38)]'
+                            ? 'bg-brand-primary text-white shadow-[0_4px_16px_rgba(217,34,67,0.28)]'
                             : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5',
                         ].join(' ')
                       }

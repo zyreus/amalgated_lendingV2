@@ -7,28 +7,38 @@
 /* `dark:` variants are inert (`.dark` is never applied — app is light-only). */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Design system — Amalgated Lending Inc. (primary #E63946, Gen Z fintech refresh) */
+/* Design system — Amalgated Lending Inc. (official brand: crimson, orange, gold mustard, soft cream) */
 @theme {
   --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-display: "Poppins", "Inter", system-ui, sans-serif;
   --font-accent: "Sora", "Inter", system-ui, sans-serif;
-  --color-brand-primary: #e63946;
-  --color-brand-primary-hover: #c72f3a;
-  --color-brand-primary-soft: #ff6b6b;
-  --color-brand-secondary: #404040;
+  --color-brand-primary: #d92243;
+  --color-brand-primary-hover: #b81c37;
+  --color-brand-primary-soft: #e85a73;
+  --color-brand-accent: #f69d39;
+  --color-brand-accent-hover: #e88820;
+  --color-brand-accent-soft: #fbc06d;
+  --color-brand-secondary: #334155;
   --color-brand-background: #ffffff;
-  --color-brand-background-alt: #f8f9fa;
-  --color-brand-text: #1d1d1f;
-  --color-brand-success: #059669;
-  --color-brand-success-hover: #047857;
-  --color-brand-warning: #d97706;
-  --color-brand-warning-hover: #b45309;
-  --color-brand-dark: #0a0a0a;
-  --shadow-soft: 0 18px 45px rgba(0, 0, 0, 0.08);
-  --shadow-brand-primary: 0 4px 24px rgba(230, 57, 70, 0.35);
-  --shadow-brand-success: 0 4px 18px rgba(5, 150, 105, 0.28);
-  /** Marketing / hero accent (matches floating CTAs and premium cards) */
-  --gradient-brand-accent: linear-gradient(135deg, #e63946, #ff6b6b);
+  --color-brand-background-alt: #fff5e5;
+  --color-brand-cream: #fff5e5;
+  --color-brand-text: #1c1917;
+  /** Semantic success (loan paid, verified) — distinct from marketing primaries */
+  --color-brand-success: #15803d;
+  --color-brand-success-hover: #166534;
+  --color-brand-success-soft: #22c55e;
+  --color-brand-warning: #c2410c;
+  --color-brand-warning-hover: #9a3412;
+  --color-brand-premium: #e0c375;
+  --color-brand-premium-hover: #c9a85d;
+  --color-brand-dark: #292524;
+  --shadow-soft: 0 18px 45px rgba(28, 25, 23, 0.06);
+  --shadow-brand-primary: 0 4px 24px rgba(217, 34, 67, 0.28);
+  --shadow-brand-accent: 0 4px 18px rgba(246, 157, 57, 0.22);
+  /** Marketing / CTAs — crimson → vibrant orange */
+  --gradient-brand-accent: linear-gradient(135deg, #d92243 0%, #f69d39 100%);
+  /** Subtle premium wash (hero bands, cards) */
+  --gradient-brand-premium-wash: linear-gradient(135deg, rgba(217, 34, 67, 0.06) 0%, rgba(246, 157, 57, 0.05) 45%, rgba(224, 195, 117, 0.08) 100%);
   /** Ultra-wide layouts: use `3xl:` utilities alongside default `sm/md/lg/xl/2xl`. */
   --breakpoint-3xl: 120rem;
   /** Max content width tokens (use with max-w-[min(100%,var(--width-content-…))]). */
@@ -56,31 +66,31 @@ body,
 }
 
 /**
- * Marketing canvas — soft blush / light rose (matches `HomeModernHero` mesh).
+ * Marketing canvas — soft cream with crimson / orange / gold wash (trust + warmth).
  * Applied on `#root` (not `body`) so MUI `CssBaseline` does not replace it.
  * Public pages use transparent `.page-shell-bg` so this shows through; portals use `.portal-shell-bg`.
  */
 #root {
-  background-color: #fdf4f4;
+  background-color: #fff5e5;
   background-image:
-    radial-gradient(ellipse 120% 85% at 100% -12%, rgba(230, 57, 70, 0.11), transparent 52%),
-    radial-gradient(ellipse 95% 70% at 0% 102%, rgba(230, 57, 70, 0.055), transparent 48%),
-    radial-gradient(circle at 80% 55%, rgba(255, 107, 107, 0.045), transparent 42%),
-    linear-gradient(180deg, #fdf4f4 0%, #fcf1f2 24%, #fdf6f6 52%, #fff8f8 78%, #fdf4f4 100%);
+    radial-gradient(ellipse 120% 85% at 100% -12%, rgba(217, 34, 67, 0.07), transparent 52%),
+    radial-gradient(ellipse 95% 70% at 0% 102%, rgba(246, 157, 57, 0.06), transparent 48%),
+    radial-gradient(circle at 80% 55%, rgba(224, 195, 117, 0.12), transparent 42%),
+    linear-gradient(180deg, #fff5e5 0%, #fff9ef 28%, #fff5e5 55%, #ffffff 82%, #fff5e5 100%);
 }
 
 body {
   margin: 0;
   overflow-x: hidden;
   font-family: var(--font-sans);
-  background-color: #fdf4f4;
+  background-color: #fff5e5;
   color: var(--color-brand-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 ::selection {
-  background-color: rgba(230, 57, 70, 0.22);
+  background-color: rgba(217, 34, 67, 0.18);
 }
 
 .nav-link {
@@ -110,7 +120,7 @@ body {
 
   /** Admin / borrower app chrome — neutral surface over `#root` (hides marketing canvas). */
   .portal-shell-bg {
-    @apply bg-gray-50;
+    @apply bg-brand-cream;
   }
 
   /** Unified marketing / landing page width (1280px) — navbar, sections, footer. */
@@ -147,7 +157,7 @@ body {
 
   /** Sections with a top divider — small top pad + standard bottom. */
   .landing-section-divided {
-    @apply scroll-mt-28 border-t border-red-100/40 pt-10 pb-12 sm:scroll-mt-32 sm:pt-12 sm:pb-14 lg:pb-16;
+    @apply scroll-mt-28 border-t border-slate-200/80 pt-10 pb-12 sm:scroll-mt-32 sm:pt-12 sm:pb-14 lg:pb-16;
   }
 
   .landing-section-header {
@@ -184,12 +194,12 @@ body {
 
   /** Primary section panel (white card shell). */
   .landing-panel {
-    @apply rounded-2xl border border-red-100/50 bg-white p-6 shadow-[0_10px_36px_rgba(230,57,70,0.07),0_4px_20px_rgba(0,0,0,0.05)] sm:p-8 lg:p-10;
+    @apply rounded-2xl border border-slate-200/90 bg-white p-6 shadow-[0_10px_36px_rgba(217,34,67,0.06),0_4px_20px_rgba(0,0,0,0.04)] sm:p-8 lg:p-10;
   }
 
   /** Nested card inside a landing panel. */
   .landing-inner-card {
-    @apply flex h-full flex-col rounded-2xl border border-red-100/45 bg-white p-6 shadow-[0_2px_14px_rgba(230,57,70,0.05),0_2px_12px_rgba(0,0,0,0.04)] sm:p-8;
+    @apply flex h-full flex-col rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_2px_14px_rgba(217,34,67,0.04),0_2px_12px_rgba(0,0,0,0.03)] sm:p-8;
   }
 
   .landing-card-grid {
@@ -197,7 +207,7 @@ body {
   }
 
   .landing-cta-banner {
-    @apply rounded-2xl border border-red-100/50 bg-white p-8 text-center shadow-[0_12px_40px_rgba(230,57,70,0.08),0_6px_24px_rgba(0,0,0,0.05)] sm:p-10 lg:p-12;
+    @apply rounded-2xl border border-slate-200/90 bg-white p-8 text-center shadow-[0_12px_40px_rgba(217,34,67,0.06),0_6px_24px_rgba(0,0,0,0.04)] sm:p-10 lg:p-12;
   }
 
   .landing-footer-pills {
@@ -210,7 +220,7 @@ body {
   }
 
   .landing-btn-secondary {
-    @apply inline-flex min-h-11 items-center justify-center rounded-full border border-red-200/50 px-8 py-4 text-sm font-semibold transition hover:bg-red-50/80 hover:border-red-300/60;
+    @apply inline-flex min-h-11 items-center justify-center rounded-full border border-brand-accent/45 px-8 py-4 text-sm font-semibold text-brand-primary transition hover:border-brand-accent hover:bg-brand-accent/10 hover:text-brand-primary;
   }
 
   .landing-btn-group {
@@ -238,7 +248,7 @@ body {
    */
   .surface-card-light,
   .surface-card-light-tight {
-    @apply rounded-2xl border border-red-100/45 bg-white shadow-[0_10px_34px_rgba(230,57,70,0.07),0_4px_18px_rgba(0,0,0,0.05)];
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-[0_10px_34px_rgba(217,34,67,0.06),0_4px_18px_rgba(0,0,0,0.04)];
   }
 
   .section-gap {
@@ -373,11 +383,11 @@ body {
 }
 
 .hero-mesh-bg {
-  background-color: #0a0a0a;
+  background-color: #1c0a0e;
   background-image:
-    radial-gradient(ellipse 120% 80% at 10% -10%, rgba(230, 57, 70, 0.45), transparent 55%),
-    radial-gradient(ellipse 90% 70% at 100% 0%, rgba(255, 107, 107, 0.22), transparent 50%),
-    radial-gradient(ellipse 70% 50% at 50% 100%, rgba(255, 255, 255, 0.06), transparent 45%);
+    radial-gradient(ellipse 120% 80% at 10% -10%, rgba(217, 34, 67, 0.88), transparent 55%),
+    radial-gradient(ellipse 90% 70% at 100% 0%, rgba(246, 157, 57, 0.28), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 50% 100%, rgba(224, 195, 117, 0.12), transparent 45%);
 }
 
 .hero-orb {

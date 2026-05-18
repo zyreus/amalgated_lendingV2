@@ -30,7 +30,9 @@ class AdminPanelProvider extends PanelProvider
             ->login()
             ->brandName(config('app.name'))
             ->colors([
-                'primary' => Color::Blue,
+                'primary' => Color::hex('#0f2744'),
+                'success' => Color::hex('#059669'),
+                'warning' => Color::hex('#c9a227'),
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')

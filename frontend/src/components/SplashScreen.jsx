@@ -27,7 +27,7 @@ export default function SplashScreen({ onDone }) {
     >
       <div className="flex flex-col items-center gap-6">
         <motion.div
-          className="flex h-28 w-28 items-center justify-center rounded-full border-2 border-[#dc2626] bg-white p-3 sm:h-32 sm:w-32 sm:p-4"
+          className="flex h-28 w-28 items-center justify-center rounded-full border-2 border-emerald-500/70 bg-white p-3 sm:h-32 sm:w-32 sm:p-4"
           initial={{ opacity: 0, scale: 0.7 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}

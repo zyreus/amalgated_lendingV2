@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { admin } from '../components/AdminUi.jsx'
+import { fintechPalette } from '../../theme/designTokens.js'
 
 export default function AdminRiskAnalyticsPage() {
+  const { crimson, orange } = fintechPalette
   const data = useMemo(
     () =>
       ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'].map((m, i) => ({
@@ -24,7 +26,7 @@ export default function AdminRiskAnalyticsPage() {
         <div className={`${admin.cardNoHover}`}>
           <p className={`text-sm ${admin.textMuted}`}>Projected default rate</p>
           <p className="mt-2 text-3xl font-bold text-gray-900 dark:text-gray-100">1.9%</p>
-          <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">−0.2% vs prior month</p>
+          <p className="mt-1 text-xs text-brand-accent dark:text-brand-accent">−0.2% vs prior month</p>
         </div>
         <div className={`${admin.cardNoHover}`}>
           <p className={`text-sm ${admin.textMuted}`}>Weighted avg. FICO band</p>
@@ -45,8 +47,8 @@ export default function AdminRiskAnalyticsPage() {
             <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#E63946" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#E63946" stopOpacity={0} />
+                  <stop offset="0%" stopColor={orange.main} stopOpacity={0.35} />
+                  <stop offset="100%" stopColor={orange.main} stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
@@ -60,7 +62,7 @@ export default function AdminRiskAnalyticsPage() {
                   return [value, name]
                 }}
               />
-              <Area type="monotone" dataKey="defaultRate" stroke="#E63946" fill="url(#riskFill)" strokeWidth={2} />
+              <Area type="monotone" dataKey="defaultRate" stroke={crimson.main} fill="url(#riskFill)" strokeWidth={2} />
               <Area type="monotone" dataKey="approvalRate" stroke="#94a3b8" fillOpacity={0} strokeWidth={2} strokeDasharray="4 4" />
             </AreaChart>
           </ResponsiveContainer>

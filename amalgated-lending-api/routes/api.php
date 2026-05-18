@@ -68,13 +68,13 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     Route::get('/health', HealthCheckController::class);
 
-    Route::post('/admin/login', [AdminAuthController::class, 'login']);
-    Route::post('/borrower/login', [BorrowerAuthController::class, 'login']);
-    Route::post('/borrower/register', [BorrowerAuthController::class, 'register']);
-    Route::post('/auth/login', [AuthController::class, 'login']);
-    Route::post('/borrower/forgot-password', [PasswordResetController::class, 'requestBorrower']);
-    Route::post('/admin/forgot-password', [PasswordResetController::class, 'requestAdmin']);
-    Route::post('/password/reset', [PasswordResetController::class, 'reset']);
+    Route::post('/admin/login', [AdminAuthController::class, 'login'])->middleware('throttle:auth-login');
+    Route::post('/borrower/login', [BorrowerAuthController::class, 'login'])->middleware('throttle:auth-login');
+    Route::post('/borrower/register', [BorrowerAuthController::class, 'register'])->middleware('throttle:auth-register');
+    Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:auth-login');
+    Route::post('/borrower/forgot-password', [PasswordResetController::class, 'requestBorrower'])->middleware('throttle:auth-password-reset');
+    Route::post('/admin/forgot-password', [PasswordResetController::class, 'requestAdmin'])->middleware('throttle:auth-password-reset');
+    Route::post('/password/reset', [PasswordResetController::class, 'reset'])->middleware('throttle:auth-password-reset');
 
     /** Signed inbox link — redirects to SPA after marking email_verified_at. */
     Route::get('/borrower/email/verify', [BorrowerEmailVerificationController::class, 'verify'])

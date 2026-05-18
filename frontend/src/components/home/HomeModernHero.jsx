@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { fetchWebsiteTestimonials } from '../../utils/fetchWebsiteTestimonials.js'
 
 /**
- * Marketing hero — red & white brand palette (Amalgated Lending primary #E63946).
+ * Marketing hero — official crimson / orange / gold / cream brand system (`index.css` @theme).
  * Backend integration: primary apply flow stays on existing borrower portal route.
  * Swap `HERO_IMAGE_SRC` for a hosted asset under /public when you have brand photography.
  */
@@ -18,7 +18,7 @@ function HeroStarRow({ filled }) {
   return (
     <span className="inline-flex items-center gap-0.5 text-sm font-medium" aria-hidden>
       {[1, 2, 3, 4, 5].map((star) => (
-        <span key={star} className={star <= n ? 'text-brand-primary' : 'text-slate-200'}>
+        <span key={star} className={star <= n ? 'text-brand-premium' : 'text-slate-200'}>
           ★
         </span>
       ))}
@@ -97,14 +97,14 @@ export default function HomeModernHero() {
         visible: { transition: { staggerChildren: reduceMotion ? 0 : 0.07 } },
       }}
     >
-      {/* Soft mesh — white base with subtle brand red wash */}
+      {/* Soft mesh — cream canvas with crimson + orange wash */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_85%_55%_at_100%_-5%,rgba(230,57,70,0.12),transparent_55%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_85%_55%_at_100%_-5%,rgba(217,34,67,0.09),transparent_55%)]"
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_65%_45%_at_0%_100%,rgba(230,57,70,0.06),transparent_50%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_65%_45%_at_0%_100%,rgba(246,157,57,0.08),transparent_50%)]"
       />
       <div
         aria-hidden
@@ -131,7 +131,7 @@ export default function HomeModernHero() {
               className="heading-display mt-4 text-4xl font-semibold leading-[1.12] tracking-tight text-slate-900 sm:mt-5 sm:text-5xl lg:text-[3.25rem] xl:text-6xl"
             >
               Personal Loans &amp; Lending Solutions,{' '}
-              <span className="bg-gradient-to-r from-brand-primary to-brand-primary-soft bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-brand-primary via-brand-accent to-brand-premium bg-clip-text text-transparent">
                 All in One Place.
               </span>
             </motion.h1>
@@ -164,7 +164,7 @@ export default function HomeModernHero() {
               */}
               <Link
                 to="/borrower/login"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-brand-primary px-8 py-4 text-sm font-semibold text-white shadow-brand-primary transition hover:bg-brand-primary-hover hover:shadow-[0_14px_40px_rgba(230,57,70,0.4)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary active:scale-[0.99]"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-brand-primary px-8 py-4 text-sm font-semibold text-white shadow-brand-primary transition hover:bg-brand-primary-hover hover:shadow-[0_14px_40px_rgba(217,34,67,0.35)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary active:scale-[0.99]"
               >
                 Apply Now
                 <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
@@ -176,7 +176,7 @@ export default function HomeModernHero() {
               */}
               <a
                 href="#calculator"
-                className="inline-flex min-h-11 items-center justify-center rounded-full border-2 border-brand-primary bg-white px-8 py-4 text-sm font-semibold text-brand-primary shadow-sm transition hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+                className="inline-flex min-h-11 items-center justify-center rounded-full border-2 border-brand-primary bg-white px-8 py-4 text-sm font-semibold text-brand-primary shadow-sm transition hover:bg-brand-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
               >
                 Calculate Your Loan
               </a>
@@ -185,7 +185,7 @@ export default function HomeModernHero() {
             <motion.dl
               variants={sectionVariants}
               custom={4}
-              className="mt-10 grid max-w-xl grid-cols-1 gap-6 border-t border-red-100 pt-8 text-sm sm:grid-cols-3 sm:gap-8 sm:pt-10"
+              className="mt-10 grid max-w-xl grid-cols-1 gap-6 border-t border-slate-200/90 pt-8 text-sm sm:grid-cols-3 sm:gap-8 sm:pt-10"
             >
               <div className="min-w-0">
                 <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Client rating</dt>
@@ -232,8 +232,8 @@ export default function HomeModernHero() {
               className="absolute -bottom-10 -left-4 h-40 w-40 rounded-full bg-brand-primary/10 blur-3xl sm:h-52 sm:w-52"
             />
 
-            <div className="relative overflow-hidden rounded-[2rem] border border-red-100 bg-white shadow-[0_24px_70px_rgba(230,57,70,0.12)] ring-1 ring-red-100/80">
-              <div className="absolute right-5 top-5 z-10 flex items-center gap-2 rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-md backdrop-blur-sm ring-1 ring-red-100">
+            <div className="relative overflow-hidden rounded-[2rem] border border-slate-200/90 bg-white shadow-[0_24px_70px_rgba(217,34,67,0.1)] ring-1 ring-slate-200/70">
+              <div className="absolute right-5 top-5 z-10 flex items-center gap-2 rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-md backdrop-blur-sm ring-1 ring-slate-200/80">
                 <span className="h-2 w-2 rounded-full bg-brand-primary" aria-hidden />
                 Secure online apply
               </div>
@@ -248,17 +248,17 @@ export default function HomeModernHero() {
                 className="aspect-[4/5] w-full object-cover object-top sm:aspect-[5/6] lg:aspect-auto lg:max-h-[min(560px,70vh)] lg:min-h-[420px]"
               />
 
-              <div className="border-t border-red-100 bg-gradient-to-br from-white to-red-50/40 p-6 sm:p-8">
+              <div className="border-t border-slate-200/90 bg-gradient-to-br from-white to-brand-cream/80 p-6 sm:p-8">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">Why borrowers choose us</p>
                 <ul className="mt-4 grid gap-4 text-sm leading-relaxed text-slate-600 sm:grid-cols-2 sm:gap-5">
                   <li className="flex gap-2">
-                    <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-100 text-brand-primary" aria-hidden>
+                    <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-premium/35 text-brand-primary" aria-hidden>
                       ✓
                     </span>
                     Transparent rates &amp; amortization before you sign
                   </li>
                   <li className="flex gap-2">
-                    <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-100 text-brand-primary" aria-hidden>
+                    <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-premium/35 text-brand-primary" aria-hidden>
                       ✓
                     </span>
                     Real people in Davao—plus a secure borrower portal

@@ -6,7 +6,7 @@ import { admin } from '../components/AdminUi.jsx'
 const BUCKET_STYLES = {
   current_0_29: 'from-emerald-500/90 to-emerald-600',
   early_30_59: 'from-amber-500/90 to-amber-600',
-  serious_60_plus: 'from-[#E63946] to-red-700',
+  serious_60_plus: 'from-rose-600 to-red-800',
   legal_recovery: 'from-slate-700 to-slate-900',
 }
 

@@ -24,7 +24,7 @@ function NewsletterLoadingSkeleton() {
       aria-label="Loading news and announcements"
     >
       <div className="app-container">
-        <div className="overflow-hidden rounded-2xl border border-red-100/45 bg-white/75 shadow-[0_8px_32px_rgba(230,57,70,0.06)] backdrop-blur-[2px]">
+        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white/75 shadow-[0_8px_32px_rgba(217,34,67,0.05)] backdrop-blur-[2px]">
           <div className="grid md:grid-cols-2 md:divide-x md:divide-brand-secondary/25">
             {['Announcements', 'News'].map((label) => (
               <div key={label} className="flex flex-col p-8 sm:p-10">
@@ -151,7 +151,7 @@ export default function NewsletterSection() {
 
   return (
     <section id="newsletter" className="app-container landing-section-divided border-brand-secondary/25 bg-transparent">
-      <div className="overflow-hidden rounded-2xl border border-red-100/45 bg-white/75 shadow-[0_8px_32px_rgba(230,57,70,0.06)] backdrop-blur-[2px]">
+      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white/75 shadow-[0_8px_32px_rgba(217,34,67,0.05)] backdrop-blur-[2px]">
           <div className="grid md:grid-cols-2 md:items-stretch md:divide-x md:divide-brand-secondary/25">
             <div className="flex flex-col p-8 sm:p-10">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-primary">Announcements</p>

@@ -22,7 +22,7 @@ export default function AdminDocumentVerificationHubPage() {
               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-600 dark:bg-[#1F2937] dark:text-gray-300">
                 {q.badge}
               </span>
-              <span className="text-sm font-semibold text-[#E63946] transition group-hover:translate-x-0.5 dark:text-[#FF6B6B]">Open →</span>
+              <span className="text-sm font-semibold text-brand-primary transition group-hover:translate-x-0.5 dark:text-brand-accent">Open →</span>
             </div>
             <h2 className="mt-3 text-lg font-semibold text-gray-900 dark:text-gray-100">{q.title}</h2>
             <p className={`mt-2 text-sm ${admin.textMuted}`}>{q.desc}</p>

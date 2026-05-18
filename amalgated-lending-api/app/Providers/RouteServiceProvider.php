@@ -56,5 +56,18 @@ class RouteServiceProvider extends ServiceProvider
         RateLimiter::for('face_verify', function (Request $request) {
             return Limit::perMinute(20)->by($request->user()?->id ?: $request->ip());
         });
+
+        /** Brute-force hardening: auth endpoints (tighter than generic `api` 60/min). */
+        RateLimiter::for('auth-login', function (Request $request) {
+            return Limit::perMinute(12)->by($request->ip());
+        });
+
+        RateLimiter::for('auth-register', function (Request $request) {
+            return Limit::perMinute(6)->by($request->ip());
+        });
+
+        RateLimiter::for('auth-password-reset', function (Request $request) {
+            return Limit::perMinute(8)->by($request->ip());
+        });
     }
 }

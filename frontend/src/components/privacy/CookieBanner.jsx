@@ -34,7 +34,7 @@ export default function CookieBanner({ onOpenPreferences, onConsentSaved }) {
   return (
     <div className="fixed inset-x-0 bottom-0 z-[65] px-3 pb-3 sm:px-6 sm:pb-6">
       <div
-        className="mx-auto w-full max-w-4xl rounded-2xl border border-red-100/45 bg-[#fdf8f8]/95 p-4 shadow-[0_16px_48px_rgba(230,57,70,0.12)] backdrop-blur-md dark:border-white/10 dark:bg-zinc-900/95 sm:p-5"
+        className="mx-auto w-full max-w-4xl rounded-2xl border border-slate-200/80 bg-brand-cream/95 p-4 shadow-[0_16px_48px_rgba(217,34,67,0.1)] backdrop-blur-md dark:border-white/10 dark:bg-zinc-900/95 sm:p-5"
         style={{ animation: 'cookie-slide-up 240ms ease-out' }}
       >
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">

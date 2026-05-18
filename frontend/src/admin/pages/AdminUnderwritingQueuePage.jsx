@@ -205,7 +205,7 @@ export default function AdminUnderwritingQueuePage() {
                       <td className={`${admin.tableCell} text-right`}>
                         <Link
                           to={openPath(r)}
-                          className="text-sm font-semibold text-[#E63946] hover:underline dark:text-[#FF6B6B]"
+                          className="text-sm font-semibold text-brand-primary hover:underline dark:text-brand-accent"
                         >
                           Open
                         </Link>

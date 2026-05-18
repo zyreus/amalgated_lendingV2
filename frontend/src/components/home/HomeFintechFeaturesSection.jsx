@@ -72,7 +72,7 @@ export default function HomeFintechFeaturesSection() {
     >
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_100%_0%,rgba(230,57,70,0.06),transparent_55%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_100%_0%,rgba(217,34,67,0.06),transparent_55%)]"
       />
       <div className="app-container relative">
         <div className="mb-10 max-w-3xl sm:mb-12">
@@ -93,7 +93,7 @@ export default function HomeFintechFeaturesSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: '-48px' }}
               transition={{ duration: 0.4, delay: reduceMotion ? 0 : i * 0.05 }}
-              className="rounded-3xl border border-red-100/40 bg-white p-8 shadow-[0_8px_30px_rgba(230,57,70,0.06)] lg:p-10 transition hover:border-brand-primary/30 hover:shadow-[0_16px_48px_rgba(217,4,41,0.1)]"
+              className="rounded-3xl border border-slate-200/80 bg-white p-8 shadow-[0_8px_30px_rgba(217,34,67,0.05)] transition hover:border-brand-primary/25 hover:shadow-[0_16px_48px_rgba(217,34,67,0.1)] lg:p-10"
             >
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-primary/10 text-brand-primary ring-1 ring-brand-primary/15">
                 {f.icon}

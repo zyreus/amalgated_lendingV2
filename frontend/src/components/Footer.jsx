@@ -43,7 +43,7 @@ export default function Footer() {
   return (
     <footer className="mt-auto">
       <div
-        className="pointer-events-none h-12 bg-gradient-to-b from-[#fdf4f4] via-[#2a1418] to-[#0c0c0c] sm:h-16"
+        className="pointer-events-none h-12 bg-gradient-to-b from-brand-cream via-brand-primary to-[#5c1020] sm:h-16"
         aria-hidden
       />
       <div className="border-t border-white/10 bg-[#0c0c0c]">
@@ -67,12 +67,12 @@ export default function Footer() {
               </div>
             </div>
             <p className="max-w-sm text-xs leading-relaxed text-white/55">
-              JWT-secured borrower portal, Laravel APIs, and CRM tooling built for regulated growth — red, white, and
+              Secure borrower portal, Laravel APIs, and staff tooling built for regulated lending — navy, emerald, and
               engineered for trust.
             </p>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#FF6B6B]/90">Borrow</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400/90">Borrow</p>
             <ul className="mt-5 space-y-3.5 text-sm leading-relaxed text-white/80">
               <li>
                 <Link to="/loan-products" className="transition hover:text-white">
@@ -102,7 +102,7 @@ export default function Footer() {
             </ul>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#FF6B6B]/90">Company</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400/90">Company</p>
             <ul className="mt-5 space-y-3.5 text-sm leading-relaxed text-white/80">
               <li>
                 <Link to="/about" className="transition hover:text-white">
@@ -141,7 +141,7 @@ export default function Footer() {
         <div className="mt-12 rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-transparent p-8 lg:p-10">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-md">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#FF6B6B]">Newsletter</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#d4af37]/95">Newsletter</p>
               <p className="mt-3 font-display text-lg font-bold text-white">Rate drops &amp; product drops</p>
               <p className="mt-3 text-sm leading-relaxed text-white/65">Short updates — no spam. Unsubscribe anytime (we’ll honor it).</p>
             </div>
@@ -166,7 +166,7 @@ export default function Footer() {
               <button
                 type="submit"
                 disabled={nlStatus === 'loading'}
-                className="min-h-12 shrink-0 rounded-2xl bg-[linear-gradient(135deg,#E63946,#FF6B6B)] px-6 text-sm font-bold text-white shadow-lg transition enabled:hover:opacity-95 disabled:opacity-50"
+                className="min-h-12 shrink-0 rounded-2xl bg-gradient-brand px-6 text-sm font-bold text-white shadow-lg transition enabled:hover:opacity-95 disabled:opacity-50"
               >
                 {nlStatus === 'loading' ? '…' : 'Join'}
               </button>

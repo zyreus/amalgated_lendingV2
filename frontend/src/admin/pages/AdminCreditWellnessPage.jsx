@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '../api/client.js'
 import { admin } from '../components/AdminUi.jsx'
+import { fintechPalette } from '../../theme/designTokens.js'
 
 const SEGMENT_LABELS = {
   excellent: 'Excellent',
@@ -94,7 +95,7 @@ export default function AdminCreditWellnessPage() {
                 <XAxis dataKey="segment" tick={{ fontSize: 10 }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
                 <Tooltip />
-                <Bar dataKey="count" fill="#E63946" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="count" fill={fintechPalette.crimson.main} radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
