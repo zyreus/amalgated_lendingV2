@@ -79,14 +79,15 @@ export default function Header() {
 
   const scheduleClose = useCallback(() => {
     clearCloseTimer()
-    closeTimer.current = window.setTimeout(() => setOpenMenu(null), 140)
+    closeTimer.current = window.setTimeout(() => setOpenMenu(null), 200)
   }, [clearCloseTimer])
 
   const openOrToggle = useCallback(
     (key) => {
+      clearCloseTimer()
       setOpenMenu((prev) => (prev === key ? null : key))
     },
-    [],
+    [clearCloseTimer],
   )
 
   useEffect(() => {
@@ -110,12 +111,11 @@ export default function Header() {
   useEffect(() => {
     if (!openMenu) return undefined
     const onDoc = (e) => {
-      if (headerRef.current && !headerRef.current.contains(e.target)) {
-        setOpenMenu(null)
-      }
+      if (headerRef.current?.contains(e.target)) return
+      setOpenMenu(null)
     }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
+    document.addEventListener('pointerdown', onDoc)
+    return () => document.removeEventListener('pointerdown', onDoc)
   }, [openMenu])
 
   useEffect(() => {
@@ -124,7 +124,17 @@ export default function Header() {
   }, [location.pathname])
 
   const scrollToSection = useCallback((id) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const tryScroll = (attempt = 0) => {
+      const el = document.getElementById(id)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        return
+      }
+      if (attempt < 15) {
+        window.setTimeout(() => tryScroll(attempt + 1), 80)
+      }
+    }
+    tryScroll()
   }, [])
 
   const goToSection = useCallback(
@@ -134,7 +144,7 @@ export default function Header() {
         return
       }
       navigate('/')
-      window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120)
+      window.setTimeout(() => scrollToSection(id), 120)
     },
     [location.pathname, navigate, scrollToSection],
   )
@@ -145,8 +155,16 @@ export default function Header() {
       return
     }
     navigate('/')
-    window.setTimeout(() => document.getElementById('hero')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120)
+    window.setTimeout(() => scrollToSection('hero'), 120)
   }, [location.pathname, navigate, scrollToSection])
+
+  const closeMenuAndGo = useCallback(
+    (sectionId) => {
+      setOpenMenu(null)
+      goToSection(sectionId)
+    },
+    [goToSection],
+  )
 
   function MegaPanel({ menuKey, align = 'left', widthClass, children }) {
     const isOpen = openMenu === menuKey
@@ -164,9 +182,9 @@ export default function Header() {
             animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
             exit={reduceMotion ? {} : { opacity: 0, y: 6 }}
             transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
-            className={`absolute top-full z-[70] pt-3 ${align === 'right' ? 'right-0' : 'left-0'}`}
-            onMouseEnter={clearCloseTimer}
-            onMouseLeave={scheduleClose}
+            className={`absolute top-full z-[70] pt-2 before:pointer-events-auto before:absolute before:inset-x-0 before:-top-2 before:h-2 before:content-[''] ${align === 'right' ? 'right-0' : 'left-0'}`}
+            onPointerEnter={clearCloseTimer}
+            onPointerLeave={scheduleClose}
           >
             <div className={`${megaPanelClass()} ${w}`}>{children}</div>
           </motion.div>
@@ -196,11 +214,11 @@ export default function Header() {
         aria-haspopup="true"
         aria-controls={isOpen ? `${baseId}-${menuKey}-mega` : undefined}
         id={`${baseId}-${menuKey}-trigger`}
-        onMouseEnter={() => {
+        onPointerEnter={() => {
           clearCloseTimer()
           setOpenMenu(menuKey)
         }}
-        onMouseLeave={scheduleClose}
+        onPointerLeave={scheduleClose}
         onClick={() => openOrToggle(menuKey)}
       >
         <span className="whitespace-nowrap">{label}</span>
@@ -215,13 +233,13 @@ export default function Header() {
   return (
     <header
       ref={headerRef}
-      className={`sticky top-0 z-[60] w-full border-b transition-[box-shadow,background-color,border-color] duration-300 ${
+      className={`sticky top-0 z-[60] w-full overflow-visible border-b transition-[box-shadow,background-color,border-color] duration-300 ${
         scrolled
           ? 'border-slate-200/80 bg-[#f8fafc]/92 shadow-[0_12px_40px_rgba(217,34,67,0.08)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1220]/94'
           : 'border-slate-200/50 bg-[#f8fafc]/55 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1220]/90'
       }`}
     >
-      <div className="app-container relative flex min-h-[3.5rem] items-center py-2.5 sm:min-h-[5.5rem] sm:py-5 lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-4 xl:gap-6">
+      <motion.div className="app-container relative flex min-h-[3.25rem] max-w-full items-center overflow-visible py-2 pt-[max(0.5rem,env(safe-area-inset-top,0px))] sm:min-h-[4.5rem] sm:py-3 lg:min-h-[5.5rem] lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-4 lg:py-5 xl:gap-6">
         <motion.div className="relative z-30 flex min-w-0 items-center justify-self-start lg:col-start-1">
         <button
           type="button"
@@ -251,18 +269,18 @@ export default function Header() {
         </button>
         </motion.div>
 
-        <motion.div className="relative z-30 ml-auto flex min-w-0 max-w-full items-center justify-end gap-1.5 sm:gap-2 lg:col-start-2 lg:ml-0 lg:max-w-none lg:justify-self-end lg:gap-2 xl:gap-3 2xl:gap-4">
+        <motion.div className="relative z-30 ml-auto flex min-w-0 max-w-full items-center justify-end gap-1.5 overflow-visible sm:gap-2 lg:col-start-2 lg:ml-0 lg:max-w-none lg:justify-self-end lg:gap-2 xl:gap-3 2xl:gap-4">
           <nav
-            className="relative isolate z-0 mr-1 hidden min-w-0 max-w-[min(100%,52rem)] flex-nowrap items-center justify-end gap-x-0.5 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] [scrollbar-width:none] sm:gap-x-1 sm:mr-2 xl:gap-x-1.5 2xl:gap-x-2 lg:flex [&::-webkit-scrollbar]:hidden"
+            className="relative z-40 mr-1 hidden min-w-0 flex-nowrap items-center justify-end gap-x-0.5 overflow-visible sm:gap-x-1 sm:mr-2 xl:gap-x-1.5 2xl:gap-x-2 lg:flex"
             aria-label="Main navigation"
           >
             <div
               className="relative z-30 flex h-10 shrink-0 items-center"
-              onMouseEnter={() => {
+              onPointerEnter={() => {
                 clearCloseTimer()
                 setOpenMenu('trust')
               }}
-              onMouseLeave={scheduleClose}
+              onPointerLeave={scheduleClose}
             >
               {triggerBtn('trust', 'Trust')}
               <MegaPanel menuKey="trust">
@@ -276,10 +294,7 @@ export default function Header() {
                     <button
                       type="button"
                       className="mt-4 inline-flex rounded-full bg-brand-primary px-4 py-2 text-xs font-semibold text-white hover:bg-brand-primary-hover"
-                      onClick={() => {
-                        goToSection('trust')
-                        setOpenMenu(null)
-                      }}
+                      onClick={() => closeMenuAndGo('trust')}
                     >
                       View trust section
                     </button>
@@ -291,22 +306,16 @@ export default function Header() {
                         <button
                           type="button"
                           className="font-medium text-brand-primary hover:underline"
-                          onClick={() => {
-                            goToSection('partners')
-                            setOpenMenu(null)
-                          }}
+                          onClick={() => closeMenuAndGo('why-choose-us')}
                         >
-                          Partner &amp; stack overview
+                          Why choose us
                         </button>
                       </li>
                       <li>
                         <button
                           type="button"
                           className="font-medium text-brand-primary hover:underline"
-                          onClick={() => {
-                            goToSection('testimonials')
-                            setOpenMenu(null)
-                          }}
+                          onClick={() => closeMenuAndGo('customer-feedback')}
                         >
                           Borrower testimonials
                         </button>
@@ -322,7 +331,7 @@ export default function Header() {
               </MegaPanel>
             </div>
 
-            <div className="relative flex h-10 shrink-0 items-center" onMouseEnter={() => { clearCloseTimer(); setOpenMenu('calculator') }} onMouseLeave={scheduleClose}>
+            <div className="relative flex h-10 shrink-0 items-center" onPointerEnter={() => { clearCloseTimer(); setOpenMenu('calculator') }} onPointerLeave={scheduleClose}>
             {triggerBtn('calculator', 'Calculator')}
             <MegaPanel menuKey="calculator">
               <div className="grid gap-6 sm:grid-cols-[1fr_220px]">
@@ -335,15 +344,12 @@ export default function Header() {
                   <button
                     type="button"
                     className="mt-4 inline-flex rounded-full border border-black/15 px-4 py-2 text-xs font-semibold hover:border-brand-primary/40 hover:bg-brand-primary/5 dark:border-white/20"
-                    onClick={() => {
-                      goToSection('calculator')
-                      setOpenMenu(null)
-                    }}
+                    onClick={() => closeMenuAndGo('calculator')}
                   >
                     Jump to homepage calculator
                   </button>
                   <Link
-                    to="/loan-calculator"
+                    to="/loan-products"
                     className="mt-2 inline-flex text-xs font-semibold text-brand-primary hover:underline"
                     onClick={() => setOpenMenu(null)}
                   >
@@ -360,7 +366,7 @@ export default function Header() {
             </MegaPanel>
           </div>
 
-          <div className="relative flex h-10 shrink-0 items-center" onMouseEnter={() => { clearCloseTimer(); setOpenMenu('news') }} onMouseLeave={scheduleClose}>
+          <div className="relative flex h-10 shrink-0 items-center" onPointerEnter={() => { clearCloseTimer(); setOpenMenu('news') }} onPointerLeave={scheduleClose}>
             {triggerBtn('news', 'News')}
             <MegaPanel menuKey="news">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">News &amp; announcements</p>
@@ -370,17 +376,14 @@ export default function Header() {
               <button
                 type="button"
                 className="mt-4 inline-flex rounded-full bg-brand-primary px-4 py-2 text-xs font-semibold text-white hover:bg-brand-primary-hover"
-                onClick={() => {
-                  goToSection('newsletter')
-                  setOpenMenu(null)
-                }}
+                onClick={() => closeMenuAndGo('newsletter')}
               >
                 Go to news section
               </button>
             </MegaPanel>
           </div>
 
-          <div className="relative flex h-10 shrink-0 items-center" onMouseEnter={() => { clearCloseTimer(); setOpenMenu('loans') }} onMouseLeave={scheduleClose}>
+          <div className="relative flex h-10 shrink-0 items-center" onPointerEnter={() => { clearCloseTimer(); setOpenMenu('loans') }} onPointerLeave={scheduleClose}>
             {triggerBtn('loans', 'Loan products')}
             <MegaPanel menuKey="loans" align="right" widthClass="w-[min(100vw-2rem,680px)] sm:w-[min(100vw-2rem,820px)]">
               <div className="flex flex-wrap items-end justify-between gap-3 border-b border-black/[0.06] pb-4 dark:border-white/10">
@@ -418,7 +421,7 @@ export default function Header() {
             </MegaPanel>
           </div>
 
-          <div className="relative flex h-10 shrink-0 items-center" onMouseEnter={() => { clearCloseTimer(); setOpenMenu('resources') }} onMouseLeave={scheduleClose}>
+          <div className="relative flex h-10 shrink-0 items-center" onPointerEnter={() => { clearCloseTimer(); setOpenMenu('resources') }} onPointerLeave={scheduleClose}>
             {triggerBtn('resources', 'Resources')}
             <MegaPanel menuKey="resources" align="right" widthClass="w-[min(100vw-2rem,700px)] sm:w-[min(100vw-2rem,900px)]">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">Resources</p>
@@ -453,7 +456,7 @@ export default function Header() {
                     </span>
                     <span className="mt-auto pt-3 text-xs font-semibold text-brand-primary">Read policy →</span>
                   </Link>
-                  <Link to="/about" className={resourceNavCardClass} onClick={() => setOpenMenu(null)}>
+                  <button type="button" className={`${resourceNavCardClass} w-full text-left`} onClick={() => closeMenuAndGo('about-us')}>
                     <span className="text-sm font-semibold tracking-tight text-brand-text group-hover:text-brand-primary dark:text-white">
                       About us
                     </span>
@@ -464,25 +467,25 @@ export default function Header() {
                       Licensed financial solutions focused on secure, transparent, and borrower-friendly services.
                     </span>
                     <span className="mt-auto pt-3 text-xs font-semibold text-brand-primary">Company profile →</span>
-                  </Link>
+                  </button>
                 </div>
                 <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-black/[0.06] pt-4 text-[13px] font-semibold dark:border-white/10">
-                  <Link to="/eligibility" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
+                  <Link to="/loan-products" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
                     Eligibility
                   </Link>
-                  <Link to="/loan-calculator" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
+                  <button type="button" className="text-brand-primary hover:underline" onClick={() => closeMenuAndGo('calculator')}>
                     Calculator
+                  </button>
+                  <button type="button" className="text-brand-primary hover:underline" onClick={() => closeMenuAndGo('newsletter')}>
+                    News
+                  </button>
+                  <Link to="/contact" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
+                    Contact
                   </Link>
-                  <Link to="/blog" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
-                    Blog
-                  </Link>
-                  <Link to="/careers" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
-                    Careers
-                  </Link>
-                  <Link to="/loans/personal" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
+                  <Link to="/loan-products" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
                     Personal loans
                   </Link>
-                  <Link to="/loans/business" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
+                  <Link to="/features" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
                     Business loans
                   </Link>
                 </div>
@@ -516,7 +519,7 @@ export default function Header() {
 
             <span className="mx-0.5 h-5 w-px shrink-0 self-center bg-gradient-to-b from-transparent via-black/15 to-transparent dark:via-white/20" aria-hidden />
 
-            <div className="relative flex h-10 shrink-0 items-center" onMouseEnter={() => { clearCloseTimer(); setOpenMenu('branches') }} onMouseLeave={scheduleClose}>
+            <div className="relative flex h-10 shrink-0 items-center" onPointerEnter={() => { clearCloseTimer(); setOpenMenu('branches') }} onPointerLeave={scheduleClose}>
             {triggerBtn('branches', 'Branches')}
             <MegaPanel menuKey="branches" align="right">
               <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
@@ -558,14 +561,8 @@ export default function Header() {
             Borrower login
           </Link>
           <Link
-            to="/borrower/register"
-            className="inline-flex h-10 items-center justify-center rounded-lg border border-black/10 bg-white px-2.5 text-[10px] font-bold leading-none tracking-wide text-brand-text shadow-sm transition hover:border-brand-primary/30 sm:rounded-xl sm:px-3 sm:text-xs sm:text-[13px] lg:hidden"
-          >
-            Join
-          </Link>
-          <Link
             to="/borrower/login"
-            className="inline-flex h-10 items-center justify-center rounded-lg bg-gradient-brand px-2.5 text-[10px] font-bold leading-none tracking-wide text-white shadow-[0_6px_22px_rgba(217,34,67,0.3)] transition hover:brightness-105 sm:rounded-xl sm:px-3.5 sm:text-xs sm:text-[13px] lg:hidden"
+            className="touch-target inline-flex h-10 items-center justify-center rounded-lg bg-gradient-brand px-3 text-[11px] font-bold leading-none tracking-wide text-white shadow-[0_6px_22px_rgba(217,34,67,0.3)] transition hover:brightness-105 sm:rounded-xl sm:px-3.5 sm:text-xs sm:text-[13px] lg:hidden"
           >
             Log in
           </Link>
@@ -588,7 +585,7 @@ export default function Header() {
             )}
           </button>
         </motion.div>
-      </div>
+      </motion.div>
 
       <AnimatePresence>
         {mobileOpen ? (
@@ -691,37 +688,48 @@ export default function Header() {
                     <Link to="/privacy-policy" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
                       Privacy policy
                     </Link>
-                    <Link to="/about" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
-                      About us
-                    </Link>
-                    <Link to="/eligibility" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
-                      Eligibility checker
-                    </Link>
-                    <Link to="/loan-calculator" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
-                      Loan calculator
-                    </Link>
-                    <Link to="/blog" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
-                      Blog &amp; resources
-                    </Link>
-                    <Link to="/careers" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
-                      Careers
-                    </Link>
-                    <Link to="/loans/personal" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
-                      Personal loans hub
-                    </Link>
-                    <Link to="/loans/business" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
-                      Business &amp; collateral hub
-                    </Link>
                     <button
                       type="button"
-                      className="block w-full rounded-lg px-2 py-2 text-left text-sm font-semibold text-brand-text/80 hover:bg-black/[0.04] dark:text-white/80 dark:hover:bg-white/5"
+                      className="block w-full rounded-lg px-2 py-2 text-left text-sm font-semibold hover:bg-brand-primary/10"
                       onClick={() => {
                         setMobileOpen(false)
                         goToSection('about-us')
                       }}
                     >
-                      About section on homepage
+                      About us
                     </button>
+                    <Link to="/loan-products" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
+                      Eligibility checker
+                    </Link>
+                    <button
+                      type="button"
+                      className="block w-full rounded-lg px-2 py-2 text-left text-sm font-semibold hover:bg-brand-primary/10"
+                      onClick={() => {
+                        setMobileOpen(false)
+                        goToSection('calculator')
+                      }}
+                    >
+                      Loan calculator
+                    </button>
+                    <button
+                      type="button"
+                      className="block w-full rounded-lg px-2 py-2 text-left text-sm font-semibold hover:bg-brand-primary/10"
+                      onClick={() => {
+                        setMobileOpen(false)
+                        goToSection('newsletter')
+                      }}
+                    >
+                      News &amp; newsletter
+                    </button>
+                    <Link to="/contact" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
+                      Contact us
+                    </Link>
+                    <Link to="/loan-products" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
+                      Personal loans hub
+                    </Link>
+                    <Link to="/features" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
+                      Business &amp; collateral hub
+                    </Link>
                     <p className="rounded-lg bg-brand-primary/10 px-2 py-2 text-xs leading-relaxed text-brand-text/80 dark:text-white/75">
                       <span className="font-semibold text-brand-text dark:text-white">Simple. Fast. Secure.</span> Apply online and track your application in the borrower portal.
                     </p>
@@ -739,6 +747,13 @@ export default function Header() {
               <button type="button" className="block w-full rounded-lg px-3 py-2.5 text-left text-sm text-brand-text hover:bg-brand-primary/10 dark:text-white" onClick={() => { goHome(); setMobileOpen(false) }}>
                 Home
               </button>
+              <Link
+                to="/borrower/register"
+                className="block w-full rounded-xl border border-black/10 py-3 text-center text-[13px] font-semibold text-brand-text transition hover:bg-black/[0.04] dark:border-white/15 dark:text-white dark:hover:bg-white/5"
+                onClick={() => setMobileOpen(false)}
+              >
+                Create account
+              </Link>
               <Link
                 to="/borrower/login"
                 className="block w-full rounded-xl bg-gradient-brand py-3.5 text-center text-[13px] font-bold tracking-wide text-white shadow-[0_8px_28px_rgba(217,34,67,0.32)] transition hover:brightness-105"

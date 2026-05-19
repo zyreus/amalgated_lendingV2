@@ -345,7 +345,7 @@ export default function AdminLayout() {
   const mainPlClass = sidebarCollapsed ? 'lg:pl-[4.75rem]' : 'lg:pl-[17.5rem]'
 
   return (
-    <div className={shell}>
+    <div className={`${shell} portal-page`}>
       {mobileOpen ? (
         <button
           type="button"
@@ -538,7 +538,7 @@ export default function AdminLayout() {
                 <button
                   type="button"
                   onClick={() => setNotifModalOpen((v) => !v)}
-                  className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200/90 text-gray-700 transition hover:bg-gray-100 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
+                  className="touch-target relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200/90 text-gray-700 transition hover:bg-gray-100 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
                   aria-label="Notifications"
                   aria-expanded={notifModalOpen}
                 >
@@ -586,7 +586,7 @@ export default function AdminLayout() {
                     setNotifModalOpen(false)
                     setProfileMenuOpen((v) => !v)
                   }}
-                  className="flex h-10 max-w-[10rem] items-center gap-2 rounded-lg border border-gray-200/90 bg-white px-2 text-left text-gray-800 transition hover:bg-gray-50 sm:max-w-[12rem]"
+                  className="touch-target flex h-10 max-w-[9rem] items-center gap-2 rounded-lg border border-gray-200/90 bg-white px-2 text-left text-gray-800 transition hover:bg-gray-50 sm:max-w-[12rem]"
                   aria-label="Account menu"
                   aria-expanded={profileMenuOpen}
                   aria-haspopup="menu"
@@ -632,8 +632,8 @@ export default function AdminLayout() {
         </header>
 
         <main
-          className={`flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain [-webkit-overflow-scrolling:touch] ${
-            chatFullBleed ? 'p-0 sm:p-1 lg:p-2' : 'p-4 sm:p-5 lg:px-8 lg:py-6'
+          className={`flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain [-webkit-overflow-scrolling:touch] pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] ${
+            chatFullBleed ? 'p-0 sm:p-1 lg:p-2' : 'p-3 sm:p-5 lg:px-8 lg:py-6'
           }`}
         >
           <div

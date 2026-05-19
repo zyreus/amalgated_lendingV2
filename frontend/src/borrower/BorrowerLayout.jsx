@@ -157,7 +157,7 @@ export default function BorrowerLayout() {
   const sidebarTransform = mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
 
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden portal-shell-bg text-gray-900 transition-colors duration-300 dark:bg-[#0F172A] dark:text-gray-100">
+    <div className="portal-page flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden portal-shell-bg text-gray-900 transition-colors duration-300 dark:bg-[#0F172A] dark:text-gray-100">
       {/* Mobile: dim background when drawer open */}
       {mobileOpen ? (
         <button
@@ -251,7 +251,7 @@ export default function BorrowerLayout() {
           className="sticky top-0 z-20 border-b border-gray-200/90 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.05),0_6px_20px_-4px_rgba(15,23,42,0.08)] backdrop-blur-md transition-[box-shadow,background-color] duration-300 dark:border-[#1F2937] dark:bg-[#0F172A]/95 dark:shadow-[0_1px_0_rgba(255,255,255,0.04),0_8px_28px_-6px_rgba(0,0,0,0.45)]"
           role="banner"
         >
-          <div className="mx-auto flex min-h-24 w-full max-w-[min(100%,var(--width-content-standard))] 2xl:max-w-[min(100%,var(--width-content-wide))] min-w-0 items-center justify-between gap-2 px-6 pb-4 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:gap-3 lg:px-16 xl:px-24">
+          <div className="mx-auto flex min-h-[3.25rem] w-full min-w-0 max-w-[min(100%,var(--width-content-standard))] items-center justify-between gap-2 px-4 pb-3 pt-[max(0.5rem,env(safe-area-inset-top,0px))] sm:min-h-16 sm:gap-3 sm:px-6 sm:pb-4 lg:min-h-20 lg:px-12 xl:px-20 2xl:max-w-[min(100%,var(--width-content-wide))]">
             {/* Left: menu (mobile) → avatar → name, then portal label */}
             <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
               <button
@@ -391,7 +391,7 @@ export default function BorrowerLayout() {
           </div>
         </header>
 
-        <main className="min-h-0 min-w-0 max-w-full flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-6 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-6 [-webkit-overflow-scrolling:touch] sm:px-8 sm:pt-8 lg:px-16 lg:py-8 xl:px-24">
+        <main className="min-h-0 min-w-0 max-w-full flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-4 [-webkit-overflow-scrolling:touch] sm:px-6 sm:pt-6 lg:px-12 lg:py-8 xl:px-20">
           <div className="mx-auto flex w-full min-w-0 max-w-[min(100%,var(--width-content-standard))] 2xl:max-w-[min(100%,var(--width-content-wide))] flex-col gap-6">
             <Outlet />
           </div>

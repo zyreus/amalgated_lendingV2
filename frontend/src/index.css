@@ -45,6 +45,13 @@
   --width-content-standard: 80rem;
   --width-content-wide: 100rem;
   --width-content-ultra: 120rem;
+  /** Marketing footer — mirrors site brand (crimson, orange, gold on warm dark) */
+  --color-footer-bg: #1c1917;
+  --color-footer-primary: #d92243;
+  --color-footer-secondary: #f69d39;
+  --color-footer-accent: #e0c375;
+  --color-footer-muted: #a8a29e;
+  --color-footer-white: #ffffff;
 }
 
 *,
@@ -115,12 +122,12 @@ body {
    * Pair with `min-h-screen` on page wrappers where needed.
    */
   .page-shell-bg {
-    @apply bg-transparent;
+    @apply min-w-0 max-w-full overflow-x-hidden bg-transparent;
   }
 
   /** Admin / borrower app chrome — neutral surface over `#root` (hides marketing canvas). */
   .portal-shell-bg {
-    @apply bg-brand-cream;
+    @apply min-w-0 max-w-full overflow-x-hidden bg-brand-cream;
   }
 
   /** Unified marketing / landing page width (1280px) — navbar, sections, footer. */
@@ -284,6 +291,62 @@ body {
   .touch-target {
     @apply inline-flex min-h-11 min-w-11 touch-manipulation items-center justify-center;
   }
+
+  /**
+   * Shared shell for admin / borrower portals — prevents horizontal scroll on narrow viewports
+   * while allowing vertical scroll in the main column.
+   */
+  .portal-page {
+    @apply min-w-0 max-w-full overflow-x-hidden;
+  }
+
+  /** Public marketing routes — clip accidental wide children (tables, carousels). */
+  .public-page {
+    @apply min-w-0 max-w-full overflow-x-hidden;
+  }
+
+  /** Marketing footer — uses only footer-* theme tokens */
+  .footer-shell {
+    @apply bg-footer-bg text-footer-white;
+  }
+
+  .footer-glass-panel {
+    @apply rounded-2xl border border-footer-primary/15 bg-gradient-to-br from-footer-primary/10 via-footer-secondary/5 to-footer-bg backdrop-blur-xl;
+  }
+
+  .footer-glass-card {
+    @apply rounded-2xl border border-footer-primary/12 bg-footer-secondary/[0.06] backdrop-blur-md;
+  }
+
+  .footer-input {
+    @apply box-border h-12 w-full rounded-xl border border-footer-primary/20 bg-footer-primary/[0.06] px-4 text-sm text-footer-white outline-none transition duration-300 placeholder:text-footer-muted/80 focus:border-footer-primary/50 focus:ring-2 focus:ring-footer-primary/25;
+  }
+
+  .footer-btn-primary {
+    @apply inline-flex min-h-12 items-center justify-center rounded-xl px-8 py-3.5 text-sm font-bold text-footer-white shadow-brand-primary transition-all duration-300 hover:scale-[1.03] hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-footer-primary;
+    background-image: var(--gradient-brand-accent);
+  }
+
+  .footer-btn-outline {
+    @apply box-border inline-flex h-12 shrink-0 items-center justify-center rounded-xl border border-footer-primary/35 bg-footer-primary/15 px-6 text-sm font-bold text-footer-white transition-all duration-300 enabled:hover:border-footer-primary/60 enabled:hover:bg-footer-primary/25 disabled:opacity-50;
+  }
+
+  .footer-social-btn {
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-xl border border-footer-primary/20 bg-footer-primary/[0.06] text-footer-muted backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-footer-primary/45 hover:bg-footer-primary/15 hover:text-footer-white hover:shadow-brand-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-footer-primary/50;
+  }
+
+  /** Cream page → dark footer (neutral fade, no crimson band) */
+  .footer-brand-transition {
+    @apply pointer-events-none h-6 bg-gradient-to-b from-brand-cream to-footer-bg sm:h-8;
+  }
+
+  .footer-link {
+    @apply inline-flex items-center gap-2 text-sm text-footer-muted transition-colors duration-300 hover:text-footer-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-footer-primary/60;
+  }
+
+  .footer-legal-link {
+    @apply text-footer-muted transition-colors duration-300 hover:text-footer-primary;
+  }
 }
 
 /* Chat widget: typing dots animation */
@@ -329,6 +392,37 @@ body {
   to {
     opacity: 1;
     transform: scale(1) translateY(0);
+  }
+}
+
+/** Premium marketing footer — animated top accent */
+@keyframes footer-gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.footer-gradient-border {
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--color-footer-accent) 50%,
+    transparent 100%
+  );
+  opacity: 0.65;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer-gradient-border {
+    animation: none;
+    background-size: 100% 100%;
   }
 }
 

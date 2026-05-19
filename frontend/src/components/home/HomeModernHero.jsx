@@ -8,10 +8,9 @@ import { fetchWebsiteTestimonials } from '../../utils/fetchWebsiteTestimonials.j
  * Backend integration: primary apply flow stays on existing borrower portal route.
  * Swap `HERO_IMAGE_SRC` for a hosted asset under /public when you have brand photography.
  */
-const HERO_IMAGE_SRC =
-  'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=960&q=80'
+const HERO_IMAGE_SRC = '/hero-why-choose-us.png'
 const HERO_IMAGE_ALT =
-  'Professional reviewing loan options on a smartphone — representative client success imagery; replace with Amalgated Lending brand photography when available.'
+  'Amalgated Lending — Why choose us: we prioritize transparency, guide you step by step, and process quickly.'
 
 function HeroStarRow({ filled }) {
   const n = Math.min(5, Math.max(0, Math.round(Number(filled) || 0)))
@@ -241,11 +240,11 @@ export default function HomeModernHero() {
               <img
                 src={HERO_IMAGE_SRC}
                 alt={HERO_IMAGE_ALT}
-                width={960}
-                height={1200}
+                width={509}
+                height={655}
                 fetchPriority="high"
                 decoding="async"
-                className="aspect-[4/5] w-full object-cover object-top sm:aspect-[5/6] lg:aspect-auto lg:max-h-[min(560px,70vh)] lg:min-h-[420px]"
+                className="block w-full h-auto"
               />
 
               <div className="border-t border-slate-200/90 bg-gradient-to-br from-white to-brand-cream/80 p-6 sm:p-8">

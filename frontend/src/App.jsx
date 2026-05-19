@@ -99,7 +99,7 @@ function App() {
   }, [])
 
   return (
-    <div className="min-h-screen page-shell-bg text-brand-text">
+    <motion.div className="public-page min-h-screen page-shell-bg text-brand-text">
       <ScrollProgressBar />
       <SeoMeta
         title="Amalgated Lending Inc. | Trusted Loans in Davao & Mindanao"
@@ -108,7 +108,7 @@ function App() {
         image={`${webUrl}/amalgated-lending-logo.png`}
         jsonLd={homeJsonLd}
       />
-      <div className="relative flex min-h-screen flex-col">
+      <div className="relative flex min-h-screen min-w-0 flex-col">
         <Header />
 
         <main className="flex-1">
@@ -231,7 +231,7 @@ function App() {
         <Footer />
       </div>
       <BackToTopButton />
-    </div>
+    </motion.div>
   )
 }
 export default App
