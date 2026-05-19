@@ -118,6 +118,7 @@ class DatabaseSeeder extends Seeder
             ],
             'notifications' => [
                 'email_enabled' => true,
+                'auto_send' => true,
                 'sms_enabled' => false,
                 'reminder_days' => [1, 3, 7],
             ],

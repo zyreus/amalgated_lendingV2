@@ -24,6 +24,29 @@ class TransactionalMailSender
      * @param  array<int, array{name: string, path: string}>  $fileAttachments
      * @return array{ok: bool, detail: ?string}
      */
+    /**
+     * Auth-critical mail (password reset, OTP) — bypasses admin “email disabled” toggles.
+     *
+     * @param  array<string, mixed>  $failureMeta
+     * @param  array<int, array{name: string, path: string}>  $fileAttachments
+     * @return array{ok: bool, detail: ?string}
+     */
+    public function sendCriticalMailable(
+        Mailable $mailable,
+        string $toEmail,
+        string $toName,
+        string $subject,
+        array $failureMeta = [],
+        array $fileAttachments = [],
+    ): array {
+        return $this->sendHtmlMailable($mailable, $toEmail, $toName, $subject, $failureMeta, $fileAttachments, false);
+    }
+
+    /**
+     * @param  array<string, mixed>  $failureMeta
+     * @param  array<int, array{name: string, path: string}>  $fileAttachments
+     * @return array{ok: bool, detail: ?string}
+     */
     public function sendHtmlMailable(
         Mailable $mailable,
         string $toEmail,
@@ -31,6 +54,7 @@ class TransactionalMailSender
         string $subject,
         array $failureMeta = [],
         array $fileAttachments = [],
+        bool $respectNotificationToggles = true,
     ): array {
         $trimmed = trim($toEmail);
         if ($trimmed === '' || ! filter_var($trimmed, FILTER_VALIDATE_EMAIL)) {
@@ -39,7 +63,7 @@ class TransactionalMailSender
             return ['ok' => false, 'detail' => 'invalid_recipient'];
         }
 
-        if (! app(EmailSettingsService::class)->maySendTransactional()) {
+        if ($respectNotificationToggles && ! app(EmailSettingsService::class)->maySendTransactional()) {
             Log::notice('Transactional mail skipped — disabled in notification settings.', ['meta' => $failureMeta]);
 
             return ['ok' => false, 'detail' => 'email_disabled'];
@@ -113,14 +137,20 @@ class TransactionalMailSender
             }
         }
 
-        $fallbackMailer = (string) config('mail_delivery.fallback_mailer', 'log');
-        if ($fallbackMailer !== '' && $fallbackMailer !== (string) config('mail.default')) {
-            try {
-                Mail::mailer($fallbackMailer)->to($toEmail)->send(clone $mailable);
+        if ($this->shouldUseDevFallbackMailer()) {
+            $fallbackMailer = (string) config('mail_delivery.fallback_mailer', 'log');
+            if ($fallbackMailer !== '' && $fallbackMailer !== (string) config('mail.default')) {
+                try {
+                    Mail::mailer($fallbackMailer)->to($toEmail)->send(clone $mailable);
+                    Log::info('Transactional mail written to fallback mailer (local only).', [
+                        'mailer' => $fallbackMailer,
+                        'recipient' => $toEmail,
+                    ]);
 
-                return ['ok' => true, 'detail' => 'fallback_'.$fallbackMailer];
-            } catch (\Throwable $fallbackError) {
-                Log::error('Fallback mailer failed.', ['error' => $fallbackError->getMessage()]);
+                    return ['ok' => true, 'detail' => 'fallback_'.$fallbackMailer];
+                } catch (\Throwable $fallbackError) {
+                    Log::error('Fallback mailer failed.', ['error' => $fallbackError->getMessage()]);
+                }
             }
         }
 
@@ -129,5 +159,15 @@ class TransactionalMailSender
         }
 
         return ['ok' => false, 'detail' => $lastError?->getMessage() ?? 'send_failed'];
+    }
+
+    /** Log mailer is dev-only; production must surface SMTP failure to callers and email_logs. */
+    private function shouldUseDevFallbackMailer(): bool
+    {
+        if (app()->environment('production')) {
+            return false;
+        }
+
+        return (bool) config('mail_delivery.allow_log_fallback', true);
     }
 }

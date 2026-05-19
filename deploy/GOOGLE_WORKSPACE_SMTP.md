@@ -28,9 +28,24 @@ MAIL_RETRY_DELAY_MS=750
 MAIL_RATE_LIMIT_PER_MINUTE=40
 MAIL_QUEUE_TRANSACTIONAL=false
 MAIL_FALLBACK_MAILER=log
+MAIL_ALLOW_LOG_FALLBACK=false
+MAIL_EHLO_DOMAIN=amalgatedlending.com
+BORROWER_VERIFY_URL_BASE=https://api.amalgatedlending.com
+FRONTEND_URL=https://amalgatedlending.com
 ```
 
-**Local development:** use MailHog (`MAIL_HOST=127.0.0.1`, `MAIL_PORT=1025`) or `MAIL_MAILER=log`.
+**Production:** set `MAIL_ALLOW_LOG_FALLBACK=false` so failed SMTP is not silently written to the log mailer.
+
+**Local development:** use MailHog (`MAIL_HOST=127.0.0.1`, `MAIL_PORT=1025`) or `MAIL_MAILER=log` with `MAIL_ALLOW_LOG_FALLBACK=true`.
+
+### Verify from the API server
+
+```bash
+php artisan mail:diagnose
+php artisan mail:diagnose --to=you@example.com
+```
+
+Admin UI: **Settings → Google Workspace SMTP → Refresh status / Send test**.
 
 Run queue workers when `MAIL_QUEUE_TRANSACTIONAL=true`:
 

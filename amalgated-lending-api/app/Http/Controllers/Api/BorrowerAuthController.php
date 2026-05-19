@@ -57,7 +57,7 @@ class BorrowerAuthController extends Controller
         $logger->log($authUser, 'auth.borrower_register');
 
         if ((bool) config('services.borrower_verify.send_on_register', true)) {
-            SendBorrowerEmailVerificationJob::dispatch((int) $user->getKey());
+            SendBorrowerEmailVerificationJob::dispatchSync((int) $user->getKey());
         }
 
         return response()->json([

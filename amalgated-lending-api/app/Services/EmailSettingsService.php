@@ -9,16 +9,33 @@ class EmailSettingsService
 {
     public function isEmailEnabled(): bool
     {
-        $prefs = setting('notifications');
+        $prefs = $this->normalizedNotificationPrefs();
 
-        return ! array_key_exists('email_enabled', $prefs) || (bool) $prefs['email_enabled'];
+        return (bool) ($prefs['email_enabled'] ?? true);
     }
 
     public function isAutoSendEnabled(): bool
     {
-        $prefs = setting('notifications');
+        $prefs = $this->normalizedNotificationPrefs();
 
-        return ! array_key_exists('auto_send', $prefs) || (bool) $prefs['auto_send'];
+        return (bool) ($prefs['auto_send'] ?? true);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function normalizedNotificationPrefs(): array
+    {
+        $prefs = setting('notifications');
+        if (! is_array($prefs)) {
+            $prefs = [];
+        }
+
+        return array_merge([
+            'email_enabled' => true,
+            'sms_enabled' => false,
+            'auto_send' => true,
+        ], $prefs);
     }
 
     public function maySendTransactional(): bool

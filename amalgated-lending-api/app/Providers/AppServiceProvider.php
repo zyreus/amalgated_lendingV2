@@ -40,6 +40,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot()
     {
+        $this->normalizeMailConfig();
+
         $appUrl = (string) config('app.url', '');
         if ($appUrl !== '') {
             URL::forceRootUrl(rtrim($appUrl, '/'));
@@ -58,5 +60,24 @@ class AppServiceProvider extends ServiceProvider
         Payment::observe(PaymentObserver::class);
         ChatMessage::observe(ChatMessageObserver::class);
         Message::observe(MessageObserver::class);
+    }
+
+    /** Trim Google App Passwords and normalize Gmail SMTP defaults. */
+    private function normalizeMailConfig(): void
+    {
+        $password = config('mail.mailers.smtp.password');
+        if (is_string($password)) {
+            Config::set('mail.mailers.smtp.password', preg_replace('/\s+/', '', trim($password)) ?? '');
+        }
+
+        $username = config('mail.mailers.smtp.username');
+        if (is_string($username)) {
+            Config::set('mail.mailers.smtp.username', trim($username));
+        }
+
+        $ehlo = trim((string) config('mail.mailers.smtp.local_domain', ''));
+        if ($ehlo === '' && is_string($username) && str_contains($username, '@')) {
+            Config::set('mail.mailers.smtp.local_domain', substr(strrchr($username, '@'), 1) ?: null);
+        }
     }
 }

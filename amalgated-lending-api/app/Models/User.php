@@ -4,7 +4,8 @@ namespace App\Models;
 
 use App\Jobs\SendBorrowerEmailVerificationJob;
 use Illuminate\Auth\MustVerifyEmail as MustVerifyEmailTrait;
-use App\Notifications\BrandedResetPassword;
+use App\Mail\PasswordResetMail;
+use App\Services\TransactionalMailSender;
 use Illuminate\Auth\Passwords\CanResetPassword;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Contracts\Auth\CanResetPassword as CanResetPasswordContract;
@@ -131,7 +132,18 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
 
     public function sendPasswordResetNotification($token): void
     {
-        $this->notify(new BrandedResetPassword($token));
+        $base = rtrim((string) config('app.frontend_url', 'http://localhost:5173'), '/');
+        $resetUrl = $base.'/reset-password?token='.urlencode((string) $token)
+            .'&email='.urlencode($this->getEmailForPasswordReset());
+
+        $subject = 'Reset your password — '.config('app.name', 'Amalgated Lending Inc.');
+        app(TransactionalMailSender::class)->sendCriticalMailable(
+            new PasswordResetMail($this, $resetUrl),
+            $this->getEmailForPasswordReset(),
+            (string) ($this->name ?? ''),
+            $subject,
+            ['purpose' => 'password_reset', 'user_id' => $this->getKey()],
+        );
     }
 
     /**
@@ -236,6 +248,6 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
     /** Queue transactional verification email (JWT API — Laravel's default Mail notification is bypassed). */
     public function sendEmailVerificationNotification(): void
     {
-        SendBorrowerEmailVerificationJob::dispatch((int) $this->getKey());
+        SendBorrowerEmailVerificationJob::dispatchSync((int) $this->getKey());
     }
 }

@@ -23,13 +23,21 @@ class PublicLeadController extends Controller
             'organization' => 'nullable|string|max:255',
             'loan_type' => 'nullable|string|max:255',
             'message' => 'required|string|max:5000',
+            'source' => 'nullable|string|max:120',
         ]);
+
+        $source = trim((string) ($data['source'] ?? ''));
+        if ($source === '' && self::isNewsletterSignup($data['message'], $data['name'])) {
+            $source = 'newsletter';
+        }
 
         $lead = Lead::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'organization' => $data['organization'] ?? null,
             'loan_type' => $data['loan_type'] ?? null,
+            'source' => $source !== '' ? $source : null,
+            'source_page' => $request->headers->get('Referer'),
             'status' => 'new',
             'initial_message' => $data['message'],
             'chat_token' => Str::random(40),
@@ -42,7 +50,9 @@ class PublicLeadController extends Controller
             'message' => $data['message'],
         ]);
 
-        $formType = str_contains(mb_strtolower($data['message']), 'newsletter') ? 'newsletter' : 'contact';
+        $formType = ($source === 'newsletter' || self::isNewsletterSignup($data['message'], $data['name']))
+            ? 'newsletter'
+            : 'contact';
 
         app(NotificationCenter::class)->notifyStaff(
             NotificationCenter::CATEGORY_CRM_INQUIRY,
@@ -78,6 +88,16 @@ class PublicLeadController extends Controller
             ],
             'chat_token' => $lead->chat_token,
         ], 201);
+    }
+
+    private static function isNewsletterSignup(string $message, string $name): bool
+    {
+        $msg = mb_strtolower($message);
+        if (str_contains($msg, 'newsletter') || str_contains($msg, 'product updates')) {
+            return true;
+        }
+
+        return mb_strtolower(trim($name)) === 'newsletter subscriber';
     }
 
     public function messages(Request $request, Lead $lead): JsonResponse

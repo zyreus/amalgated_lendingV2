@@ -44,7 +44,12 @@ class BorrowerOtpService
         $expiresMinutes = (int) ceil($ttl / 60);
         $send = $this->automation->sendBorrowerOtp($user, $code, $expiresMinutes);
         if (! ($send['ok'] ?? false)) {
-            return ['ok' => false, 'message' => 'Could not send OTP email. Try again later.'];
+            $detail = (string) ($send['detail'] ?? '');
+            $hint = $detail === 'smtp_not_configured'
+                ? 'Email is not configured on the server (MAIL_*).'
+                : ($detail !== '' ? 'Mail error: '.$detail : 'Could not send OTP email.');
+
+            return ['ok' => false, 'message' => $hint.' Try again later.'];
         }
 
         return ['ok' => true, 'message' => 'A sign-in code was sent to '.$email.'.'];

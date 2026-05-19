@@ -2,6 +2,28 @@ export function SkeletonLine({ className = '' }) {
   return <div className={`animate-pulse rounded bg-gray-200 dark:bg-[#1F2937] ${className}`} />
 }
 
+/** Lighter skeleton for borrower dashboard (fewer cards than admin). */
+export function BorrowerDashboardSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <SkeletonLine className="h-4 w-32" />
+        <SkeletonLine className="h-8 w-56 max-w-full" />
+        <SkeletonLine className="h-4 w-full max-w-md" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-[#1F2937] dark:bg-[#111827]">
+            <SkeletonLine className="h-3 w-24" />
+            <SkeletonLine className="mt-3 h-7 w-28" />
+          </div>
+        ))}
+      </div>
+      <SkeletonLine className="h-64 w-full rounded-2xl" />
+    </div>
+  )
+}
+
 export function AdminPageSkeleton() {
   return (
     <div className="space-y-6">

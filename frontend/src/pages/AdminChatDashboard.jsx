@@ -2,6 +2,15 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import { adminSocketUrls, chatFetch, chatJson, getLendingChatSecret, hasChatServerAuth } from '../utils/adminChatApi.js'
+import {
+  fetchCrmBorrowerLeads,
+  fetchCrmConversations,
+  fetchCrmLeadMessages,
+  fetchCrmLeads,
+  fetchCrmMessages,
+  fetchCrmStaffUsers,
+  postCrmConversationMessage,
+} from '../utils/adminChatCrmApi.js'
 import { api as adminApi, getToken as getAdminToken } from '../admin/api/client.js'
 import { downloadCsv } from '../admin/utils/export.js'
 import { chatOutgoingReceiptLabel, formatChatTime, formatCrmInboxDate, formatCrmLog, getResolvedDisplayTimeZone } from '../utils/timestamps.js'
@@ -315,6 +324,7 @@ export default function AdminChatDashboard({
   /** Laravel staff list for `/warehouse-assign` (requires `users.view`). */
   const [assignStaffRows, setAssignStaffRows] = useState([])
   const [warehouseActionError, setWarehouseActionError] = useState('')
+  const [crmDataHint, setCrmDataHint] = useState('')
   const [conversationWarehouseBusy, setConversationWarehouseBusy] = useState(false)
   const socketRef = useRef(null)
   const scrollRef = useRef(null)
@@ -346,11 +356,23 @@ export default function AdminChatDashboard({
       } else if (filter && filter !== 'all') {
         params.set('status', filter)
       }
-      const data = await adminApi(`/admin/chat/conversations?${params}`)
+      const { rows, source, error } = await fetchCrmConversations(params)
       if (requestSeq !== conversationsRequestSeqRef.current) return
-      setConversations(Array.isArray(data) ? sortConversationsByLastMessageDesc(data) : [])
-    } catch {
-      if (requestSeq === conversationsRequestSeqRef.current) setConversations([])
+      setConversations(sortConversationsByLastMessageDesc(rows))
+      if (source === 'node') {
+        setCrmDataHint(
+          'Showing live chat inbox from the chat server. Configure LARAVEL_CHAT_SYNC_URL + LARAVEL_CHAT_SYNC_SECRET in chat-server/.env to mirror into Laravel.',
+        )
+      } else if (!rows.length && error) {
+        setCrmDataHint(error.message || 'Could not load conversations. Check Laravel API and chat server.')
+      } else {
+        setCrmDataHint('')
+      }
+    } catch (e) {
+      if (requestSeq === conversationsRequestSeqRef.current) {
+        setConversations([])
+        setCrmDataHint(e?.message || 'Could not load conversations.')
+      }
     }
   }, [visitorQueueBucket, filter])
 
@@ -362,9 +384,8 @@ export default function AdminChatDashboard({
       const q = new URLSearchParams()
       if (afterId > 0) q.set('after_id', String(afterId))
       q.set('limit', afterId > 0 ? '120' : '200')
-      const data = await adminApi(`/admin/chat/conversations/${encodeURIComponent(id)}/messages?${q}`)
+      const rows = await fetchCrmMessages(id, q)
       if (requestSeq !== messagesRequestSeqRef.current) return
-      const rows = Array.isArray(data) ? data : []
       if (!rows.length) return
       setMessages((prev) => (afterId > 0 ? mergeMessageRows(prev, rows) : rows))
       const maxId = rows.reduce((acc, row) => Math.max(acc, Number(row?.id) || 0), 0)
@@ -384,8 +405,8 @@ export default function AdminChatDashboard({
         loan_type: BORROWER_CHAT_LOAN_TYPE,
         per_page: '100',
       })
-      const res = await adminApi(`/admin/leads?${q}`)
-      setBorrowerLeads((res?.data?.data || []).map(normalizeLead))
+      const rows = await fetchCrmBorrowerLeads(q)
+      setBorrowerLeads(rows.map(normalizeLead))
     } catch {
       /* ignore */
     }
@@ -394,8 +415,8 @@ export default function AdminChatDashboard({
   const fetchBorrowerMessages = useCallback(async (leadId) => {
     if (!leadId) return
     try {
-      const res = await adminApi(`/admin/leads/${leadId}/messages`)
-      setBorrowerMessages(Array.isArray(res?.data) ? res.data : [])
+      const rows = await fetchCrmLeadMessages(leadId)
+      setBorrowerMessages(rows)
     } catch {
       setBorrowerMessages([])
     }
@@ -464,9 +485,7 @@ export default function AdminChatDashboard({
       })
       if (leadsFilter) params.set('status', leadsFilter)
       if (leadsSearch) params.set('search', leadsSearch)
-      const res = await adminApi(`/admin/leads?${params}`)
-      const page = res?.data
-      const rows = Array.isArray(page?.data) ? page.data : Array.isArray(res?.data) ? res.data : []
+      const rows = await fetchCrmLeads(params)
       setLeads(rows.map(normalizeLead))
     } catch {
       setLeads([])
@@ -489,16 +508,31 @@ export default function AdminChatDashboard({
     setAnalyticsError(null)
     try {
       const aq = new URLSearchParams({ since: '-7 days' })
+      let loaded = false
       const { res } = await chatFetch(`/api/admin/analytics?${aq}`)
-      if (!res || res.status === 401) {
-        return
+      if (res && res.status !== 401) {
+        const data = await res.json().catch(() => ({}))
+        if (res.ok && data && typeof data.visits === 'number') {
+          setAnalytics(data)
+          loaded = true
+        }
       }
-      const data = await res.json().catch(() => ({}))
-      if (res.ok && data && typeof data.visits === 'number') {
-        setAnalytics(data)
-      } else {
-        setAnalyticsError(data?.message || 'Could not load analytics from database.')
+      if (!loaded) {
+        try {
+          const fallback = await adminApi(`/admin/chat/visitor-analytics?days=7`)
+          if (fallback && typeof fallback.visits === 'number') {
+            setAnalytics(fallback)
+            loaded = true
+          }
+        } catch {
+          /* warehouse fallback below */
+        }
+      }
+      if (!loaded) {
+        setAnalyticsError('Could not load visitor analytics. Start the chat server or check VITE_LENDING_ADMIN_API_SECRET.')
         setAnalytics((prev) => prev || null)
+      } else {
+        setAnalyticsError(null)
       }
     } catch {
       setAnalyticsError('Network error — is the API running?')
@@ -1086,10 +1120,7 @@ export default function AdminChatDashboard({
     }
     setMessages((prev) => [...prev, optimisticMessage])
     setInput('')
-    adminApi(`/admin/chat/conversations/${encodeURIComponent(activeId)}/messages`, {
-      method: 'POST',
-      body: JSON.stringify({ message: text }),
-    })
+    postCrmConversationMessage(activeId, text)
       .then((res) => {
         const serverMessage = res?.message || null
         if (serverMessage) {
@@ -1125,6 +1156,14 @@ export default function AdminChatDashboard({
         )
       })
       .catch(() => {
+        if (socketRef.current?.connected) {
+          socketRef.current.emit('admin:message', {
+            conversationId: activeId,
+            content: text,
+            adminName: 'Support Agent',
+          })
+          return
+        }
         setMessages((prev) => prev.filter((m) => m.id !== tempId))
       })
     inputRef.current?.focus()
@@ -1186,9 +1225,7 @@ export default function AdminChatDashboard({
     let cancelled = false
     ;(async () => {
       try {
-        const res = await adminApi('/admin/users?per_page=150&is_active=true')
-        const rows = Array.isArray(res?.data?.data) ? res.data.data : []
-        const staffOnly = rows.filter((u) => u && String(u.role || '').toLowerCase() !== 'borrower')
+        const staffOnly = await fetchCrmStaffUsers()
         if (!cancelled) setAssignStaffRows(staffOnly)
       } catch {
         if (!cancelled) setAssignStaffRows([])
@@ -1431,11 +1468,19 @@ Amalgated Lending Inc. Team`
 
   return (
     <div
-      className={`relative flex h-full min-h-0 flex-1 flex-row overflow-hidden rounded-2xl bg-[var(--admin-bg)] text-[var(--admin-text)] ${chatAuthMissing ? 'pt-14' : ''}`}
+      className={`relative flex h-full min-h-0 flex-1 flex-row overflow-hidden rounded-2xl bg-[var(--admin-bg)] text-[var(--admin-text)] ${chatAuthMissing || crmDataHint ? 'pt-14' : ''}`}
     >
+      {crmDataHint ? (
+        <div
+          className="absolute inset-x-0 top-0 z-[65] border-b border-sky-500/35 bg-sky-500/10 px-3 py-2 text-left text-xs leading-snug text-sky-950 sm:px-4 sm:text-sm"
+          role="status"
+        >
+          {crmDataHint}
+        </div>
+      ) : null}
       {chatAuthMissing ? (
         <div
-          className="absolute inset-x-0 top-0 z-[70] border-b border-amber-500/40 bg-amber-500/15 px-3 py-2.5 text-left text-xs leading-snug text-amber-950 shadow-sm sm:px-4 sm:text-center sm:text-sm"
+          className={`absolute inset-x-0 z-[70] border-b border-amber-500/40 bg-amber-500/15 px-3 py-2.5 text-left text-xs leading-snug text-amber-950 shadow-sm sm:px-4 sm:text-center sm:text-sm ${crmDataHint ? 'top-10' : 'top-0'}`}
           role="alert"
         >
           <strong className="font-semibold">Chat API secret missing.</strong>{' '}

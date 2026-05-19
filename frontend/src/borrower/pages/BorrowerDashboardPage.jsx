@@ -7,7 +7,7 @@ import { dueCountdownLabel, formatDate, formatPeso, paymentOrArInvoiceSnippetHtm
 import { corporatePrintHeaderBlock } from '../../utils/corporatePrintHeaderHtml.js'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 import { admin as ui } from '../../admin/components/AdminUi.jsx'
-import { AdminPageSkeleton } from '../../components/AppSkeletons.jsx'
+import { BorrowerDashboardSkeleton } from '../../components/AppSkeletons.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog.jsx'
 
 const paymentMethods = [
@@ -265,7 +265,7 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
     }
   }
 
-  if (loading) return <AdminPageSkeleton />
+  if (loading) return <BorrowerDashboardSkeleton />
   if (error && !data) {
     return <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>
   }

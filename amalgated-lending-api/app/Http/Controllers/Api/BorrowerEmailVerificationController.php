@@ -103,7 +103,7 @@ class BorrowerEmailVerificationController extends Controller
 
         Cache::put('borrower_verify_resend_attempt:'.$user->id, true, now()->addSeconds((int) config('services.borrower_verify.resend_cooldown_seconds', 120)));
 
-        SendBorrowerEmailVerificationJob::dispatch($user->id);
+        SendBorrowerEmailVerificationJob::dispatchSync($user->id);
 
         return response()->json([
             'ok' => true,

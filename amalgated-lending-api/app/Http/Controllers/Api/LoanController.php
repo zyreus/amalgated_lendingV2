@@ -670,7 +670,10 @@ class LoanController extends Controller
         $loan->loadMissing(['borrower:id,name,email']);
 
         $decision = $loan->status === Loan::STATUS_REJECTED ? 'rejected' : 'approved';
-        $ts = (int) ($loan->approved_at?->getTimestamp() ?? 0);
+        $ts = (int) ($loan->approved_at?->getTimestamp()
+            ?? $loan->rejected_at?->getTimestamp()
+            ?? $loan->updated_at?->getTimestamp()
+            ?? now()->getTimestamp());
         $dedupeKey = SendLoanDecisionJob::dedupeKey($loan->id, $decision, $ts);
 
         $borrower = $loan->borrower;
@@ -713,7 +716,12 @@ class LoanController extends Controller
             ]
         );
 
-        SendLoanDecisionJob::dispatch($loan->id, $decision, $ts);
+        try {
+            SendLoanDecisionJob::dispatchSync($loan->id, $decision, $ts);
+        } catch (\Throwable $e) {
+            report($e);
+            SendLoanDecisionJob::dispatch($loan->id, $decision, $ts);
+        }
     }
 
     /**

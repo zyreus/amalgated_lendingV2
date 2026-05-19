@@ -262,6 +262,7 @@ Route::prefix('v1')->group(function () {
         Route::middleware('permission:cms.manage')->group(function () {
             Route::get('/cms', [CmsController::class, 'index']);
             Route::post('/cms', [CmsController::class, 'upsert']);
+            Route::get('/newsletter-subscribers', [CmsController::class, 'newsletterSubscribers']);
         });
 
         Route::middleware('permission:settings.manage')->group(function () {
@@ -273,6 +274,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/admin/email/logs', [AdminEmailController::class, 'logs']);
             Route::get('/admin/email/analytics', [AdminEmailController::class, 'analytics']);
             Route::post('/admin/email/test', [AdminEmailController::class, 'test'])->middleware('throttle:6,1');
+            Route::post('/admin/email/retry', [AdminEmailController::class, 'retry'])->middleware('throttle:12,1');
         });
 
         Route::middleware('permission:activity.view')->group(function () {
@@ -357,6 +359,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/chat/conversations/{sessionId}/messages', [AdminChatController::class, 'messages']);
         Route::post('/chat/conversations/{sessionId}/messages', [AdminChatController::class, 'sendMessage']);
         Route::get('/chat/support-analytics', [AdminChatController::class, 'analytics']);
+        Route::get('/chat/visitor-analytics', [AdminChatController::class, 'visitorAnalytics']);
         Route::patch('/chat/conversations/{sessionId}/warehouse-status', [AdminChatController::class, 'patchStatus']);
         Route::post('/chat/conversations/{sessionId}/warehouse-assign', [AdminChatController::class, 'assignConversation']);
         Route::delete('/chat/conversations/{sessionId}/warehouse', [AdminChatController::class, 'destroyConversation']);

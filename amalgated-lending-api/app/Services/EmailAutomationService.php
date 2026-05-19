@@ -135,6 +135,16 @@ class EmailAutomationService
         $dedupeKey = 'borrower_otp:'.$user->id.':'.now()->format('Y-m-d-H-i');
         $subject = 'Your sign-in code — '.config('app.name');
 
+        if (! $this->settings->maySendTransactional()) {
+            return $this->sender->sendCriticalMailable(
+                new BorrowerOtpMail((string) $user->name, $code, $expiresMinutes),
+                $email,
+                (string) $user->name,
+                $subject,
+                ['user_id' => $user->id, 'dedupe_key' => $dedupeKey],
+            );
+        }
+
         return $this->sendMailable(
             new BorrowerOtpMail((string) $user->name, $code, $expiresMinutes),
             $email,

@@ -115,6 +115,7 @@ export default function Footer() {
           name: nlName.trim() || 'Newsletter subscriber',
           email: nlEmail.trim(),
           message: 'Please add me to product updates and rate alerts from the website footer.',
+          source: 'newsletter',
         }),
       })
       const body = await res.json().catch(() => ({}))

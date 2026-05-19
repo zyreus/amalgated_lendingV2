@@ -29,6 +29,10 @@ class EmailLog extends Model
 
     public const NOTIFICATION_BORROWER_OTP = 'borrower_otp';
 
+    public const NOTIFICATION_BORROWER_VERIFY = 'borrower_verify_email';
+
+    public const NOTIFICATION_PASSWORD_RESET = 'password_reset';
+
     public const NOTIFICATION_REGISTRATION = 'registration_welcome';
 
     protected $fillable = [

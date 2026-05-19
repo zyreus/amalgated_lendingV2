@@ -38,4 +38,15 @@ class Lead extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    /** Footer newsletter signups and legacy rows matched by message/name. */
+    public function scopeNewsletter($query)
+    {
+        return $query->where(function ($w) {
+            $w->where('source', 'newsletter')
+                ->orWhereRaw('LOWER(COALESCE(initial_message, "")) LIKE ?', ['%newsletter%'])
+                ->orWhereRaw('LOWER(COALESCE(initial_message, "")) LIKE ?', ['%product updates%'])
+                ->orWhereRaw('LOWER(name) = ?', ['newsletter subscriber']);
+        });
+    }
 }

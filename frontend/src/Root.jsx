@@ -70,14 +70,10 @@ const AdminCreditWellnessPage = lazy(() => import('./admin/pages/AdminCreditWell
 const AdminComplianceCenterPage = lazy(() => import('./admin/pages/AdminComplianceCenterPage.jsx'))
 const AdminDocumentVerificationHubPage = lazy(() => import('./admin/pages/AdminDocumentVerificationHubPage.jsx'))
 const BorrowerCreditHealthPage = lazy(() => import('./borrower/pages/BorrowerCreditHealthPage.jsx'))
-const BorrowerOffersPage = lazy(() => import('./borrower/pages/BorrowerOffersPage.jsx'))
 const BorrowerDocumentsHubPage = lazy(() => import('./borrower/pages/BorrowerDocumentsHubPage.jsx'))
 const BorrowerHelpCenterPage = lazy(() => import('./borrower/pages/BorrowerHelpCenterPage.jsx'))
 const BorrowerTicketsPage = lazy(() => import('./borrower/pages/BorrowerTicketsPage.jsx'))
-const BorrowerAutopayPage = lazy(() => import('./borrower/pages/BorrowerAutopayPage.jsx'))
 const BorrowerStatementsPage = lazy(() => import('./borrower/pages/BorrowerStatementsPage.jsx'))
-const BorrowerLoanToolsPage = lazy(() => import('./borrower/pages/BorrowerLoanToolsPage.jsx'))
-const BorrowerBankingPage = lazy(() => import('./borrower/pages/BorrowerBankingPage.jsx'))
 const BorrowerPrivacyPrefsPage = lazy(() => import('./borrower/pages/BorrowerPrivacyPrefsPage.jsx'))
 
 /** Lazy on public pages only — chat UI is not needed for admin/borrower shells. */
@@ -224,14 +220,14 @@ export default function Root() {
                   <Route index element={<Navigate to="/borrower/dashboard" replace />} />
                   <Route path="dashboard" element={<BorrowerDashboardPage />} />
                   <Route path="credit-health" element={<BorrowerCreditHealthPage />} />
-                  <Route path="offers" element={<BorrowerOffersPage />} />
+                  <Route path="offers" element={<Navigate to="/borrower/dashboard" replace />} />
                   <Route path="documents" element={<BorrowerDocumentsHubPage />} />
-                  <Route path="autopay" element={<BorrowerAutopayPage />} />
+                  <Route path="autopay" element={<Navigate to="/borrower/payments" replace />} />
                   <Route path="statements" element={<BorrowerStatementsPage />} />
-                  <Route path="tools" element={<BorrowerLoanToolsPage />} />
+                  <Route path="tools" element={<Navigate to="/borrower/dashboard" replace />} />
                   <Route path="help" element={<BorrowerHelpCenterPage />} />
                   <Route path="tickets" element={<BorrowerTicketsPage />} />
-                  <Route path="banking" element={<BorrowerBankingPage />} />
+                  <Route path="banking" element={<Navigate to="/borrower/profile" replace />} />
                   <Route path="settings/privacy" element={<BorrowerPrivacyPrefsPage />} />
                   <Route path="applications" element={<BorrowerApplicationsPage />} />
                   <Route path="notifications" element={<Navigate to="/borrower/dashboard" replace />} />

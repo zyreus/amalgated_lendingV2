@@ -250,6 +250,22 @@ export default function SettingsPage() {
     refreshSmtpDiagnostics()
   }, [])
 
+  const retryFailedEmails = async () => {
+    setEmailOpsLoading(true)
+    try {
+      const res = await api('/admin/email/retry', {
+        method: 'POST',
+        body: JSON.stringify({ retry_all_failed: true }),
+      })
+      showToast(res.message || 'Retry completed', res.ok ? 'success' : 'error')
+      await refreshSmtpDiagnostics()
+    } catch (e) {
+      showToast(e.message || 'Retry failed', 'error')
+    } finally {
+      setEmailOpsLoading(false)
+    }
+  }
+
   const sendTestEmail = async () => {
     const to = testEmailTo.trim()
     if (!to) {
@@ -902,8 +918,17 @@ export default function SettingsPage() {
               </div>
             ) : null}
             <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
-              <p className="text-sm font-semibold text-zinc-200">Recent delivery log</p>
-              <p className="mt-0.5 text-xs text-zinc-500">Failed, queued, and recent sent messages.</p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-zinc-200">Recent delivery log</p>
+                  <p className="mt-0.5 text-xs text-zinc-500">Failed, queued, and recent sent messages.</p>
+                </div>
+                {(emailAnalytics?.failed_last_7_days ?? 0) > 0 ? (
+                  <button type="button" onClick={retryFailedEmails} disabled={emailOpsLoading} className={admin.btnSecondary}>
+                    Retry failed
+                  </button>
+                ) : null}
+              </div>
               {emailLogs.length === 0 ? (
                 <p className="mt-4 text-sm text-zinc-500">No delivery records yet.</p>
               ) : (

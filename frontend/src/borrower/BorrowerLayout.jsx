@@ -53,7 +53,6 @@ const navGroups = [
     items: [
       { to: '/borrower/dashboard', label: 'Dashboard' },
       { to: '/borrower/credit-health', label: 'Credit & wellness' },
-      { to: '/borrower/offers', label: 'Offers' },
     ],
   },
   {
@@ -67,9 +66,7 @@ const navGroups = [
     label: 'Money',
     items: [
       { to: '/borrower/payments', label: 'Payments' },
-      { to: '/borrower/autopay', label: 'Autopay' },
       { to: '/borrower/statements', label: 'Statements' },
-      { to: '/borrower/tools', label: 'Calculators' },
     ],
   },
   {
@@ -88,12 +85,18 @@ const navGroups = [
     label: 'Account',
     items: [
       { to: '/borrower/profile', label: 'Profile' },
-      { to: '/borrower/banking', label: 'Banking' },
       { to: '/borrower/settings/privacy', label: 'Privacy' },
       { to: '/borrower/security', label: 'Password' },
     ],
   },
 ]
+
+/** Prefetch high-traffic borrower routes after first paint (idle time). */
+function prefetchBorrowerRoutes() {
+  void import('./pages/BorrowerDashboardPage.jsx')
+  void import('./pages/BorrowerPaymentsPage.jsx')
+  void import('./pages/BorrowerApplicationsPage.jsx')
+}
 
 export default function BorrowerLayout() {
   const { user } = useBorrowerAuth()
@@ -115,8 +118,21 @@ export default function BorrowerLayout() {
 
   useEffect(() => {
     if (!user) return undefined
+    const schedulePrefetch = () => {
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(() => prefetchBorrowerRoutes(), { timeout: 2500 })
+      } else {
+        setTimeout(prefetchBorrowerRoutes, 800)
+      }
+    }
+    schedulePrefetch()
+  }, [user])
+
+  useEffect(() => {
+    if (!user) return undefined
     let cancelled = false
     const fetchCount = async () => {
+      if (document.visibilityState === 'hidden') return
       try {
         const res = await borrowerApi('/borrower/notifications/unread-count')
         if (!cancelled) setNotifUnread(typeof res.count === 'number' ? res.count : 0)
@@ -125,13 +141,18 @@ export default function BorrowerLayout() {
       }
     }
     fetchCount()
-    const id = setInterval(fetchCount, 60_000)
+    const id = setInterval(fetchCount, 120_000)
     const onChange = () => fetchCount()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchCount()
+    }
     window.addEventListener('borrower-notifications-changed', onChange)
+    document.addEventListener('visibilitychange', onVisible)
     return () => {
       cancelled = true
       clearInterval(id)
       window.removeEventListener('borrower-notifications-changed', onChange)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   }, [user])
 
@@ -357,8 +378,10 @@ export default function BorrowerLayout() {
                   <div className="max-h-[68vh] overflow-y-auto p-3">
                     <Suspense
                       fallback={
-                        <div className="flex items-center justify-center py-10 text-sm text-gray-500 dark:text-gray-400">
-                          Loading notifications…
+                        <div className="space-y-2 p-1" aria-hidden>
+                          {Array.from({ length: 3 }).map((_, i) => (
+                            <div key={i} className="h-12 animate-pulse rounded-lg bg-gray-100 dark:bg-white/5" />
+                          ))}
                         </div>
                       }
                     >

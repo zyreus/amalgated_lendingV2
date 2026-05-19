@@ -199,7 +199,7 @@ class UserController extends Controller
             ]);
         }
 
-        SendBorrowerEmailVerificationJob::dispatch((int) $user->id);
+        SendBorrowerEmailVerificationJob::dispatchSync((int) $user->id);
         EmailVerificationLog::query()->create([
             'user_id' => $user->id,
             'event' => 'resent_admin',

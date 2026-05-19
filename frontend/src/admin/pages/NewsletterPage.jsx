@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client.js'
 import { useToast } from '../context/ToastContext.jsx'
-import { admin } from '../components/AdminUi.jsx'
+import { admin, EmptyTableRow, TableSkeletonRows } from '../components/AdminUi.jsx'
 
 const LOCALE = 'en'
 const KEY_NEWS = 'landing.newsletter.news'
@@ -46,6 +46,32 @@ function toBody(items) {
 
 function emptyDraft() {
   return { title: '', summary: '', date: '' }
+}
+
+function formatSubscribedAt(iso) {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return iso
+  }
+}
+
+function parseSubscriberPage(response) {
+  const payload = response?.data
+  const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
+  return {
+    rows,
+    total: typeof payload?.total === 'number' ? payload.total : rows.length,
+    currentPage: typeof payload?.current_page === 'number' ? payload.current_page : 1,
+    lastPage: typeof payload?.last_page === 'number' ? payload.last_page : 1,
+  }
 }
 
 function findExactSection(response, sectionKey) {
@@ -143,6 +169,13 @@ export default function NewsletterPage() {
   const [newsDraft, setNewsDraft] = useState(emptyDraft)
   const [announcementDraft, setAnnouncementDraft] = useState(emptyDraft)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [subscribersLoading, setSubscribersLoading] = useState(true)
+  const [subscribers, setSubscribers] = useState([])
+  const [subscriberTotal, setSubscriberTotal] = useState(0)
+  const [subscriberPage, setSubscriberPage] = useState(1)
+  const [subscriberLastPage, setSubscriberLastPage] = useState(1)
+  const [subscriberSearch, setSubscriberSearch] = useState('')
+  const [subscriberSearchInput, setSubscriberSearchInput] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -170,6 +203,33 @@ export default function NewsletterPage() {
       cancelled = true
     }
   }, [showToast])
+
+  const loadSubscribers = useCallback(
+    async (page = 1, search = subscriberSearch) => {
+      setSubscribersLoading(true)
+      try {
+        const params = new URLSearchParams({ per_page: '50', page: String(page) })
+        if (search.trim()) params.set('search', search.trim())
+        const res = await api(`/newsletter-subscribers?${params}`)
+        const parsed = parseSubscriberPage(res)
+        setSubscribers(parsed.rows)
+        setSubscriberTotal(parsed.total)
+        setSubscriberPage(parsed.currentPage)
+        setSubscriberLastPage(parsed.lastPage)
+      } catch (e) {
+        showToast(e.message || 'Failed to load newsletter subscribers.', 'error')
+        setSubscribers([])
+        setSubscriberTotal(0)
+      } finally {
+        setSubscribersLoading(false)
+      }
+    },
+    [showToast, subscriberSearch]
+  )
+
+  useEffect(() => {
+    void loadSubscribers(1)
+  }, [loadSubscribers])
 
   const canSave = useMemo(() => !saving && !loading, [saving, loading])
 
@@ -261,7 +321,7 @@ export default function NewsletterPage() {
       <div>
         <h1 className={admin.pageTitle}>News & Announcements</h1>
         <p className={admin.pageSubtitle}>
-          Manage website content for both sections. Add, edit, or delete items, then click save.
+          Manage news and announcements, and view people who subscribed from the website footer.
         </p>
       </div>
 
@@ -301,6 +361,113 @@ export default function NewsletterPage() {
         >
           {saving ? 'Saving...' : 'Save changes'}
         </button>
+      </div>
+
+      <div className={`space-y-4 p-5 ${admin.cardNoHover}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-neutral-900 dark:text-gray-100">Newsletter subscribers</h2>
+            <p className={`mt-1 text-sm ${admin.textMuted}`}>
+              Signups from the website footer. Also visible in Chat CRM as leads.
+            </p>
+          </div>
+          <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-xs text-neutral-700 dark:bg-[#1F2937] dark:text-gray-300">
+            {subscriberTotal} subscriber{subscriberTotal === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        <form
+          className="flex flex-wrap gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            setSubscriberSearch(subscriberSearchInput.trim())
+            setSubscriberPage(1)
+            void loadSubscribers(1, subscriberSearchInput.trim())
+          }}
+        >
+          <input
+            type="search"
+            value={subscriberSearchInput}
+            onChange={(e) => setSubscriberSearchInput(e.target.value)}
+            placeholder="Search name or email"
+            className={`min-w-[12rem] flex-1 ${admin.input}`}
+          />
+          <button type="submit" className={admin.btnSecondary}>
+            Search
+          </button>
+          <button
+            type="button"
+            className={admin.btnSecondary}
+            onClick={() => {
+              setSubscriberSearchInput('')
+              setSubscriberSearch('')
+              void loadSubscribers(1, '')
+            }}
+          >
+            Clear
+          </button>
+        </form>
+
+        <div className={admin.tableWrap}>
+          <div className={admin.tableScroll}>
+            <table className={`${admin.tableBase} ${admin.tableMin640}`}>
+              <thead className={admin.thead}>
+                <tr>
+                  <th className={admin.tableCell}>Name</th>
+                  <th className={admin.tableCell}>Email</th>
+                  <th className={admin.tableCell}>Subscribed</th>
+                  <th className={admin.tableCell}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {subscribersLoading ? (
+                  <TableSkeletonRows cols={4} rows={5} />
+                ) : subscribers.length === 0 ? (
+                  <EmptyTableRow colSpan={4} message="No newsletter subscribers yet." />
+                ) : (
+                  subscribers.map((row) => (
+                    <tr key={row.id} className={admin.tbodyRow}>
+                      <td className={`${admin.tableCell} ${admin.tableText}`}>{row.name || '—'}</td>
+                      <td className={`${admin.tableCell} ${admin.tableText}`}>
+                        <a href={`mailto:${row.email}`} className="text-brand-primary hover:underline">
+                          {row.email}
+                        </a>
+                      </td>
+                      <td className={`${admin.tableCell} ${admin.tableMuted}`}>
+                        {formatSubscribedAt(row.subscribed_at)}
+                      </td>
+                      <td className={`${admin.tableCell} capitalize ${admin.tableMuted}`}>{row.status || 'new'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {subscriberLastPage > 1 ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              disabled={subscribersLoading || subscriberPage <= 1}
+              onClick={() => void loadSubscribers(subscriberPage - 1)}
+              className={admin.paginationBtn}
+            >
+              Previous
+            </button>
+            <span className={`text-sm ${admin.textMuted}`}>
+              Page {subscriberPage} of {subscriberLastPage}
+            </span>
+            <button
+              type="button"
+              disabled={subscribersLoading || subscriberPage >= subscriberLastPage}
+              onClick={() => void loadSubscribers(subscriberPage + 1)}
+              className={admin.paginationBtn}
+            >
+              Next
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {deleteTarget ? (
