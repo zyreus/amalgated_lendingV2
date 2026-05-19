@@ -49,7 +49,7 @@ class SmtpMailService
     }
 
     /**
-     * @return array{ok: bool, latency_ms: ?int, message: string}
+     * @return array{ok: bool, latency_ms: ?int, message: string, port?: int, encryption?: string}
      */
     public function healthCheck(): array
     {
@@ -61,6 +61,8 @@ class SmtpMailService
             ];
         }
 
+        $port = (int) config('mail.mailers.smtp.port', 587);
+        $encryption = strtolower((string) config('mail.mailers.smtp.encryption', 'tls'));
         $started = microtime(true);
 
         try {
@@ -72,17 +74,74 @@ class SmtpMailService
             return [
                 'ok' => true,
                 'latency_ms' => $latency,
-                'message' => 'SMTP connection successful.',
+                'message' => 'SMTP connection and authentication successful.',
+                'port' => $port,
+                'encryption' => $encryption,
             ];
         } catch (\Throwable $e) {
-            Log::warning('SMTP health check failed.', ['error' => $e->getMessage()]);
+            Log::warning('SMTP health check failed.', [
+                'error' => $e->getMessage(),
+                'port' => $port,
+                'encryption' => $encryption,
+            ]);
 
             return [
                 'ok' => false,
                 'latency_ms' => null,
                 'message' => $e->getMessage(),
+                'port' => $port,
+                'encryption' => $encryption,
             ];
         }
+    }
+
+    /**
+     * Probe alternate Gmail ports (587 STARTTLS, 465 SSL) for admin diagnostics.
+     *
+     * @return array<int, array{port: int, encryption: string, ok: bool, latency_ms: ?int, message: string}>
+     */
+    public function probePorts(): array
+    {
+        if (! $this->isConfigured()) {
+            return [];
+        }
+
+        $host = (string) config('mail.mailers.smtp.host', 'smtp.gmail.com');
+        $username = (string) config('mail.mailers.smtp.username', '');
+        $password = (string) config('mail.mailers.smtp.password', '');
+        $results = [];
+
+        foreach ([['port' => 587, 'ssl' => false], ['port' => 465, 'ssl' => true]] as $row) {
+            $started = microtime(true);
+            try {
+                $transport = new EsmtpTransport($host, $row['port'], $row['ssl']);
+                $transport->setUsername($username);
+                $transport->setPassword($password);
+                $stream = $transport->getStream();
+                if ($stream instanceof SocketStream) {
+                    $stream->setTimeout(15);
+                }
+                $transport->start();
+                $transport->stop();
+                $results[] = [
+                    'port' => $row['port'],
+                    'encryption' => $row['ssl'] ? 'ssl' : 'tls',
+                    'ok' => true,
+                    'latency_ms' => (int) round((microtime(true) - $started) * 1000),
+                    'message' => 'OK',
+                ];
+            } catch (\Throwable $e) {
+                $results[] = [
+                    'port' => $row['port'],
+                    'encryption' => $row['ssl'] ? 'ssl' : 'tls',
+                    'ok' => false,
+                    'latency_ms' => null,
+                    'message' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return $results;
     }
 
     public function sendTestEmail(string $toEmail): void

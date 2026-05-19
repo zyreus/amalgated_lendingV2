@@ -30,11 +30,27 @@ class MailDiagnoseCommand extends Command
 
         $health = $smtp->healthCheck();
         if ($health['ok']) {
-            $this->info('SMTP handshake: OK ('.($health['latency_ms'] ?? '?').' ms)');
+            $this->info('SMTP handshake: OK ('.($health['latency_ms'] ?? '?').' ms on port '.($health['port'] ?? '?').')');
         } else {
             $this->error('SMTP handshake failed: '.($health['message'] ?? 'unknown'));
 
             return self::FAILURE;
+        }
+
+        $probes = $smtp->probePorts();
+        if ($probes !== []) {
+            $this->newLine();
+            $this->info('Port probe (587 TLS / 465 SSL):');
+            $this->table(
+                ['Port', 'Encryption', 'OK', 'Latency ms', 'Message'],
+                collect($probes)->map(fn ($r) => [
+                    $r['port'],
+                    $r['encryption'],
+                    ($r['ok'] ?? false) ? 'yes' : 'no',
+                    $r['latency_ms'] ?? '—',
+                    mb_substr((string) ($r['message'] ?? ''), 0, 80),
+                ])->all()
+            );
         }
 
         if ($this->option('skip-send')) {

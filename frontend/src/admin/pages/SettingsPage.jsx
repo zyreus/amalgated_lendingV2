@@ -201,6 +201,7 @@ export default function SettingsPage() {
   const sectionRefs = useRef({})
   const [smtpStatus, setSmtpStatus] = useState(null)
   const [smtpHealth, setSmtpHealth] = useState(null)
+  const [smtpPortProbe, setSmtpPortProbe] = useState([])
   const [testEmailTo, setTestEmailTo] = useState('')
   const [emailOpsLoading, setEmailOpsLoading] = useState(false)
   const [emailLogs, setEmailLogs] = useState([])
@@ -237,6 +238,7 @@ export default function SettingsPage() {
       ])
       setSmtpStatus(statusRes.smtp || null)
       setSmtpHealth(healthRes.health || null)
+      setSmtpPortProbe(Array.isArray(healthRes.port_probe) ? healthRes.port_probe : [])
       setEmailLogs(logsRes.email_logs || [])
       setEmailAnalytics(analyticsRes.analytics || null)
     } catch (e) {
@@ -821,36 +823,63 @@ export default function SettingsPage() {
                   Send test
                 </button>
               </div>
+              {smtpPortProbe.length > 0 ? (
+                <div className="mt-4 overflow-x-auto rounded-xl border border-white/10 bg-black/20">
+                  <p className="px-3 pt-3 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Port probe (587 TLS / 465 SSL)</p>
+                  <table className="mt-2 w-full min-w-[320px] text-left text-xs text-zinc-300">
+                    <thead>
+                      <tr className="border-b border-white/10 text-zinc-500">
+                        <th className="px-3 py-2 font-medium">Port</th>
+                        <th className="px-3 py-2 font-medium">Encryption</th>
+                        <th className="px-3 py-2 font-medium">Status</th>
+                        <th className="px-3 py-2 font-medium">Latency</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {smtpPortProbe.map((row) => (
+                        <tr key={`${row.port}-${row.encryption}`} className="border-b border-white/5 last:border-0">
+                          <td className="px-3 py-2">{row.port}</td>
+                          <td className="px-3 py-2">{row.encryption}</td>
+                          <td className={`px-3 py-2 font-medium ${row.ok ? 'text-emerald-400' : 'text-amber-400'}`}>
+                            {row.ok ? 'OK' : 'Failed'}
+                          </td>
+                          <td className="px-3 py-2">{row.ok ? `${row.latency_ms ?? '—'} ms` : String(row.message || '—').slice(0, 40)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
               <p className="mt-3 text-xs text-zinc-500">DNS: configure SPF, DKIM, and DMARC — see deploy/GOOGLE_WORKSPACE_SMTP.md.</p>
             </div>
             <div className="grid min-w-0 gap-4 md:grid-cols-2">
               <div className="min-w-0">
-                <FieldLabel label="SMTP host" htmlFor="smtp-host" />
+                <FieldLabel label="SMTP host (reference)" htmlFor="smtp-host" helper={smtpStatus?.host ? `Live: ${smtpStatus.host}` : undefined} />
                 <input
                   id="smtp-host"
-                  className={`mt-1 w-full ${admin.input}`}
-                  value={sections.email_settings.smtp_host}
-                  onChange={(e) => patch('email_settings', { smtp_host: e.target.value })}
+                  className={`mt-1 w-full ${admin.input} opacity-80`}
+                  value={smtpStatus?.host || sections.email_settings.smtp_host}
+                  readOnly
                   placeholder="smtp.gmail.com"
                 />
               </div>
               <div className="min-w-0">
-                <FieldLabel label="SMTP port" htmlFor="smtp-port" />
+                <FieldLabel label="SMTP port (reference)" htmlFor="smtp-port" helper={smtpStatus?.port ? `Live: ${smtpStatus.port}` : undefined} />
                 <input
                   id="smtp-port"
-                  className={`mt-1 w-full ${admin.input}`}
-                  value={sections.email_settings.smtp_port}
-                  onChange={(e) => patch('email_settings', { smtp_port: Number(e.target.value || 0) })}
+                  className={`mt-1 w-full ${admin.input} opacity-80`}
+                  value={smtpStatus?.port || sections.email_settings.smtp_port}
+                  readOnly
                   inputMode="numeric"
                 />
               </div>
               <div className="min-w-0">
-                <FieldLabel label="SMTP user" htmlFor="smtp-user" />
+                <FieldLabel label="SMTP user (reference)" htmlFor="smtp-user" helper={smtpStatus?.username ? `Live: ${smtpStatus.username}` : undefined} />
                 <input
                   id="smtp-user"
-                  className={`mt-1 w-full ${admin.input}`}
-                  value={sections.email_settings.smtp_user}
-                  onChange={(e) => patch('email_settings', { smtp_user: e.target.value })}
+                  className={`mt-1 w-full ${admin.input} opacity-80`}
+                  value={smtpStatus?.username || sections.email_settings.smtp_user}
+                  readOnly
                 />
               </div>
               <div className="min-w-0">

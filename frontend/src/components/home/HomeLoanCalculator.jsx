@@ -90,7 +90,6 @@ export default function HomeLoanCalculator() {
 
   useEffect(() => {
     if (productId) compute()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId])
 
   useEffect(() => {

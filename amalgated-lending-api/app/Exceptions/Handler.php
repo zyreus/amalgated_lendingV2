@@ -2,8 +2,11 @@
 
 namespace App\Exceptions;
 
+use App\Support\BorrowerVerificationUrl;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Exceptions\InvalidSignatureException;
+use Psr\Log\LogLevel;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -11,7 +14,7 @@ class Handler extends ExceptionHandler
     /**
      * A list of exception types with their corresponding custom log levels.
      *
-     * @var array<class-string<\Throwable>, \Psr\Log\LogLevel::*>
+     * @var array<class-string<Throwable>, LogLevel::*>
      */
     protected $levels = [
         //
@@ -20,7 +23,7 @@ class Handler extends ExceptionHandler
     /**
      * A list of the exception types that are not reported.
      *
-     * @var array<int, class-string<\Throwable>>
+     * @var array<int, class-string<Throwable>>
      */
     protected $dontReport = [
         //
@@ -49,7 +52,12 @@ class Handler extends ExceptionHandler
         });
 
         $this->renderable(function (InvalidSignatureException $e, $request) {
-            if (! $request->is('api/v1/borrower/email/verify')) {
+            if (! $request->is(
+                'api/v1/borrower/email/verify',
+                'api/v1/borrower/email/verify/*',
+                'borrower/email/verify',
+                'borrower/email/verify/*',
+            )) {
                 return null;
             }
 
@@ -60,18 +68,46 @@ class Handler extends ExceptionHandler
                 ], 403);
             }
 
-            $frontend = rtrim((string) config('app.frontend_url'), '/');
-            $path = '/'.ltrim((string) config('services.borrower_verify.login_path', '/borrower/login'), '/');
             $isExpired = is_numeric($request->query('expires'))
                 && (int) $request->query('expires') < now()->getTimestamp();
-            $query = http_build_query([
-                'verification_status' => $isExpired ? 'expired' : 'invalid',
-                'verification_message' => $isExpired
-                    ? 'This verification link expired. Please request a new email.'
-                    : 'This verification link is invalid.',
-            ]);
+            $message = $isExpired
+                ? 'This verification link expired. Please request a new email.'
+                : 'This verification link is invalid.';
 
-            return redirect()->away("{$frontend}{$path}?{$query}");
+            return $this->borrowerVerifyBrowserResult($request, false, $isExpired ? 'Link expired' : 'Link invalid', $message, [
+                'verification_status' => $isExpired ? 'expired' : 'invalid',
+                'verification_message' => $message,
+            ]);
         });
+    }
+
+    /**
+     * @param  array<string, string>  $loginParams
+     */
+    private function borrowerVerifyBrowserResult(
+        Request $request,
+        bool $ok,
+        string $title,
+        string $message,
+        array $loginParams,
+    ) {
+        if ($request->expectsJson()) {
+            return response()->json([
+                'ok' => $ok,
+                'message' => $message,
+            ], 403);
+        }
+
+        return response()
+            ->view('borrower.auth.verify-email', [
+                'ok' => $ok,
+                'title' => $title,
+                'message' => $message,
+                'status' => $loginParams['verification_status'] ?? ($ok ? 'success' : 'invalid'),
+                'loginUrl' => BorrowerVerificationUrl::borrowerLoginUrl($request, $loginParams),
+                'logoUrl' => \App\Support\MailLogo::pageLogoUrl(),
+                'redirectSeconds' => 0,
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
 }

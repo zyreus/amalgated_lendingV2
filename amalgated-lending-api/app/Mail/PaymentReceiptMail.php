@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Mail\Concerns\EmbedsMailLogo;
 use App\Models\Payment;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
@@ -10,6 +11,7 @@ use Illuminate\Support\Facades\Storage;
 
 class PaymentReceiptMail extends Mailable
 {
+    use EmbedsMailLogo;
     use Queueable;
     use SerializesModels;
 
@@ -37,7 +39,6 @@ class PaymentReceiptMail extends Mailable
         }
 
         $invoiceNumber = 'INV-'.str_pad((string) $this->payment->id, 6, '0', STR_PAD_LEFT);
-        $logoUrl = rtrim((string) config('app.url'), '/').'/amalgated-lending-logo.png';
 
         $remainingBalance = Payment::query()
             ->where('loan_id', $this->payment->loan_id)
@@ -62,7 +63,7 @@ class PaymentReceiptMail extends Mailable
         $portalBase = rtrim((string) config('app.frontend_url', (string) config('app.url')), '/');
 
         $this->subject('Payment confirmed — '.$invoiceNumber.' ('.$loanNumber.') — '.config('app.name'))
-            ->view('mail.payment-receipt', [
+            ->view('mail.payment-receipt', $this->mailViewData([
                 'borrowerName' => $borrowerName,
                 'invoiceNumber' => $invoiceNumber,
                 'loanNumber' => $loanNumber,
@@ -75,11 +76,10 @@ class PaymentReceiptMail extends Mailable
                 'breakdownPrincipal' => number_format((float) ($this->payment->principal_portion ?? 0), 2),
                 'breakdownInterest' => number_format((float) ($this->payment->interest_portion ?? 0), 2),
                 'attachmentNote' => $attachmentNote,
-                'logoUrl' => $logoUrl,
                 'paymentMethodLabel' => $paymentMethodLabel,
                 'referenceNumber' => trim((string) ($this->payment->reference_number ?? '')),
                 'portalPaymentsUrl' => $portalBase.'/borrower/payments',
-            ]);
+            ]));
 
         if ($borrowerProofPath && $disk->exists($borrowerProofPath)) {
             $this->attachFromStorageDisk(

@@ -2,12 +2,14 @@
 
 namespace App\Mail;
 
+use App\Mail\Concerns\EmbedsMailLogo;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
 
 class PublicFormAcknowledgementMail extends Mailable
 {
+    use EmbedsMailLogo;
     use Queueable;
     use SerializesModels;
 
@@ -30,12 +32,12 @@ class PublicFormAcknowledgementMail extends Mailable
         };
 
         return $this->subject($headline.' — '.config('app.name'))
-            ->view('mail.public-form-acknowledgement', [
+            ->view('mail.public-form-acknowledgement', $this->mailViewData([
                 'recipientName' => $this->recipientName,
                 'headline' => $headline,
                 'summaryLine' => $this->summaryLine,
                 'formType' => $this->formType,
                 'portalUrl' => rtrim((string) config('app.frontend_url', ''), '/').'/borrower',
-            ]);
+            ]));
     }
 }

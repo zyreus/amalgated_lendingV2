@@ -1,4 +1,4 @@
-import { lazy, useEffect, useMemo } from 'react'
+import { lazy, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import './App.css'
@@ -57,22 +57,6 @@ function App() {
       logo: `${webUrl}/amalgated-lending-logo.png`,
     },
   ]
-
-  const sectionVariants = useMemo(
-    () => ({
-      hidden: reduceMotion ? {} : { opacity: 0, y: 40 },
-      visible: (index) => ({
-        opacity: 1,
-        y: 0,
-        transition: {
-          duration: reduceMotion ? 0 : 0.7,
-          delay: reduceMotion ? 0 : 0.12 * index,
-          ease: [0.22, 1, 0.36, 1],
-        },
-      }),
-    }),
-    [reduceMotion]
-  )
 
   useEffect(() => {
     const links = []

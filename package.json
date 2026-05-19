@@ -9,6 +9,7 @@
     "dev": "concurrently -n laravel,chat,vite -c blue,magenta,green \"npm run serve:laravel\" \"npm run serve:chat\" \"npm run dev:vite:full\"",
     "dev:laravel-vite": "concurrently -n laravel,vite -c blue,green \"npm run serve:laravel\" \"npm run dev:vite\"",
     "artisan": "node scripts/artisan.cjs",
+    "migrate": "node scripts/artisan.cjs migrate",
     "serve:laravel": "node scripts/serve-laravel.cjs",
     "serve:chat": "cd chat-server && node server.js",
     "dev:vite": "npx vite --config frontend/vite.config.js",
@@ -25,8 +26,16 @@
     "perf:baseline": "node scripts/perf-baseline.cjs",
     "composer:install": "composer install --optimize-autoloader --working-dir=amalgated-lending-api",
     "composer:install:prod": "composer install --optimize-autoloader --no-dev --working-dir=amalgated-lending-api",
-    "api:clear": "cd amalgated-lending-api && php artisan route:clear && php artisan config:clear && php artisan view:clear",
-    "api:cache": "cd amalgated-lending-api && php artisan route:clear && php artisan config:cache && php artisan route:cache && php artisan view:cache"
+    "api:clear": "node scripts/artisan.cjs route:clear && node scripts/artisan.cjs config:clear && node scripts/artisan.cjs view:clear",
+    "optimize:clear": "node scripts/artisan.cjs optimize:clear",
+    "api:cache": "node scripts/artisan.cjs route:clear && node scripts/artisan.cjs config:cache && node scripts/artisan.cjs route:cache && node scripts/artisan.cjs view:cache",
+    "pm2:reset": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/pm2-reset.ps1",
+    "pm2:start": "node scripts/pm2-run.cjs start ecosystem.config.cjs --update-env --only amalgated-frontend,amalgated-backend,amalgated-chat",
+    "pm2:restart": "node scripts/pm2-run.cjs restart amalgated-frontend amalgated-backend amalgated-chat --update-env",
+    "pm2:stop": "node scripts/pm2-run.cjs stop all",
+    "pm2:delete": "node scripts/pm2-run.cjs delete all",
+    "pm2:status": "node scripts/pm2-run.cjs list",
+    "pm2:logs": "node scripts/pm2-run.cjs logs"
   },
   "dependencies": {
     "@aws-amplify/ui-react": "6.15.2",
@@ -67,6 +76,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "pm2": "^6.0.14",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
     "vite": "^7.3.1"

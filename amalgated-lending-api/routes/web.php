@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Web\BorrowerEmailVerificationController;
 use App\Http\Controllers\Web\LoanPrintController;
 use App\Http\Controllers\Web\SiteController;
 use Illuminate\Support\Facades\Route;
@@ -16,6 +17,23 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/', [SiteController::class, 'home']);
+
+/*
+| Borrower email verification (signed URLs from inbox — must be web routes, not SPA).
+| Canonical: /borrower/email/verify/{id}/{hash}?expires=&signature=
+| Legacy:    /borrower/email/verify?id=&hash=&expires=&signature=
+*/
+Route::middleware(['throttle:72,1'])->group(function () {
+    Route::get('/borrower/email/notice', [BorrowerEmailVerificationController::class, 'notice'])
+        ->name('borrower.email.notice');
+
+    Route::get('/borrower/email/verify/{id}/{hash}', [BorrowerEmailVerificationController::class, 'verify'])
+        ->where(['id' => '[0-9]+', 'hash' => '[a-f0-9]+'])
+        ->name('borrower.email.verify');
+
+    Route::get('/borrower/email/verify', [BorrowerEmailVerificationController::class, 'verifyLegacyQuery'])
+        ->name('borrower.email.verify.legacy');
+});
 
 Route::domain('www.amalgatedlending.com')
     ->any('/{any?}', [SiteController::class, 'redirectWww'])
@@ -47,7 +65,12 @@ Route::fallback(function () {
         abort(404);
     }
 
-    $first = explode('/', request()->path(), 2)[0] ?? '';
+    $path = request()->path();
+    if (preg_match('#^borrower/email/verify(/|$)#', $path) || $path === 'borrower/email/notice') {
+        abort(404);
+    }
+
+    $first = explode('/', $path, 2)[0] ?? '';
     $reserved = ['api', 'filament', 'sanctum', 'livewire', 'storage', 'vendor', '_debugbar', 'build', 'horizon', 'telescope'];
     if (in_array($first, $reserved, true)) {
         abort(404);

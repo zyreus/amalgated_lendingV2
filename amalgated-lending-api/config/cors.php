@@ -36,7 +36,7 @@ $origins = array_values(array_unique(array_filter($origins)));
 
 return [
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie', 'borrower/email/verify'],
 
     'allowed_methods' => ['*'],
 

@@ -106,17 +106,18 @@ export default function NewsletterSection() {
           fetchCmsSection(NEWS_KEY),
           fetchCmsSection(ANNOUNCEMENTS_KEY),
         ])
-        if (cancelled) return
-        const newsItems = parseItems(newsRow?.body).map(normalizeCard).slice(0, 4)
-        const annItems = parseItems(annRow?.body).map(normalizeCard).slice(0, 4)
-        setNews(newsItems)
-        setAnnouncements(annItems)
+        if (!cancelled) {
+          const newsItems = parseItems(newsRow?.body).map(normalizeCard).slice(0, 4)
+          const annItems = parseItems(annRow?.body).map(normalizeCard).slice(0, 4)
+          setNews(newsItems)
+          setAnnouncements(annItems)
+        }
       } catch {
-        if (cancelled) return
-        setNews([])
-        setAnnouncements([])
+        if (!cancelled) {
+          setNews([])
+          setAnnouncements([])
+        }
       } finally {
-        if (cancelled) return
         const elapsed =
           (typeof performance !== 'undefined' ? performance.now() : Date.now()) - started
         const remaining = Math.max(0, MIN_LOADING_MS - elapsed)

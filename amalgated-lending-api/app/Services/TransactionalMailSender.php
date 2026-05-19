@@ -158,7 +158,17 @@ class TransactionalMailSender
             $this->notifications->recordFailure('system', null, 'email', $lastError, array_merge($failureMeta, ['stage' => 'smtp']));
         }
 
-        return ['ok' => false, 'detail' => $lastError?->getMessage() ?? 'send_failed'];
+        return ['ok' => false, 'detail' => self::truncateTransportDetail($lastError?->getMessage() ?? 'send_failed')];
+    }
+
+    /** email_logs.transport_detail is VARCHAR(64). */
+    public static function truncateTransportDetail(?string $detail): ?string
+    {
+        if ($detail === null || trim($detail) === '') {
+            return null;
+        }
+
+        return mb_substr(trim($detail), 0, 64);
     }
 
     /** Log mailer is dev-only; production must surface SMTP failure to callers and email_logs. */

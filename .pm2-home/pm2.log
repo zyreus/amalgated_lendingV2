@@ -1,0 +1,17 @@
+2026-05-19T12:54:43: PM2 log: ===============================================================================
+2026-05-19T12:54:43: PM2 log: --- New PM2 Daemon started ----------------------------------------------------
+2026-05-19T12:54:43: PM2 log: Time                 : Tue May 19 2026 12:54:43 GMT+0800 (Australian Western Standard Time)
+2026-05-19T12:54:43: PM2 log: PM2 version          : 6.0.14
+2026-05-19T12:54:43: PM2 log: Node.js version      : 22.22.0
+2026-05-19T12:54:43: PM2 log: Current arch         : x64
+2026-05-19T12:54:43: PM2 log: PM2 home             : C:\xampp\htdocs\amalgated_lendingV2\.pm2-home
+2026-05-19T12:54:43: PM2 log: PM2 PID file         : C:\xampp\htdocs\amalgated_lendingV2\.pm2-home\pm2.pid
+2026-05-19T12:54:43: PM2 log: RPC socket file      : \\.\pipe\pm2-rpc-ca672af1f017.sock
+2026-05-19T12:54:43: PM2 log: BUS socket file      : \\.\pipe\pm2-pub-ca672af1f017.sock
+2026-05-19T12:54:43: PM2 log: Application log path : C:\xampp\htdocs\amalgated_lendingV2\.pm2-home\logs
+2026-05-19T12:54:43: PM2 log: Worker Interval      : 30000
+2026-05-19T12:54:43: PM2 log: Process dump file    : C:\xampp\htdocs\amalgated_lendingV2\.pm2-home\dump.pm2
+2026-05-19T12:54:43: PM2 log: Concurrent actions   : 2
+2026-05-19T12:54:43: PM2 log: SIGTERM timeout      : 1600
+2026-05-19T12:54:43: PM2 log: Runtime Binary       : c:\Program Files\cursor\resources\app\resources\helpers\node.exe
+2026-05-19T12:54:43: PM2 log: ===============================================================================

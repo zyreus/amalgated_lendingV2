@@ -40,7 +40,7 @@ class SendBorrowerEmailVerificationJob implements ShouldQueue
         }
 
         $user = User::query()->find($this->userId);
-        if (! $user || $user->role !== 'borrower' || $user->email_verified_at) {
+        if (! $user || ! $user->canUseBorrowerPortal() || $user->email_verified_at) {
             return;
         }
 
@@ -77,9 +77,11 @@ class SendBorrowerEmailVerificationJob implements ShouldQueue
         $ok = (bool) ($result['ok'] ?? false);
         $detail = (string) ($result['detail'] ?? '');
 
+        $transportDetail = TransactionalMailSender::truncateTransportDetail($detail !== '' ? $detail : null);
+
         EmailLog::query()->where('dedupe_key', $dedupeKey)->update([
             'status' => $ok ? EmailLog::STATUS_SENT : EmailLog::STATUS_FAILED,
-            'transport_detail' => $detail !== '' ? $detail : null,
+            'transport_detail' => $transportDetail,
             'error_message' => $ok ? null : ($detail !== '' ? $detail : 'send_failed'),
             'sent_at' => $ok ? now() : null,
         ]);

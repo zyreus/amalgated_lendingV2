@@ -16,6 +16,7 @@ import AdminForgotPasswordPage from './admin/pages/AdminForgotPasswordPage.jsx'
 import BorrowerLoginPage from './borrower/pages/BorrowerLoginPage.jsx'
 import BorrowerRegisterPage from './borrower/pages/BorrowerRegisterPage.jsx'
 import BorrowerForgotPasswordPage from './borrower/pages/BorrowerForgotPasswordPage.jsx'
+import BorrowerEmailVerifyPage from './borrower/pages/BorrowerEmailVerifyPage.jsx'
 import UnauthorizedPage from './pages/UnauthorizedPage.jsx'
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx'
 import CookieBanner from './components/privacy/CookieBanner.jsx'
@@ -145,6 +146,7 @@ export default function Root() {
       p.startsWith('/apply/documents/') ||
       /^\/borrower\/apply-loan/i.test(p) ||
       /^\/admin(\/|$)/i.test(p) ||
+      /^\/borrower\/email\/verify/i.test(p) ||
       /^\/borrower(\/|$)/i.test(p)
     ) {
       return false
@@ -204,6 +206,7 @@ export default function Root() {
                   </Route>
                 </Route>
               </Route>
+              <Route path="/borrower/email/verify" element={<BorrowerEmailVerifyPage />} />
               <Route path="/borrower/login" element={<BorrowerLoginPage />} />
               <Route path="/borrower/register" element={<BorrowerRegisterPage />} />
               <Route path="/borrower/forgot-password" element={<BorrowerForgotPasswordPage />} />

@@ -8,6 +8,31 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SupportConversation extends Model
 {
+    /** CRM inbox aliases → warehouse `status` values. */
+    public static function mapLifecycleToStatus(string $lifecycle): string
+    {
+        return match (strtolower(trim($lifecycle))) {
+            'active' => 'in_progress',
+            'pending' => 'open',
+            'closed' => 'resolved',
+            default => strtolower(trim($lifecycle)),
+        };
+    }
+
+    /** Warehouse `status` → CRM inbox segment (same vocabulary as AdminChatDashboard filters). */
+    public static function mapStatusToLifecycle(string $status): string
+    {
+        $normalized = strtolower(trim($status));
+
+        return match ($normalized) {
+            'in_progress' => 'in_progress',
+            'resolved' => 'resolved',
+            'archived' => 'archived',
+            'open', '' => 'open',
+            default => $normalized,
+        };
+    }
+
     protected $fillable = [
         'session_id',
         'visitor_id',

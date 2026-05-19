@@ -25,6 +25,53 @@ function inPackage(id, pkg) {
  * other forward proxy) from ever caching prebundled deps, so a server restart
  * can never strand a previously-loaded browser tab.
  */
+/**
+ * Vite preview (and dev) serves `index.html` for unknown paths before generic proxy rules run.
+ * Borrower email verification must reach Laravel's web route, not the React shell.
+ */
+function borrowerEmailVerifyProxyPlugin(proxyTarget) {
+  const target = String(proxyTarget || '').replace(/\/$/, '')
+  if (!target) return { name: 'borrower-email-verify-proxy-skip' }
+
+  const shouldProxy = (url) => {
+    const path = (url || '').split('?')[0]
+    return path === '/borrower/email/verify' || path.startsWith('/borrower/email/verify/')
+  }
+
+  const attach = (server) => {
+    server.middlewares.use((req, res, next) => {
+      if (!shouldProxy(req.url)) {
+        next()
+        return
+      }
+      const upstream = `${target}${req.url}`
+      fetch(upstream, {
+        method: req.method || 'GET',
+        headers: {
+          accept: req.headers.accept || 'text/html,application/json',
+        },
+        redirect: 'manual',
+      })
+        .then(async (upstreamRes) => {
+          res.statusCode = upstreamRes.status
+          upstreamRes.headers.forEach((value, key) => {
+            if (key.toLowerCase() === 'transfer-encoding') return
+            res.setHeader(key, value)
+          })
+          const body = Buffer.from(await upstreamRes.arrayBuffer())
+          res.end(body)
+        })
+        .catch(next)
+    })
+  }
+
+  return {
+    name: 'borrower-email-verify-proxy-first',
+    configureServer: attach,
+    configurePreviewServer: attach,
+  }
+}
+
 function devNoCacheOptimizedDeps() {
   const isViteDepUrl = (url) =>
     !!url && (url.includes('/node_modules/.vite/deps/') || url.includes('/.vite/deps/'))
@@ -118,6 +165,15 @@ export default defineConfig(({ mode }) => {
     },
     /** Laravel signed print views (/print/general-loan, /print/loan-soa, …) — same host as API. */
     '/print': {
+      target: proxyTarget,
+      changeOrigin: true,
+    },
+    /** Signed borrower email verification (web route, not under /api). */
+    '^/borrower/email/verify': {
+      target: proxyTarget,
+      changeOrigin: true,
+    },
+    '^/borrower/email/notice': {
       target: proxyTarget,
       changeOrigin: true,
     },
@@ -217,7 +273,12 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_CHAT_DEV_ORIGIN': JSON.stringify(chatTarget),
       'import.meta.env.VITE_CHAT_PROXY_TARGET': JSON.stringify(chatTarget),
     },
-    plugins: [react({ jsxRuntime: 'automatic' }), tailwindcss(), devNoCacheOptimizedDeps()],
+    plugins: [
+      borrowerEmailVerifyProxyPlugin(proxyTarget),
+      react({ jsxRuntime: 'automatic' }),
+      tailwindcss(),
+      devNoCacheOptimizedDeps(),
+    ],
     server: {
       port: 5174,
       host: '0.0.0.0',

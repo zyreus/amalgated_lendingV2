@@ -656,7 +656,12 @@ class LoanController extends Controller
             ],
         );
 
-        SendLoanApplicationReceivedJob::dispatch($borrower->id, $loan->id);
+        try {
+            SendLoanApplicationReceivedJob::dispatchSync($borrower->id, $loan->id);
+        } catch (\Throwable $e) {
+            report($e);
+            SendLoanApplicationReceivedJob::dispatch($borrower->id, $loan->id);
+        }
 
         return response()->json(['ok' => true, 'loan_id' => $loan->id], 201);
     }

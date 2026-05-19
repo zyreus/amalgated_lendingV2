@@ -60,7 +60,7 @@ module.exports = {
       windowsHide: true,
       env: {
         NODE_ENV: 'development',
-        PHP_BINARY: 'C:/xampp/php/php.exe',
+        // PHP 8.3+ — set PHP_BINARY in repo root `.env` (do not use XAMPP 8.2 `php` on PATH).
         LARAVEL_PORT: '8001',
       },
       watch: false,
@@ -71,6 +71,27 @@ module.exports = {
       time: true,
     },
 
+    {
+      /**
+       * Laravel queue worker for transactional emails (notifications queue).
+       * Required when QUEUE_CONNECTION=database or redis. With sync, this process is idle but harmless.
+       */
+      name: 'amalgated-queue',
+      cwd: 'C:/xampp/htdocs/amalgated_lendingV2',
+      script: 'C:/Windows/System32/cmd.exe',
+      args: '/d /s /c "node scripts/artisan.cjs queue:work --queue=notifications,default --sleep=3 --tries=5 --max-time=3600"',
+      windowsHide: true,
+      env: {
+        NODE_ENV: 'production',
+      },
+      watch: false,
+      autorestart: true,
+      max_memory_restart: '512M',
+      out_file: '../logs/queue-out.log',
+      error_file: '../logs/queue-error.log',
+      merge_logs: true,
+      time: true,
+    },
     {
       name: 'amalgated-chat',
       cwd: 'C:/xampp/htdocs/amalgated_lendingV2',

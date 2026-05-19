@@ -3,14 +3,20 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\BorrowerVerifyEmailMail;
 use App\Models\EmailLog;
 use App\Models\FailedNotification;
+use App\Models\Loan;
+use App\Models\Payment;
+use App\Models\User;
 use App\Services\SmtpMailService;
 use App\Services\TransactionalMailSender;
-use Illuminate\Mail\Mailable;
+use App\Support\BorrowerVerificationUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Mail\Mailable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class AdminEmailController extends Controller
 {
@@ -25,10 +31,12 @@ class AdminEmailController extends Controller
     public function health(SmtpMailService $smtp): JsonResponse
     {
         $check = $smtp->healthCheck();
+        $ports = $smtp->probePorts();
 
         return response()->json([
             'ok' => $check['ok'],
             'health' => $check,
+            'port_probe' => $ports,
         ], $check['ok'] ? 200 : 503);
     }
 
@@ -165,7 +173,9 @@ class AdminEmailController extends Controller
             ->where('sent_at', '>=', now()->subDay())
             ->count();
 
-        $queueDepth = DB::table('jobs')->where('queue', 'notifications')->count();
+        $queueDepth = Schema::hasTable('jobs')
+            ? (int) DB::table('jobs')->where('queue', 'notifications')->count()
+            : 0;
 
         return response()->json([
             'ok' => true,
@@ -202,17 +212,29 @@ class AdminEmailController extends Controller
 
         $row->update(['status' => EmailLog::STATUS_QUEUED, 'error_message' => null]);
 
-        $send = $sender->sendHtmlMailable($mailable, $email, $name, $subject, [
+        $criticalTypes = [
+            EmailLog::NOTIFICATION_BORROWER_VERIFY,
+            EmailLog::NOTIFICATION_BORROWER_OTP,
+            EmailLog::NOTIFICATION_PASSWORD_RESET,
+        ];
+        $sendMeta = [
             'retry_log_id' => $row->id,
             'notification_type' => $row->notification_type,
-        ]);
+        ];
+        $send = in_array($row->notification_type, $criticalTypes, true)
+            ? $sender->sendCriticalMailable($mailable, $email, $name, $subject, $sendMeta)
+            : $sender->sendHtmlMailable($mailable, $email, $name, $subject, $sendMeta);
 
         $ok = (bool) ($send['ok'] ?? false);
         $detail = (string) ($send['detail'] ?? '');
+        $errorMessage = null;
+        if (! $ok) {
+            $errorMessage = $detail !== '' ? $detail : 'send_failed';
+        }
         $row->update([
             'status' => $ok ? EmailLog::STATUS_SENT : EmailLog::STATUS_FAILED,
-            'transport_detail' => $detail !== '' ? $detail : null,
-            'error_message' => $ok ? null : ($detail !== '' ? $detail : 'send_failed'),
+            'transport_detail' => TransactionalMailSender::truncateTransportDetail($detail !== '' ? $detail : null),
+            'error_message' => $errorMessage,
             'sent_at' => $ok ? now() : null,
         ]);
 
@@ -224,13 +246,16 @@ class AdminEmailController extends Controller
         return match ($row->notification_type) {
             EmailLog::NOTIFICATION_PAYMENT_RECEIPT => $this->rebuildPaymentReceipt($class, $row),
             EmailLog::NOTIFICATION_LOAN_DECISION => $this->rebuildLoanDecision($class, $row),
+            EmailLog::NOTIFICATION_BORROWER_VERIFY => $this->rebuildBorrowerVerify($class, $row),
+            EmailLog::NOTIFICATION_BORROWER_OTP => throw new \RuntimeException('OTP codes expire; ask the borrower to request a new code.'),
+            EmailLog::NOTIFICATION_PASSWORD_RESET => throw new \RuntimeException('Password reset links expire; use forgot-password to resend.'),
             default => throw new \RuntimeException('Retry not supported for type: '.$row->notification_type),
         };
     }
 
     private function rebuildPaymentReceipt(string $class, EmailLog $row): Mailable
     {
-        $payment = \App\Models\Payment::query()->with(['loan.borrower'])->find($row->payment_id);
+        $payment = Payment::query()->with(['loan.borrower'])->find($row->payment_id);
         if (! $payment) {
             throw new \RuntimeException('Payment not found.');
         }
@@ -240,13 +265,44 @@ class AdminEmailController extends Controller
 
     private function rebuildLoanDecision(string $class, EmailLog $row): Mailable
     {
-        $loan = \App\Models\Loan::query()->with('borrower')->find($row->loan_id);
+        $loan = Loan::query()->with('borrower')->find($row->loan_id);
         if (! $loan || ! $loan->borrower) {
             throw new \RuntimeException('Loan not found.');
         }
-        $decision = $loan->status === \App\Models\Loan::STATUS_REJECTED ? 'rejected' : 'approved';
-        $adminMessage = $decision === 'rejected' ? null : trim((string) ($loan->admin_notes ?? '')) ?: null;
+        $decision = $loan->status === Loan::STATUS_REJECTED ? 'rejected' : 'approved';
+        if ($decision === 'rejected') {
+            $adminMessage = null;
+        } else {
+            $trimmed = trim((string) ($loan->admin_notes ?? ''));
+            $adminMessage = $trimmed !== '' ? $trimmed : null;
+        }
 
         return new $class($loan, (string) $loan->borrower->name, $decision, $adminMessage);
     }
+
+    private function rebuildBorrowerVerify(string $class, EmailLog $row): Mailable
+    {
+        if ($class !== BorrowerVerifyEmailMail::class) {
+            throw new \RuntimeException('Unsupported verification mailable class.');
+        }
+
+        $userId = (int) data_get($row->meta, 'user_id', 0);
+        $user = $userId > 0 ? User::query()->find($userId) : null;
+        if (! $user) {
+            $email = trim((string) $row->recipient_email);
+            if ($email !== '') {
+                $user = User::query()->where('email', $email)->first();
+            }
+        }
+
+        if (! $user || ! $user->canUseBorrowerPortal()) {
+            throw new \RuntimeException('Borrower user not found.');
+        }
+        if ($user->email_verified_at) {
+            throw new \RuntimeException('Email is already verified.');
+        }
+
+        $link = BorrowerVerificationUrl::signedVerifyUrl($user);
+
+        return new BorrowerVerifyEmailMail($user, $link); }
 }

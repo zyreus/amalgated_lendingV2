@@ -58,6 +58,43 @@ function megaPanelClass() {
   return 'rounded-3xl border border-black/[0.07] bg-white/[0.98] p-5 shadow-[0_24px_60px_rgba(15,23,42,0.1),0_0_0_1px_rgba(217,34,67,0.06)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0f172a]/98'
 }
 
+function HeaderMegaPanel({
+  menuKey,
+  align = 'left',
+  widthClass,
+  children,
+  baseId,
+  openMenu,
+  reduceMotion,
+  clearCloseTimer,
+  scheduleClose,
+}) {
+  const isOpen = openMenu === menuKey
+  const w =
+    widthClass ||
+    'w-[min(100vw-2rem,560px)] sm:w-[min(100vw-2rem,640px)]'
+  return (
+    <AnimatePresence>
+      {isOpen ? (
+        <motion.div
+          id={`${baseId}-${menuKey}-mega`}
+          role="region"
+          aria-label={`${menuKey} menu`}
+          initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+          animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
+          exit={reduceMotion ? {} : { opacity: 0, y: 6 }}
+          transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+          className={`absolute top-full z-[70] pt-2 before:pointer-events-auto before:absolute before:inset-x-0 before:-top-2 before:h-2 before:content-[''] ${align === 'right' ? 'right-0' : 'left-0'}`}
+          onPointerEnter={clearCloseTimer}
+          onPointerLeave={scheduleClose}
+        >
+          <div className={`${megaPanelClass()} ${w}`}>{children}</div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  )
+}
+
 export default function Header() {
   const baseId = useId()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -166,31 +203,12 @@ export default function Header() {
     [goToSection],
   )
 
-  function MegaPanel({ menuKey, align = 'left', widthClass, children }) {
-    const isOpen = openMenu === menuKey
-    const w =
-      widthClass ||
-      'w-[min(100vw-2rem,560px)] sm:w-[min(100vw-2rem,640px)]'
-    return (
-      <AnimatePresence>
-        {isOpen ? (
-          <motion.div
-            id={`${baseId}-${menuKey}-mega`}
-            role="region"
-            aria-label={`${menuKey} menu`}
-            initial={reduceMotion ? false : { opacity: 0, y: 6 }}
-            animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
-            exit={reduceMotion ? {} : { opacity: 0, y: 6 }}
-            transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
-            className={`absolute top-full z-[70] pt-2 before:pointer-events-auto before:absolute before:inset-x-0 before:-top-2 before:h-2 before:content-[''] ${align === 'right' ? 'right-0' : 'left-0'}`}
-            onPointerEnter={clearCloseTimer}
-            onPointerLeave={scheduleClose}
-          >
-            <div className={`${megaPanelClass()} ${w}`}>{children}</div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    )
+  const megaPanelProps = {
+    baseId,
+    openMenu,
+    reduceMotion,
+    clearCloseTimer,
+    scheduleClose,
   }
 
   const triggerBtn = (menuKey, label, opts = {}) => {
@@ -283,7 +301,7 @@ export default function Header() {
               onPointerLeave={scheduleClose}
             >
               {triggerBtn('trust', 'Trust')}
-              <MegaPanel menuKey="trust">
+              <HeaderMegaPanel {...megaPanelProps} menuKey="trust">
                 <div className="grid gap-6 sm:grid-cols-2">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">Security &amp; trust</p>
@@ -328,12 +346,12 @@ export default function Header() {
                     </ul>
                   </div>
                 </div>
-              </MegaPanel>
+              </HeaderMegaPanel>
             </div>
 
             <div className="relative flex h-10 shrink-0 items-center" onPointerEnter={() => { clearCloseTimer(); setOpenMenu('calculator') }} onPointerLeave={scheduleClose}>
             {triggerBtn('calculator', 'Calculator')}
-            <MegaPanel menuKey="calculator">
+            <HeaderMegaPanel {...megaPanelProps} menuKey="calculator">
               <div className="grid gap-6 sm:grid-cols-[1fr_220px]">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">Loan calculator</p>
@@ -363,12 +381,12 @@ export default function Header() {
                   </Link>
                 </div>
               </div>
-            </MegaPanel>
+            </HeaderMegaPanel>
           </div>
 
           <div className="relative flex h-10 shrink-0 items-center" onPointerEnter={() => { clearCloseTimer(); setOpenMenu('news') }} onPointerLeave={scheduleClose}>
             {triggerBtn('news', 'News')}
-            <MegaPanel menuKey="news">
+            <HeaderMegaPanel {...megaPanelProps} menuKey="news">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">News &amp; announcements</p>
               <p className="mt-2 text-sm text-brand-text/75 dark:text-white/75">
                 Product updates, holiday advisories, and borrower reminders appear in our newsletter section.
@@ -380,12 +398,12 @@ export default function Header() {
               >
                 Go to news section
               </button>
-            </MegaPanel>
+            </HeaderMegaPanel>
           </div>
 
           <div className="relative flex h-10 shrink-0 items-center" onPointerEnter={() => { clearCloseTimer(); setOpenMenu('loans') }} onPointerLeave={scheduleClose}>
             {triggerBtn('loans', 'Loan products')}
-            <MegaPanel menuKey="loans" align="right" widthClass="w-[min(100vw-2rem,680px)] sm:w-[min(100vw-2rem,820px)]">
+            <HeaderMegaPanel {...megaPanelProps} menuKey="loans" align="right" widthClass="w-[min(100vw-2rem,680px)] sm:w-[min(100vw-2rem,820px)]">
               <div className="flex flex-wrap items-end justify-between gap-3 border-b border-black/[0.06] pb-4 dark:border-white/10">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">Loan products</p>
@@ -418,12 +436,12 @@ export default function Header() {
                   View all loan products
                 </Link>
               </div>
-            </MegaPanel>
+            </HeaderMegaPanel>
           </div>
 
           <div className="relative flex h-10 shrink-0 items-center" onPointerEnter={() => { clearCloseTimer(); setOpenMenu('resources') }} onPointerLeave={scheduleClose}>
             {triggerBtn('resources', 'Resources')}
-            <MegaPanel menuKey="resources" align="right" widthClass="w-[min(100vw-2rem,700px)] sm:w-[min(100vw-2rem,900px)]">
+            <HeaderMegaPanel {...megaPanelProps} menuKey="resources" align="right" widthClass="w-[min(100vw-2rem,700px)] sm:w-[min(100vw-2rem,900px)]">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">Resources</p>
               <p className="mt-1.5 text-[13px] leading-snug text-brand-text/55 dark:text-white/55">
                 Guides, trust, and company — everything you need in one place.
@@ -514,14 +532,14 @@ export default function Header() {
                   </div>
                 </div>
               </div>
-            </MegaPanel>
+            </HeaderMegaPanel>
           </div>
 
             <span className="mx-0.5 h-5 w-px shrink-0 self-center bg-gradient-to-b from-transparent via-black/15 to-transparent dark:via-white/20" aria-hidden />
 
             <div className="relative flex h-10 shrink-0 items-center" onPointerEnter={() => { clearCloseTimer(); setOpenMenu('branches') }} onPointerLeave={scheduleClose}>
             {triggerBtn('branches', 'Branches')}
-            <MegaPanel menuKey="branches" align="right">
+            <HeaderMegaPanel {...megaPanelProps} menuKey="branches" align="right">
               <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">Visit us</p>
@@ -549,7 +567,7 @@ export default function Header() {
                   <iframe title="Amalgated Lending Inc. Davao office map" className="h-44 w-full border-0 sm:h-full sm:min-h-[200px]" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={MAP_EMBED_SRC} />
                 </div>
               </div>
-            </MegaPanel>
+            </HeaderMegaPanel>
           </div>
 
           </nav>

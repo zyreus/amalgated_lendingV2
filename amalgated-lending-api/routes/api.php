@@ -78,10 +78,15 @@ Route::prefix('v1')->group(function () {
     Route::post('/admin/forgot-password', [PasswordResetController::class, 'requestAdmin'])->middleware('throttle:auth-password-reset');
     Route::post('/password/reset', [PasswordResetController::class, 'reset'])->middleware('throttle:auth-password-reset');
 
-    /** Signed inbox link — redirects to SPA after marking email_verified_at. */
-    Route::get('/borrower/email/verify', [BorrowerEmailVerificationController::class, 'verify'])
-        ->middleware(['throttle:72,1'])
-        ->name('api.borrower.email.verify');
+    /** Signed verification (SPA JSON + legacy query); browser inbox links use web routes. */
+    Route::middleware(['throttle:72,1'])->group(function () {
+        Route::get('/borrower/email/verify/{id}/{hash}', [BorrowerEmailVerificationController::class, 'verify'])
+            ->where(['id' => '[0-9]+', 'hash' => '[a-f0-9]+'])
+            ->name('api.borrower.email.verify');
+
+        Route::get('/borrower/email/verify', [BorrowerEmailVerificationController::class, 'verify'])
+            ->name('api.borrower.email.verify.legacy');
+    });
 
     Route::post('/liveness/verify', [LivenessController::class, 'verify'])
         ->middleware(['auth:api', 'active', 'borrower', 'throttle:liveness']);

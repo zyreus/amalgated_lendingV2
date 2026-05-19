@@ -100,8 +100,13 @@ class AdminChatController extends Controller
                 break;
         }
 
+        $convLastActivitySql = 'GREATEST('
+            .'COALESCE(sc.last_visitor_message_at, sc.last_staff_message_at), '
+            .'COALESCE(sc.last_staff_message_at, sc.last_visitor_message_at)'
+            .')';
+
         $rows = $query
-            ->orderByRaw('COALESCE(sc.last_message_at, agg.last_message_at) DESC')
+            ->orderByRaw("COALESCE({$convLastActivitySql}, agg.last_message_at) DESC")
             ->limit(min(max((int) $request->query('limit', 200), 1), 500))
             ->get([
                 'agg.session_id',
@@ -124,8 +129,7 @@ class AdminChatController extends Controller
                 'sc.unread_admin',
                 'sc.last_responder_type',
                 'sc.assigned_to',
-                'sc.last_message_at as conv_last_message_at',
-                'sc.visitor_type as conv_visitor_type',
+                DB::raw("{$convLastActivitySql} as conv_last_message_at"),
                 'sc.updated_at as conv_updated_at',
             ]);
 
@@ -153,8 +157,7 @@ class AdminChatController extends Controller
             $uc = (int) ($row->unread_admin ?? 0);
             $warehouseStatus = $row->conv_status ?: 'open';
             $lastActivity = $row->conv_last_message_at ?: $row->last_message_at;
-            $visitorType = $row->conv_visitor_type
-                ?: (($row->conv_mode ?? 'ai') === 'human' ? SupportConversation::VISITOR_TYPE_HUMAN : SupportConversation::VISITOR_TYPE_AI);
+            $visitorType = ($row->conv_mode ?? 'ai') === 'human' ? 'human' : 'ai';
 
             return [
                 'id' => $row->session_id,

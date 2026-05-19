@@ -62,9 +62,14 @@ class AppServiceProvider extends ServiceProvider
         Message::observe(MessageObserver::class);
     }
 
-    /** Trim Google App Passwords and normalize Gmail SMTP defaults. */
+    /** Trim Google App Passwords, normalize Gmail SMTP defaults, and reject legacy Brevo mailer. */
     private function normalizeMailConfig(): void
     {
+        $default = strtolower(trim((string) config('mail.default', 'smtp')));
+        if (in_array($default, ['brevo', 'sendinblue'], true)) {
+            Config::set('mail.default', 'smtp');
+        }
+
         $password = config('mail.mailers.smtp.password');
         if (is_string($password)) {
             Config::set('mail.mailers.smtp.password', preg_replace('/\s+/', '', trim($password)) ?? '');

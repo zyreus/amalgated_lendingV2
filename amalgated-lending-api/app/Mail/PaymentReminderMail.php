@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Mail\Concerns\EmbedsMailLogo;
 use App\Models\Payment;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
@@ -10,6 +11,7 @@ use Illuminate\Queue\SerializesModels;
 
 class PaymentReminderMail extends Mailable
 {
+    use EmbedsMailLogo;
     use Queueable;
     use SerializesModels;
 
@@ -31,7 +33,7 @@ class PaymentReminderMail extends Mailable
             ? 'Payment overdue'
             : 'Upcoming payment reminder';
 
-        return $this->view('mail.payment-reminder', [
+        return $this->view('mail.payment-reminder', $this->mailViewData([
             'borrowerName' => $this->borrower->name,
             'headline' => $headline,
             'variant' => $this->variant,
@@ -41,6 +43,6 @@ class PaymentReminderMail extends Mailable
             'installment' => $installment,
             'loanRef' => $this->loanRef,
             'portalUrl' => rtrim((string) config('app.frontend_url', ''), '/').'/borrower/payments',
-        ]);
+        ]));
     }
 }

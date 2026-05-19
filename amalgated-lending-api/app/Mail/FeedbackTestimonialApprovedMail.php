@@ -2,12 +2,14 @@
 
 namespace App\Mail;
 
+use App\Mail\Concerns\EmbedsMailLogo;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
 
 class FeedbackTestimonialApprovedMail extends Mailable
 {
+    use EmbedsMailLogo;
     use Queueable;
     use SerializesModels;
 
@@ -19,9 +21,9 @@ class FeedbackTestimonialApprovedMail extends Mailable
     public function build(): self
     {
         return $this->subject('Thank you — your testimonial is live — '.config('app.name', 'Amalgated Lending Inc.'))
-            ->view('mail.feedback-testimonial-approved', [
+            ->view('mail.feedback-testimonial-approved', $this->mailViewData([
                 'recipientName' => $this->recipientName,
                 'bodyLine' => $this->bodyLine,
-            ]);
+            ]));
     }
 }

@@ -30,7 +30,9 @@ MAIL_QUEUE_TRANSACTIONAL=false
 MAIL_FALLBACK_MAILER=log
 MAIL_ALLOW_LOG_FALLBACK=false
 MAIL_EHLO_DOMAIN=amalgatedlending.com
-BORROWER_VERIFY_URL_BASE=https://api.amalgatedlending.com
+BORROWER_VERIFY_URL_BASE=https://amalgatedlending.com
+FRONTEND_URL=https://amalgatedlending.com
+APP_URL=https://api.amalgatedlending.com
 FRONTEND_URL=https://amalgatedlending.com
 ```
 

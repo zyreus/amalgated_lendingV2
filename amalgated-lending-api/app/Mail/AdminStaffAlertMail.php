@@ -2,12 +2,14 @@
 
 namespace App\Mail;
 
+use App\Mail\Concerns\EmbedsMailLogo;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
 
 class AdminStaffAlertMail extends Mailable
 {
+    use EmbedsMailLogo;
     use Queueable;
     use SerializesModels;
 
@@ -24,12 +26,12 @@ class AdminStaffAlertMail extends Mailable
 
     public function build(): static
     {
-        return $this->view('mail.admin-staff-alert', [
+        return $this->view('mail.admin-staff-alert', $this->mailViewData([
             'alertTitle' => $this->alertTitle,
             'alertBody' => $this->alertBody,
             'category' => $this->category,
             'actionUrl' => $this->actionUrl,
             'data' => $this->data,
-        ]);
+        ]));
     }
 }

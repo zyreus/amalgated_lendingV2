@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Mail\Concerns\EmbedsMailLogo;
 use App\Models\Loan;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
@@ -9,6 +10,7 @@ use Illuminate\Queue\SerializesModels;
 
 class LoanDecisionMail extends Mailable
 {
+    use EmbedsMailLogo;
     use Queueable;
     use SerializesModels;
 
@@ -55,7 +57,7 @@ class LoanDecisionMail extends Mailable
         }
 
         return $this->subject($subject)
-            ->view('mail.loan-decision', [
+            ->view('mail.loan-decision', $this->mailViewData([
                 'borrowerName' => $this->borrowerName,
                 'loanId' => $this->loan->id,
                 'loanRef' => $loanRef,
@@ -71,6 +73,6 @@ class LoanDecisionMail extends Mailable
                 'adminMessage' => $this->adminMessage,
                 'nextPaymentDue' => $nextPaymentDue,
                 'nextPaymentAmount' => $nextPaymentAmount,
-            ]);
+            ]));
     }
 }
