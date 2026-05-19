@@ -89,8 +89,8 @@ export default function AdminCollectionsPipelinePage() {
           <Link to="/admin/borrowers" className={`${admin.btnSecondary}`}>
             Borrower accounts
           </Link>
-          <Link to="/admin/risk-analytics" className={`${admin.btnSecondary}`}>
-            Risk analytics
+          <Link to="/admin/credit-wellness" className={`${admin.btnSecondary}`}>
+            Credit &amp; wellness
           </Link>
         </div>
       </div>
@@ -150,15 +150,11 @@ export default function AdminCollectionsPipelinePage() {
             ≥ ₱100k in the last 180 days (supervisor review).
           </li>
           <li>
-            Portfolio risk & wellness —{' '}
+            Portfolio risk &amp; wellness —{' '}
             <Link className="font-medium text-brand-primary hover:underline" to="/admin/credit-wellness">
-              credit & wellness
+              credit &amp; wellness
             </Link>{' '}
-            (default_risk / legal bucket) and{' '}
-            <Link className="font-medium text-brand-primary hover:underline" to="/admin/risk-analytics">
-              risk analytics
-            </Link>
-            .
+            (default_risk / legal bucket).
           </li>
         </ul>
       </div>

@@ -9,6 +9,14 @@ import { useLogoutConfirm } from '../context/useLogoutConfirm.js'
 import { admin } from './components/AdminUi.jsx'
 import AdminHeaderClock from './components/AdminHeaderClock.jsx'
 import { ADMIN_NAV_GROUPS } from './adminNavConfig.js'
+
+/** Retired admin routes — hidden from API-driven nav (legacy DB rows). */
+const RETIRED_ADMIN_PATHS = new Set([
+  '/admin/underwriting-queue',
+  '/admin/document-verification',
+  '/admin/risk-analytics',
+  '/admin/compliance',
+])
 import { ADMIN_ROLE_BADGE, ADMIN_ROLE_BADGE_FALLBACK, sortRolesForDisplay } from './utils/roleBadges.js'
 import amalgatedLogo from '../assets/amalgated-lending-logo.png'
 
@@ -60,7 +68,13 @@ function buildGroupedNavFromConfig(can) {
 function mergeApiNav(rows, can) {
   const filtered = rows
     .map((r, i) => normalizeNavItem(r, i))
-    .filter((r) => r.path && r.path !== '/admin/cms' && r.path !== '/admin/notifications')
+    .filter(
+      (r) =>
+        r.path &&
+        r.path !== '/admin/cms' &&
+        r.path !== '/admin/notifications' &&
+        !RETIRED_ADMIN_PATHS.has(r.path),
+    )
 
   if (!filtered.some((x) => x.path === '/admin/chat-crm')) {
     filtered.push(normalizeNavItem({ path: '/admin/chat-crm', label: 'CRM & Chat', icon_key: 'chat', match_end: false }, filtered.length))
@@ -145,7 +159,13 @@ export default function AdminLayout() {
         const res = await api('/navigation')
         const rows = (res.data || []).filter((r) => {
           const p = r.path || r.to || ''
-          return p && p !== '/admin/cms' && p !== '/admin/notifications' && !String(p).includes('/admin/cms')
+          return (
+            p &&
+            p !== '/admin/cms' &&
+            p !== '/admin/notifications' &&
+            !String(p).includes('/admin/cms') &&
+            !RETIRED_ADMIN_PATHS.has(p)
+          )
         })
         if (!cancelled) {
           if (rows.length) setNavGroups(mergeApiNav(rows, can))

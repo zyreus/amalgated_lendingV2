@@ -58,7 +58,6 @@ use App\Http\Controllers\Api\SystemSettingController;
 use App\Http\Controllers\Api\TravelAssistanceController;
 use App\Http\Controllers\Api\TravelLoanApplicationAdminController;
 use App\Http\Controllers\Api\TravelLoanWizardController;
-use App\Http\Controllers\Api\UnderwritingQueueController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -186,7 +185,6 @@ Route::prefix('v1')->group(function () {
         });
 
         Route::middleware('permission:loans.view')->group(function () {
-            Route::get('/underwriting-queue', [UnderwritingQueueController::class, 'index']);
             Route::get('/loans', [LoanController::class, 'index']);
             Route::get('/loans/{loan}', [LoanController::class, 'show']);
         });

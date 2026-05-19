@@ -63,12 +63,8 @@ const AdminLoanProductsPage = lazy(() => import('./admin/pages/AdminLoanProducts
 const PrintableFormsPage = lazy(() => import('./admin/pages/PrintableFormsPage.jsx'))
 const ApplicationFlowPage = lazy(() => import('./pages/ApplicationFlowPage.jsx'))
 const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage.jsx'))
-const AdminUnderwritingQueuePage = lazy(() => import('./admin/pages/AdminUnderwritingQueuePage.jsx'))
 const AdminCollectionsPipelinePage = lazy(() => import('./admin/pages/AdminCollectionsPipelinePage.jsx'))
-const AdminRiskAnalyticsPage = lazy(() => import('./admin/pages/AdminRiskAnalyticsPage.jsx'))
 const AdminCreditWellnessPage = lazy(() => import('./admin/pages/AdminCreditWellnessPage.jsx'))
-const AdminComplianceCenterPage = lazy(() => import('./admin/pages/AdminComplianceCenterPage.jsx'))
-const AdminDocumentVerificationHubPage = lazy(() => import('./admin/pages/AdminDocumentVerificationHubPage.jsx'))
 const BorrowerCreditHealthPage = lazy(() => import('./borrower/pages/BorrowerCreditHealthPage.jsx'))
 const BorrowerDocumentsHubPage = lazy(() => import('./borrower/pages/BorrowerDocumentsHubPage.jsx'))
 const BorrowerHelpCenterPage = lazy(() => import('./borrower/pages/BorrowerHelpCenterPage.jsx'))
@@ -192,12 +188,8 @@ export default function Root() {
                     <Route path="loans/:id" element={<LoanDetailPage />} />
                     <Route path="loan-products" element={<AdminLoanProductsPage />} />
                     <Route path="printable-forms" element={<PrintableFormsPage />} />
-                    <Route path="underwriting-queue" element={<AdminUnderwritingQueuePage />} />
-                    <Route path="document-verification" element={<AdminDocumentVerificationHubPage />} />
                     <Route path="collections" element={<AdminCollectionsPipelinePage />} />
-                    <Route path="risk-analytics" element={<AdminRiskAnalyticsPage />} />
                     <Route path="credit-wellness" element={<AdminCreditWellnessPage />} />
-                    <Route path="compliance" element={<AdminComplianceCenterPage />} />
                     <Route path="reports" element={<ReportsPage />} />
                     <Route path="leads" element={<Navigate to="/admin/chat-crm?view=leads" replace />} />
                     <Route path="payments" element={<PaymentsPage />} />
