@@ -239,7 +239,7 @@ export default function Header() {
           : 'border-slate-200/50 bg-[#f8fafc]/55 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1220]/90'
       }`}
     >
-      <motion.div className="app-container relative flex min-h-[3.25rem] max-w-full items-center overflow-visible py-2 pt-[max(0.5rem,env(safe-area-inset-top,0px))] sm:min-h-[4.5rem] sm:py-3 lg:min-h-[5.5rem] lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-4 lg:py-5 xl:gap-6">
+      <motion.div className="app-container relative flex min-h-[3.25rem] items-center overflow-visible py-2 pt-[max(0.5rem,env(safe-area-inset-top,0px))] sm:min-h-[4.5rem] sm:py-3 lg:min-h-[5.5rem] lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-4 lg:py-5 xl:gap-6">
         <motion.div className="relative z-30 flex min-w-0 items-center justify-self-start lg:col-start-1">
         <button
           type="button"
