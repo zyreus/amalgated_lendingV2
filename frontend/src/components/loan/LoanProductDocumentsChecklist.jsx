@@ -14,7 +14,7 @@ export default function LoanProductDocumentsChecklist({ productKey, items, title
     <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-4 dark:border-amber-800/60 dark:bg-amber-950/25">
       <h3 className="text-sm font-semibold text-amber-950 dark:text-amber-100">{title}</h3>
       <p className="mt-1 text-xs text-amber-900/85 dark:text-amber-200/85">
-        Complete the official Amalgated application below, then attach the files requested in your product’s upload section.
+        Prepare these documents before signing in. Upload and verification are completed in the Borrower Portal.
       </p>
       <ul className="mt-3 list-inside list-disc space-y-1.5 text-sm text-amber-950/95 dark:text-amber-100/95">
         {list.map((line) => (

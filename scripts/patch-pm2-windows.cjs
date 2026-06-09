@@ -18,7 +18,7 @@ if (!fs.existsSync(pathsFile)) {
 }
 
 if (fs.existsSync(marker)) {
-  process.exit(0)
+  return
 }
 
 let src = fs.readFileSync(pathsFile, 'utf8')
@@ -34,7 +34,7 @@ if (!src.includes(needle)) {
   if (src.includes('pm2-rpc-')) {
     fs.mkdirSync(pm2Home, { recursive: true })
     fs.writeFileSync(marker, id)
-    process.exit(0)
+    return
   }
   process.stderr.write('pm2/paths.js layout changed; patch not applied.\n')
   process.exit(1)

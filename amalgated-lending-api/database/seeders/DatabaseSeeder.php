@@ -30,8 +30,12 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Override locked payment records', 'slug' => 'payments.override_locked', 'group_name' => 'Payments'],
             ['name' => 'Export payments (CSV)', 'slug' => 'payments.export', 'group_name' => 'Payments'],
             ['name' => 'View borrowers', 'slug' => 'borrowers.view', 'group_name' => 'Borrowers'],
+            ['name' => 'Archive borrowers', 'slug' => 'borrowers.archive', 'group_name' => 'Borrowers'],
+            ['name' => 'Restore borrowers', 'slug' => 'borrowers.restore', 'group_name' => 'Borrowers'],
             ['name' => 'Delete borrowers', 'slug' => 'borrowers.delete', 'group_name' => 'Borrowers'],
             ['name' => 'View reports', 'slug' => 'reports.view', 'group_name' => 'Reports'],
+            ['name' => 'View statements of account', 'slug' => 'soa.view', 'group_name' => 'Statements'],
+            ['name' => 'Manage statements of account', 'slug' => 'soa.manage', 'group_name' => 'Statements'],
             ['name' => 'Manage CMS', 'slug' => 'cms.manage', 'group_name' => 'CMS'],
             ['name' => 'Manage settings', 'slug' => 'settings.manage', 'group_name' => 'Settings'],
             ['name' => 'View activity logs', 'slug' => 'activity.view', 'group_name' => 'Audit'],
@@ -56,7 +60,7 @@ class DatabaseSeeder extends Seeder
 
         $bySlug = Permission::whereIn('slug', [
             'dashboard.view', 'loans.view', 'loans.approve', 'loans.assign', 'borrowers.view',
-            'payments.manage', 'payments.verify', 'payments.export', 'notifications.view', 'reports.view',
+            'payments.manage', 'payments.verify', 'payments.export', 'notifications.view', 'reports.view', 'soa.view', 'soa.manage',
         ])->pluck('id')->all();
         Role::updateOrCreate(
             ['slug' => 'loan-officer'],
@@ -67,14 +71,14 @@ class DatabaseSeeder extends Seeder
             ['slug' => 'collector'],
             ['name' => 'Collector', 'description' => 'Collections and payment recording.']
         )->permissions()->sync(Permission::whereIn('slug', [
-            'dashboard.view', 'loans.view', 'borrowers.view', 'payments.manage', 'payments.export', 'notifications.view',
+            'dashboard.view', 'loans.view', 'borrowers.view', 'payments.manage', 'payments.export', 'notifications.view', 'soa.view',
         ])->pluck('id')->all());
 
         Role::updateOrCreate(
             ['slug' => 'accountant'],
             ['name' => 'Accountant', 'description' => 'Financial reporting and payment oversight.']
         )->permissions()->sync(Permission::whereIn('slug', [
-            'dashboard.view', 'loans.view', 'payments.manage', 'payments.export', 'reports.view', 'notifications.view',
+            'dashboard.view', 'loans.view', 'payments.manage', 'payments.export', 'reports.view', 'notifications.view', 'soa.view', 'soa.manage',
         ])->pluck('id')->all());
 
         Role::updateOrCreate(
@@ -143,6 +147,12 @@ class DatabaseSeeder extends Seeder
             'system' => [
                 'maintenance_mode' => false,
                 'backup_frequency' => 'daily',
+            ],
+            'log_cleanup' => [
+                'enabled' => true,
+                'retention_days' => 30,
+                'frequency' => 'weekly',
+                'optimize_tables' => false,
             ],
         ];
 

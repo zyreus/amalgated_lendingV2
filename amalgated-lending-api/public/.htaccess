@@ -62,9 +62,6 @@
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
-  # Signed borrower email verification must run in Laravel (index.php), not the React shell.
-  RewriteRule ^borrower/email/verify(/.*)?$ index.php [L]
-  RewriteRule ^borrower/email/notice$ index.php [L]
   # All other routes (e.g. /admin/login) → index.html for client-side routing.
   RewriteRule ^ index.html [L]
 </IfModule>

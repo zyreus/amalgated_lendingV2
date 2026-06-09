@@ -34,7 +34,16 @@ class AdminLeadController extends Controller
             $q->where('loan_type', $request->query('loan_type'));
         }
         if ($request->filled('exclude_loan_type')) {
-            $q->where('loan_type', '!=', $request->query('exclude_loan_type'));
+            $excludedLoanTypes = collect(explode(',', (string) $request->query('exclude_loan_type')))
+                ->map(fn ($value) => trim($value))
+                ->filter()
+                ->values()
+                ->all();
+            if (count($excludedLoanTypes) > 1) {
+                $q->whereNotIn('loan_type', $excludedLoanTypes);
+            } elseif (count($excludedLoanTypes) === 1) {
+                $q->where('loan_type', '!=', $excludedLoanTypes[0]);
+            }
         }
         $rows = $q->orderByDesc('last_message_at')->orderByDesc('id')->paginate((int) $request->query('per_page', 20));
 
@@ -43,21 +52,25 @@ class AdminLeadController extends Controller
 
     public function show(Lead $lead): JsonResponse
     {
-        $lead->load(['messages.adminUser']);
-        $messages = $lead->messages->map(function (LeadMessage $m) {
-            return [
-                'id' => $m->id,
-                'sender_type' => $m->sender_type,
-                'message' => $m->message,
-                'attachment_name' => $m->attachment_name,
-                'attachment_url' => $m->attachment_path ? PublicStorageUrl::apiUrl($m->attachment_path) : null,
-                'admin_name' => $m->adminUser?->name,
-                'sent_at' => optional($m->sent_at)?->toIso8601String(),
-                'delivered_at' => optional($m->delivered_at)?->toIso8601String(),
-                'read_at' => optional($m->read_at)?->toIso8601String(),
-                'created_at' => optional($m->created_at)?->toIso8601String(),
-            ];
-        });
+        $messages = $this->leadMessagesQuery($lead)
+            ->limit(50)
+            ->get()
+            ->reverse()
+            ->values()
+            ->map(function (LeadMessage $m) {
+                return [
+                    'id' => $m->id,
+                    'sender_type' => $m->sender_type,
+                    'message' => $m->message,
+                    'attachment_name' => $m->attachment_name,
+                    'attachment_url' => $m->attachment_path ? PublicStorageUrl::apiUrl($m->attachment_path) : null,
+                    'admin_name' => $m->adminUser?->name,
+                    'sent_at' => optional($m->sent_at)?->toIso8601String(),
+                    'delivered_at' => optional($m->delivered_at)?->toIso8601String(),
+                    'read_at' => optional($m->read_at)?->toIso8601String(),
+                    'created_at' => optional($m->created_at)?->toIso8601String(),
+                ];
+            });
 
         return response()->json(['ok' => true, 'lead' => $lead, 'messages' => $messages]);
     }
@@ -159,9 +172,12 @@ class AdminLeadController extends Controller
         return response()->json(['ok' => true, 'message' => 'Email sent.']);
     }
 
-    public function messages(Lead $lead): JsonResponse
+    public function messages(Request $request, Lead $lead): JsonResponse
     {
-        $messages = $lead->messages()->with('adminUser')->get()->map(function (LeadMessage $m) {
+        $perPage = max(10, min(100, (int) $request->query('per_page', 50)));
+        $rows = $this->leadMessagesQuery($lead)->simplePaginate($perPage);
+
+        $messages = $rows->getCollection()->reverse()->values()->map(function (LeadMessage $m) {
             return [
                 'id' => $m->id,
                 'sender_type' => $m->sender_type,
@@ -176,7 +192,37 @@ class AdminLeadController extends Controller
             ];
         });
 
-        return response()->json(['ok' => true, 'data' => $messages]);
+        return response()->json([
+            'ok' => true,
+            'data' => $messages,
+            'meta' => [
+                'current_page' => $rows->currentPage(),
+                'per_page' => $rows->perPage(),
+                'has_more_pages' => $rows->hasMorePages(),
+                'next_page_url' => $rows->nextPageUrl(),
+            ],
+        ]);
+    }
+
+    private function leadMessagesQuery(Lead $lead)
+    {
+        return $lead->messages()
+            ->select([
+                'id',
+                'lead_id',
+                'sender_type',
+                'admin_user_id',
+                'message',
+                'attachment_name',
+                'attachment_path',
+                'sent_at',
+                'delivered_at',
+                'read_at',
+                'created_at',
+            ])
+            ->with('adminUser:id,name')
+            ->orderByDesc('sent_at')
+            ->orderByDesc('id');
     }
 
     public function sendMessage(Request $request, Lead $lead): JsonResponse

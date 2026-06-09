@@ -80,6 +80,7 @@ export default function BorrowerEmailVerifyPage() {
               : 'This verification link is invalid or expired.'
 
         if (data.ok) {
+          window.dispatchEvent(new Event('lending-borrower-email-verified'))
           finish({
             phase: 'ok',
             title: 'Email verified',

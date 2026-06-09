@@ -5,15 +5,6 @@
 
     $legalName = (string) config('company.print_legal_name', config('app.name', 'Amalgated Lending Inc.'));
     $tagline = (string) config('company.print_tagline', 'Lending Hope, Building Futures.');
-    $addressLines = config('company.print_address_lines');
-    if (! is_array($addressLines) || count($addressLines) === 0) {
-        $addressLines = [
-            'ACI IT and Corporate Centre,',
-            'Doña Carolina Uy Kim Peng Building, Cor.',
-            'JP Laurel Avenue and Inigo Street,',
-            'Bajada, Davao City 8000',
-        ];
-    }
 
     $logoSrc = null;
     if (! empty($logoDataUri ?? null)) {
@@ -27,17 +18,12 @@
         }
     }
 
-    $addrHtml = collect($addressLines)
-        ->map(fn ($l) => trim((string) $l))
-        ->filter()
-        ->implode('<br>');
 @endphp
 <style type="text/css">
     .corp-hdr-wrap { width: 100%; margin: 0 0 10px; }
     .corp-hdr-table { width: 100%; border-collapse: collapse; margin: 0; padding: 0; }
     .corp-hdr-table td { border: 0; vertical-align: middle; padding: 0; }
-    .corp-hdr-left { width: 58%; }
-    .corp-hdr-right { width: 42%; text-align: right; vertical-align: top !important; }
+    .corp-hdr-left { width: 100%; }
     .corp-hdr-inner { border-collapse: collapse; margin: 0; padding: 0; }
     .corp-hdr-inner td { border: 0; padding: 0; vertical-align: middle; }
     .corp-hdr-mark { width: {{ $logoPx + 16 }}px; padding-right: 12px; }
@@ -74,13 +60,6 @@
         margin: 4px 0 0;
         line-height: 1.25;
     }
-    .corp-hdr-addr {
-        font-family: DejaVu Sans, Arial, Helvetica, sans-serif;
-        font-size: 10px;
-        line-height: 1.45;
-        color: #000000;
-        margin: 0;
-    }
     .corp-hdr-rule {
         height: 1px;
         background: #000000;
@@ -105,9 +84,6 @@
                         </td>
                     </tr>
                 </table>
-            </td>
-            <td class="corp-hdr-right">
-                <div class="corp-hdr-addr">{!! $addrHtml !!}</div>
             </td>
         </tr>
     </table>

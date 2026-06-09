@@ -1,35 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { loanTypeFromProductSlug } from '../../utils/borrowerAuthApplyPath.js'
 import { borrowerApi } from '../api/client.js'
-import SignaturePad from '../components/SignaturePad.jsx'
 import { admin as ui } from '../../admin/components/AdminUi.jsx'
 import PrivacyPolicyModal from '../../components/privacy/PrivacyPolicyModal.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog.jsx'
 import PrivacyConsentCheckbox from '../../components/privacy/PrivacyConsentCheckbox.jsx'
 import { PRIVACY_POLICY_VERSION } from '../../components/privacy/PrivacyPolicyContent.jsx'
-import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
 
 const STEPS = [
   { id: 1, title: 'Personal, employment, and loan details' },
   { id: 2, title: 'Document upload center' },
-  { id: 3, title: 'Signatures and authorization' },
   { id: 4, title: 'Review and submit' },
 ]
 const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/png']
 const MAX_UPLOAD_MB = 15
 
-function signaturePreviewUrl(value) {
-  if (value == null) return ''
-  const raw = String(value).trim()
-  if (!raw) return ''
-  if (raw.startsWith('data:image/')) return raw
-  return getLaravelStorageFileUrl(raw)
-}
-
 function shouldRedirectToApplications(appRecord) {
   if (!appRecord || appRecord.is_draft) return false
   const status = String(appRecord.status || '').toLowerCase()
   return ['submitted', 'under_review', 'for_review', 'approved', 'passed', 'rejected'].includes(status) || status !== 'draft'
+}
+
+function normalizeWizardStep(value) {
+  const step = Math.min(Math.max(Number(value) || 1, 1), 4)
+  return step >= 3 ? 4 : step
 }
 
 function useDebouncedCallback(fn, delay) {
@@ -43,14 +38,22 @@ function useDebouncedCallback(fn, delay) {
   )
 }
 
+function resolveInitialLoanType(searchParams) {
+  const fromQuery = searchParams.get('loan_type')
+  if (fromQuery) return fromQuery
+  const fromProduct = loanTypeFromProductSlug(searchParams.get('product'))
+  return fromProduct || 'salary'
+}
+
 export default function BorrowerLoanWizardPage() {
   const { applicationId } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [schema, setSchema] = useState(null)
   const [app, setApp] = useState(null)
   const [step, setStep] = useState(1)
   const [formData, setFormData] = useState({})
-  const [loanType, setLoanType] = useState('salary')
+  const [loanType, setLoanType] = useState(() => resolveInitialLoanType(searchParams))
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -59,18 +62,6 @@ export default function BorrowerLoanWizardPage() {
   const [draggingDocKey, setDraggingDocKey] = useState('')
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
-
-  const sigApplicant = useRef(null)
-  const sigSpouse = useRef(null)
-  const sigComaker = useRef(null)
-  const signaturePreview = useMemo(
-    () => ({
-      applicant: signaturePreviewUrl(app?.signatures?.applicant),
-      spouse: signaturePreviewUrl(app?.signatures?.spouse),
-      comaker: signaturePreviewUrl(app?.signatures?.comaker),
-    }),
-    [app?.signatures?.applicant, app?.signatures?.spouse, app?.signatures?.comaker],
-  )
 
   const loadSchema = useCallback(async () => {
     const res = await borrowerApi('/borrower/loan-applications/wizard/schema')
@@ -83,7 +74,7 @@ export default function BorrowerLoanWizardPage() {
     setApp(d)
     setFormData(d.form_data || {})
     setLoanType(d.loan_type || 'salary')
-    setStep(Math.min(Math.max(d.draft_step || 1, 1), 4))
+    setStep(normalizeWizardStep(d.draft_step))
   }, [])
 
   const openDeleteConfirm = useCallback(() => {
@@ -243,7 +234,7 @@ export default function BorrowerLoanWizardPage() {
         setError(v.errors.join(' '))
         return
       }
-      const next = Math.min(step + 1, 4)
+      const next = step >= 2 ? 4 : 2
       setStep(next)
       await borrowerApi(`/borrower/loan-applications/${applicationId}`, {
         method: 'PATCH',
@@ -276,22 +267,6 @@ export default function BorrowerLoanWizardPage() {
       setApp(res.data)
     } catch (e) {
       setError(e.message || 'Upload failed.')
-    }
-  }
-
-  const saveSignatureRole = async (role, dataUrl) => {
-    if (!dataUrl || !applicationId) return
-    setError('')
-    try {
-      const res = await borrowerApi(`/borrower/loan-applications/${applicationId}/signature`, {
-        method: 'POST',
-        body: JSON.stringify({ role, signature_base64: dataUrl }),
-      })
-      setApp(res.data)
-      setToast('Signature saved.')
-      setTimeout(() => setToast(''), 2500)
-    } catch (e) {
-      setError(e.message || 'Could not save signature.')
     }
   }
 
@@ -425,7 +400,7 @@ export default function BorrowerLoanWizardPage() {
                   : 'bg-gray-200 text-gray-800 dark:bg-[#1F2937] dark:text-gray-200'
               }`}
             >
-              {s.id}. {s.title}
+              {STEPS.findIndex((stepItem) => stepItem.id === s.id) + 1}. {s.title}
             </button>
           </li>
         ))}
@@ -665,45 +640,6 @@ export default function BorrowerLoanWizardPage() {
         </div>
       ) : null}
 
-      {step === 3 ? (
-        <div className="grid gap-6 md:grid-cols-2">
-          <SignaturePad
-            label="Applicant signature *"
-            onChange={(data) => {
-              sigApplicant.current = data
-            }}
-          />
-          <SignaturePad
-            label="Spouse signature (optional)"
-            onChange={(data) => {
-              sigSpouse.current = data
-            }}
-          />
-          {loanType === 'chattel' ? (
-            <SignaturePad
-              label="Co-maker signature *"
-              onChange={(data) => {
-                sigComaker.current = data
-              }}
-            />
-          ) : null}
-          <div className="md:col-span-2">
-            <button
-              type="button"
-              onClick={async () => {
-                if (sigApplicant.current) await saveSignatureRole('applicant', sigApplicant.current)
-                if (sigSpouse.current) await saveSignatureRole('spouse', sigSpouse.current)
-                if (loanType === 'chattel' && sigComaker.current) await saveSignatureRole('comaker', sigComaker.current)
-              }}
-              className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white dark:bg-gray-100 dark:text-gray-900"
-            >
-              Save signatures
-            </button>
-            <p className={`mt-2 text-xs ${ui.textMuted}`}>Draw above, then click Save signatures. Applicant is required before submit.</p>
-          </div>
-        </div>
-      ) : null}
-
       {step === 4 ? (
         <div className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#1F2937] dark:bg-[#111827]">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Preview</h3>
@@ -715,22 +651,6 @@ export default function BorrowerLoanWizardPage() {
               </div>
             ))}
           </dl>
-          <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Signatures</p>
-            <div className="mt-2 flex flex-wrap gap-4">
-              {signaturePreview.applicant ? (
-                <img src={signaturePreview.applicant} alt="Applicant" className="h-24 rounded border border-gray-200 bg-white" />
-              ) : (
-                <span className="text-sm text-amber-700">Applicant signature missing</span>
-              )}
-              {signaturePreview.spouse ? (
-                <img src={signaturePreview.spouse} alt="Spouse" className="h-24 rounded border border-gray-200 bg-white" />
-              ) : null}
-              {signaturePreview.comaker ? (
-                <img src={signaturePreview.comaker} alt="Co-maker" className="h-24 rounded border border-gray-200 bg-white" />
-              ) : null}
-            </div>
-          </div>
           {app.is_draft ? (
             <div className="space-y-3">
               <PrivacyConsentCheckbox
@@ -759,7 +679,7 @@ export default function BorrowerLoanWizardPage() {
           {step > 1 ? (
             <button
               type="button"
-              onClick={() => setStep((s) => Math.max(1, s - 1))}
+              onClick={() => setStep((s) => (s === 4 ? 2 : Math.max(1, s - 1)))}
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600"
             >
               Back
@@ -770,7 +690,7 @@ export default function BorrowerLoanWizardPage() {
             onClick={validateAndNext}
             className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
           >
-            {step === 3 ? 'Continue to preview' : 'Next step'}
+            {step === 2 ? 'Continue to preview' : 'Next step'}
           </button>
         </div>
       ) : null}

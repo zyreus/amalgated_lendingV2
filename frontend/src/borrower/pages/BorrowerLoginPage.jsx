@@ -1,13 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import PasswordInput from '../../components/PasswordInput.jsx'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 import PrivacyPolicyModal from '../../components/privacy/PrivacyPolicyModal.jsx'
+import { borrowerAuthHandoffSearchParams } from '../../utils/borrowerAuthApplyPath.js'
 
 export default function BorrowerLoginPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { login } = useBorrowerAuth()
+  const { login, loadMe } = useBorrowerAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -17,6 +18,14 @@ export default function BorrowerLoginPage() {
   const verifiedFlag = searchParams.get('verified') === '1'
   const verifyStatus = (searchParams.get('verification_status') || '').toLowerCase()
   const verifyMessage = searchParams.get('verification_message') || ''
+  const authHandoff = borrowerAuthHandoffSearchParams(searchParams)
+
+  useEffect(() => {
+    if (verifiedFlag || verifyStatus === 'success' || verifyStatus === 'already_verified') {
+      window.dispatchEvent(new Event('lending-borrower-email-verified'))
+      void loadMe()
+    }
+  }, [verifiedFlag, verifyStatus, loadMe])
 
   const onSubmit = async (e) => {
     e.preventDefault()
@@ -70,7 +79,10 @@ export default function BorrowerLoginPage() {
           <div className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 dark:border-red-500/20 dark:bg-red-500/10">
             <p className="text-sm text-red-800 dark:text-red-300">
               New borrower?{' '}
-              <Link to="/borrower/register" className="font-semibold underline underline-offset-2 hover:text-red-900 dark:hover:text-red-200">
+              <Link
+                to={`/borrower/register${authHandoff}`}
+                className="font-semibold underline underline-offset-2 hover:text-red-900 dark:hover:text-red-200"
+              >
                 Create account
               </Link>
             </p>

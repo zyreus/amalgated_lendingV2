@@ -1,11 +1,14 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import PasswordInput from '../../components/PasswordInput.jsx'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
+import { borrowerAuthHandoffSearchParams } from '../../utils/borrowerAuthApplyPath.js'
 
 export default function BorrowerRegisterPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { register } = useBorrowerAuth()
+  const authHandoff = borrowerAuthHandoffSearchParams(searchParams)
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -31,7 +34,10 @@ export default function BorrowerRegisterPage() {
     setErrorMsg('')
     try {
       await register(form)
-      navigate('/borrower/dashboard', { replace: true })
+      const redirect = searchParams.get('redirect')
+      const target =
+        redirect && redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/borrower/dashboard'
+      navigate(target, { replace: true })
     } catch (err) {
       setErrorMsg(err?.message || 'Could not create borrower account.')
     } finally {
@@ -100,7 +106,10 @@ export default function BorrowerRegisterPage() {
           </form>
           <p className="mt-5 text-center text-sm text-gray-500 transition-colors duration-300 dark:text-gray-400">
             Already have an account?{' '}
-            <Link to="/borrower/login" className="text-red-600 transition hover:text-red-700 hover:underline dark:text-red-400 dark:hover:text-red-300">
+            <Link
+              to={`/borrower/login${authHandoff}`}
+              className="text-red-600 transition hover:text-red-700 hover:underline dark:text-red-400 dark:hover:text-red-300"
+            >
               Sign in
             </Link>
           </p>

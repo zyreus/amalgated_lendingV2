@@ -187,6 +187,8 @@ export default function BorrowerDetailPage() {
             src={borrowerAvatarUrl}
             alt={borrower.name || 'Borrower'}
             className="h-12 w-12 rounded-full border border-gray-200 object-cover dark:border-[#374151]"
+            loading="lazy"
+            decoding="async"
             onError={(e) => {
               e.currentTarget.onerror = null
               e.currentTarget.src = fallbackAvatar(borrower.name || 'Borrower')
@@ -573,6 +575,8 @@ export default function BorrowerDetailPage() {
                                 src={getLaravelStorageFileUrl(ln.face_photo_path)}
                                 alt="Applicant face"
                                 className="max-h-48 rounded-lg border border-gray-200 object-contain dark:border-[#1F2937]"
+                                loading="lazy"
+                                decoding="async"
                               />
                             </a>
                             {ln.face_capture_at ? (

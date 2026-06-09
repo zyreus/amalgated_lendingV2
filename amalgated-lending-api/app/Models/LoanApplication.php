@@ -24,6 +24,8 @@ class LoanApplication extends Model
 
     public const STATUS_PENDING = 'pending';
 
+    public const STATUS_PRE_APPROVED = 'pre-approved';
+
     public const STATUS_APPROVED = 'approved';
 
     public const STATUS_REJECTED = 'rejected';
@@ -106,6 +108,7 @@ class LoanApplication extends Model
         // Calculator / non-wizard rows (wizard drafts use status "draft" until final submit).
         if (in_array($this->status, [
             self::STATUS_PENDING,
+            self::STATUS_PRE_APPROVED,
             self::STATUS_APPROVED,
             self::STATUS_REJECTED,
         ], true)) {

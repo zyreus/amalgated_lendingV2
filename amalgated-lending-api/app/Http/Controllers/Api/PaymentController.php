@@ -11,14 +11,19 @@ use App\Models\Loan;
 use App\Models\Payment;
 use App\Models\PaymentAdjustmentAudit;
 use App\Models\PaymentReceiptAudit;
+use App\Models\SoaLog;
+use App\Models\SoaStatement;
 use App\Models\User;
+use App\Notifications\ReceiptGeneratedNotification;
 use App\Services\ActivityLogger;
 use App\Services\CreditWellnessService;
 use App\Services\FinalPaymentAdjustmentService;
 use App\Services\LoanPaymentBalanceService;
 use App\Services\NotificationCenter;
+use App\Services\PaymentFilterService;
 use App\Services\PaymentReceiptComplianceService;
 use App\Services\PaymentReceiptMutationService;
+use App\Services\PaymentReceiptPdfService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -36,13 +41,15 @@ class PaymentController extends Controller
         private FinalPaymentAdjustmentService $finalPaymentAdjustments,
         private PaymentReceiptComplianceService $receiptCompliance,
         private PaymentReceiptMutationService $receiptMutation,
+        private PaymentFilterService $paymentFilters,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
-        $q = $this->filteredPaymentsQuery($request);
+        $q = $this->paymentFilters->sort($this->filteredPaymentsQuery($request), $request);
 
-        $rows = $q->orderByDesc('due_date')->paginate((int) $request->query('per_page', 20));
+        $perPage = max(10, min(100, (int) $request->query('per_page', 25)));
+        $rows = $q->paginate($perPage);
 
         $statusMap = $this->receiptEmailStatusMapForPaymentIds($rows->getCollection()->pluck('id'));
         $rows->getCollection()->each(function (Payment $p) use ($statusMap): void {
@@ -71,20 +78,73 @@ class PaymentController extends Controller
         return response()->json(['ok' => true, 'data' => $payments]);
     }
 
+    public function manualOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'borrower_id' => 'required|integer|exists:users,id',
+        ]);
+
+        $loans = Loan::query()
+            ->where('borrower_id', (int) $data['borrower_id'])
+            ->whereIn('status', [Loan::STATUS_APPROVED, Loan::STATUS_ONGOING])
+            ->with(['payments' => function ($query): void {
+                $query->whereNotIn('status', [Payment::STATUS_PAID, Payment::STATUS_WAIVED])
+                    ->whereRaw('(amount_due - COALESCE(amount_paid, 0)) > 0.009')
+                    ->orderBy('due_date')
+                    ->orderBy('installment_no');
+            }])
+            ->orderByDesc('id')
+            ->get()
+            ->map(function (Loan $loan): array {
+                return [
+                    'id' => $loan->id,
+                    'loan_number' => $loan->loan_number,
+                    'status' => $loan->status,
+                    'outstanding_balance' => (float) ($loan->outstanding_balance ?? 0),
+                    'payments' => $loan->payments->map(fn (Payment $payment): array => [
+                        'id' => $payment->id,
+                        'installment_no' => $payment->installment_no,
+                        'due_date' => optional($payment->due_date)?->toDateString(),
+                        'amount_due' => (float) $payment->amount_due,
+                        'amount_paid' => (float) $payment->amount_paid,
+                        'remaining_due' => max(0, (float) $payment->amount_due - (float) $payment->amount_paid),
+                        'status' => $payment->status,
+                    ])->values(),
+                ];
+            })
+            ->filter(fn (array $loan): bool => count($loan['payments']) > 0)
+            ->values();
+
+        return response()->json(['ok' => true, 'data' => $loans]);
+    }
+
     public function record(Request $request, Payment $payment, ActivityLogger $logger): JsonResponse
     {
         $user = $request->user();
         $data = $request->validate([
             'amount_paid' => 'required|numeric|min:0',
             'paid_at' => 'nullable|date',
+            'payment_date' => 'nullable|date',
             'source' => 'nullable|string|in:manual,api',
             'external_ref' => 'nullable|string|max:255',
+            'reference_number' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
             'payment_method' => 'nullable|string|max:32',
+            'payment_type' => 'nullable|string|in:partial,full,advance',
+            'penalty_amount' => 'nullable|numeric|min:0',
             'official_receipt_number' => 'nullable|string|max:64',
             'acknowledgement_receipt_number' => 'nullable|string|max:64',
+            'or_number' => 'nullable|string|max:255',
+            'ar_number' => 'nullable|string|max:255',
             'auto_mint_receipt_numbers' => 'nullable|boolean',
         ]);
+
+        if (! isset($data['official_receipt_number']) && isset($data['or_number'])) {
+            $data['official_receipt_number'] = $data['or_number'];
+        }
+        if (! isset($data['acknowledgement_receipt_number']) && isset($data['ar_number'])) {
+            $data['acknowledgement_receipt_number'] = $data['ar_number'];
+        }
 
         $ext = isset($data['external_ref']) ? trim((string) $data['external_ref']) : '';
         if ($ext !== '') {
@@ -118,18 +178,37 @@ class PaymentController extends Controller
                 $previousStatus = $p->status;
                 $origOr = trim((string) ($p->official_receipt_number ?? ''));
                 $origAr = trim((string) ($p->acknowledgement_receipt_number ?? ''));
+                $amountPaid = round((float) $data['amount_paid'], 2);
+                $scheduledDue = round((float) $p->amount_due, 2);
+                if ($amountPaid - $scheduledDue > 0.009) {
+                    throw ValidationException::withMessages([
+                        'amount_paid' => ['Payment amount cannot exceed the selected installment remaining balance.'],
+                    ]);
+                }
 
-                $p->amount_paid = $data['amount_paid'];
-                $p->paid_at = isset($data['paid_at']) ? Carbon::parse($data['paid_at']) : now();
+                $p->amount_paid = $amountPaid;
+                $p->paid_at = isset($data['paid_at']) || isset($data['payment_date'])
+                    ? Carbon::parse($data['paid_at'] ?? $data['payment_date'])
+                    : now();
                 $p->source = $data['source'] ?? 'manual';
                 if (isset($data['external_ref'])) {
                     $p->external_ref = $data['external_ref'];
                 }
+                if (isset($data['reference_number'])) {
+                    $p->reference_number = $data['reference_number'];
+                    $p->external_ref = $p->external_ref ?: $data['reference_number'];
+                }
                 if (isset($data['notes'])) {
                     $p->notes = $data['notes'];
                 }
+                if (array_key_exists('penalty_amount', $data)) {
+                    $p->penalty_amount = (float) ($data['penalty_amount'] ?? 0);
+                }
                 if (array_key_exists('payment_method', $data) && $data['payment_method'] !== null) {
                     $p->payment_method = $data['payment_method'];
+                }
+                if (array_key_exists('payment_type', $data) && $data['payment_type'] !== null) {
+                    $p->payment_type = $data['payment_type'];
                 }
 
                 $incomingOr = $this->receiptCompliance->normalize($data['official_receipt_number'] ?? null);
@@ -186,17 +265,23 @@ class PaymentController extends Controller
                 }
 
                 $p->recorded_by = $user->id;
+                $this->stampManualEncoder($p, $user);
                 $p->save();
+                $becamePaid = $this->paymentJustBecamePaid($previousStatus, $p->status);
+                if ($becamePaid) {
+                    $this->markMatchingSoaPaid($p, (int) $user->id);
+                }
 
                 $this->loanPaymentBalances->refreshLoanAfterPaymentChange($p->loan_id);
                 $freshPayment = $p->fresh([
                     'loan.borrower',
                     'confirmedByUser',
                     'recordedByUser',
+                    'encodedByUser',
+                    'processedByUser',
                     'approvedByUser',
                     'receiptIssuedByUser',
                 ]);
-                $becamePaid = $this->paymentJustBecamePaid($previousStatus, $p->status);
             });
         } catch (ValidationException $e) {
             return response()->json([
@@ -233,8 +318,20 @@ class PaymentController extends Controller
                 ['context' => 'payments.record']
             );
             $this->queuePaymentReceiptEmail($freshPayment, $request->user());
-            $receiptEmail = ['sent' => true, 'note' => 'queued'];
+            $borrowerEmail = trim((string) ($freshPayment->loan?->borrower?->email ?? ''));
+            $receiptEmail = filter_var($borrowerEmail, FILTER_VALIDATE_EMAIL)
+                ? ['sent' => true, 'note' => 'queued']
+                : ['sent' => false, 'note' => 'no_borrower_email'];
             $this->deferPaymentPaidNotifications($freshPayment, $request->user());
+            $freshPayment = $freshPayment->fresh([
+                'loan.borrower',
+                'confirmedByUser',
+                'recordedByUser',
+                'encodedByUser',
+                'processedByUser',
+                'approvedByUser',
+                'receiptIssuedByUser',
+            ]);
         }
 
         $lastReceiptEmail = null;
@@ -249,6 +346,8 @@ class PaymentController extends Controller
             'loan.borrower',
             'confirmedByUser',
             'recordedByUser',
+            'encodedByUser',
+            'processedByUser',
             'approvedByUser',
             'receiptIssuedByUser',
         ]);
@@ -288,11 +387,18 @@ class PaymentController extends Controller
                             'loan.borrower',
                             'confirmedByUser',
                             'recordedByUser',
+                            'encodedByUser',
+                            'processedByUser',
                             'approvedByUser',
                             'receiptIssuedByUser',
                         ]);
 
                         return;
+                    }
+                    if (! $this->hasPaymentEvidence($p)) {
+                        throw ValidationException::withMessages([
+                            'payment' => ['Borrower proof, reference number, or recorded payment amount is required before confirmation.'],
+                        ]);
                     }
                     $incomingOr = $this->receiptCompliance->normalize($data['official_receipt_number'] ?? null);
                     $incomingAr = $this->receiptCompliance->normalize($data['acknowledgement_receipt_number'] ?? null);
@@ -328,6 +434,7 @@ class PaymentController extends Controller
                     $p->approved_by = $user->id;
                     $p->approved_at = now();
                     $p->recorded_by = $user->id;
+                    $this->stampManualEncoder($p, $user);
                 } else {
                     if ($p->status === Payment::STATUS_PAID && ! $this->canOverrideLocked($user)) {
                         $this->logReceiptAudit(
@@ -350,6 +457,14 @@ class PaymentController extends Controller
                     $p->approved_by = null;
                     $p->approved_at = null;
                     $p->invoice_pdf_path = null;
+                    $p->receipt_pdf_path = null;
+                    $p->emailed_at = null;
+                    $p->notification_sent_at = null;
+                    $p->processed_by_user_id = null;
+                    $p->processed_by_name = null;
+                    $p->encoded_by = null;
+                    $p->encoder_name = null;
+                    $p->encoder_role = null;
                 }
 
                 if (trim((string) ($p->official_receipt_number ?? '')) !== $origOr
@@ -365,15 +480,21 @@ class PaymentController extends Controller
                 }
 
                 $p->save();
+                $becamePaid = $data['status'] === Payment::STATUS_PAID && $this->paymentJustBecamePaid($previousStatus, $p->status);
+                if ($becamePaid) {
+                    $this->markMatchingSoaPaid($p, (int) $user->id);
+                }
+
                 $this->loanPaymentBalances->refreshLoanAfterPaymentChange($p->loan_id);
                 $freshPayment = $p->fresh([
                     'loan.borrower',
                     'confirmedByUser',
                     'recordedByUser',
+                    'encodedByUser',
+                    'processedByUser',
                     'approvedByUser',
                     'receiptIssuedByUser',
                 ]);
-                $becamePaid = $data['status'] === Payment::STATUS_PAID && $this->paymentJustBecamePaid($previousStatus, $p->status);
             });
         } catch (ValidationException $e) {
             return response()->json([
@@ -410,8 +531,20 @@ class PaymentController extends Controller
                 ['context' => 'payments.status_update']
             );
             $this->queuePaymentReceiptEmail($freshPayment, $request->user());
-            $receiptEmail = ['sent' => true, 'note' => 'queued'];
+            $borrowerEmail = trim((string) ($freshPayment->loan?->borrower?->email ?? ''));
+            $receiptEmail = filter_var($borrowerEmail, FILTER_VALIDATE_EMAIL)
+                ? ['sent' => true, 'note' => 'queued']
+                : ['sent' => false, 'note' => 'no_borrower_email'];
             $this->deferPaymentPaidNotifications($freshPayment, $request->user());
+            $freshPayment = $freshPayment->fresh([
+                'loan.borrower',
+                'confirmedByUser',
+                'recordedByUser',
+                'encodedByUser',
+                'processedByUser',
+                'approvedByUser',
+                'receiptIssuedByUser',
+            ]);
         }
 
         $lastReceiptEmail = null;
@@ -426,6 +559,8 @@ class PaymentController extends Controller
             'loan.borrower',
             'confirmedByUser',
             'recordedByUser',
+            'encodedByUser',
+            'processedByUser',
             'approvedByUser',
             'receiptIssuedByUser',
         ]);
@@ -446,6 +581,13 @@ class PaymentController extends Controller
         }
 
         $user = $request->user();
+        if (! in_array(strtolower((string) $payment->status), [Payment::STATUS_PENDING, Payment::STATUS_PARTIAL, Payment::STATUS_OVERDUE], true)
+            || ! $this->hasPaymentEvidence($payment)) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Only submitted unpaid payments can be verified.',
+            ], 422);
+        }
         $payment->verified_by = $user->id;
         $payment->verified_at = now();
         $payment->save();
@@ -530,6 +672,7 @@ class PaymentController extends Controller
         $payment->loadMissing([
             'loan.borrower',
             'recordedByUser',
+            'encodedByUser',
             'receiptIssuedByUser',
             'verifiedByUser',
             'approvedByUser',
@@ -548,7 +691,7 @@ class PaymentController extends Controller
             abort(403, 'Forbidden');
         }
 
-        $q = $this->filteredPaymentsQuery($request)->orderByDesc('due_date')->limit(5000);
+        $q = $this->paymentFilters->sort($this->filteredPaymentsQuery($request), $request)->limit(5000);
 
         $headers = [
             'Content-Type' => 'text/csv; charset=UTF-8',
@@ -568,10 +711,13 @@ class PaymentController extends Controller
                 'status',
                 'receipt_status',
                 'payment_method',
+            'payment_type',
                 'official_receipt_number',
                 'acknowledgement_receipt_number',
                 'paid_at',
                 'recorded_by',
+            'processed_by',
+            'processed_by_role',
                 'verified_by',
                 'approved_by',
                 'loan_officer',
@@ -591,10 +737,13 @@ class PaymentController extends Controller
                         $p->status,
                         $p->receipt_status,
                         $p->payment_method,
+                        $p->payment_type,
                         $p->official_receipt_number,
                         $p->acknowledgement_receipt_number,
                         optional($p->paid_at)?->toIso8601String(),
                         $p->recordedByUser?->name,
+                        $p->encoder_name ?: $p->encodedByUser?->name ?: $p->recordedByUser?->name,
+                        $p->encoder_role ?: $p->receipt_issued_role,
                         $p->verifiedByUser?->name,
                         $p->approvedByUser?->name,
                         $p->loan?->assignedOfficer?->name,
@@ -669,172 +818,7 @@ class PaymentController extends Controller
 
     private function filteredPaymentsQuery(Request $request): Builder
     {
-        $q = Payment::query()
-            ->with([
-                'loan' => fn ($rel) => $rel->select([
-                    'id', 'borrower_id', 'assigned_officer_id', 'term_months', 'outstanding_balance', 'status', 'principal',
-                ]),
-                'loan.borrower:id,name,email',
-                'loan.assignedOfficer:id,name,email',
-                'confirmedByUser:id,name',
-                'recordedByUser:id,name',
-                'verifiedByUser:id,name',
-                'approvedByUser:id,name',
-                'receiptIssuedByUser:id,name',
-            ]);
-
-        if ($request->query('loan_scope') === 'assigned') {
-            $u = $request->user();
-            $primary = (string) ($u->role ?? '');
-            $derived = $u->derivePrimaryRoleFromRoles();
-            if ($primary === 'loan_officer' || $derived === 'loan_officer') {
-                $q->whereHas('loan', fn ($lq) => $lq->where('assigned_officer_id', $u->id));
-            }
-        }
-
-        if ($request->filled('loan_id')) {
-            $q->where('loan_id', $request->query('loan_id'));
-        }
-        if ($request->filled('loan_search')) {
-            $loanId = $this->parseLoanSearchToId((string) $request->query('loan_search'));
-            if ($loanId !== null) {
-                $q->where('loan_id', $loanId);
-            }
-        }
-        if ($request->filled('status')) {
-            $q->where('status', $request->query('status'));
-        }
-        if ($request->filled('overdue')) {
-            $q->where('status', '!=', Payment::STATUS_PAID)
-                ->whereDate('due_date', '<', now()->toDateString());
-        }
-
-        if ($request->filled('installment_dpd_min') || $request->filled('installment_dpd_max')) {
-            $minD = $request->filled('installment_dpd_min') ? max(0, (int) $request->query('installment_dpd_min')) : 0;
-            $maxD = $request->filled('installment_dpd_max') ? max($minD, (int) $request->query('installment_dpd_max')) : 3650;
-            $q->whereDate('due_date', '<', now()->toDateString())
-                ->whereNotIn('status', [Payment::STATUS_PAID, Payment::STATUS_WAIVED])
-                ->whereRaw('(amount_due - COALESCE(amount_paid, 0)) > 0.009')
-                ->whereDate('due_date', '<=', now()->copy()->subDays($minD)->toDateString())
-                ->whereDate('due_date', '>=', now()->copy()->subDays($maxD)->toDateString());
-        }
-
-        if ($request->filled('payment_method')) {
-            $q->where('payment_method', $request->query('payment_method'));
-        }
-
-        if ($request->filled('recorded_by')) {
-            $q->where('recorded_by', (int) $request->query('recorded_by'));
-        }
-
-        if ($request->filled('officer_user_id')) {
-            $officerId = (int) $request->query('officer_user_id');
-            $q->whereHas('loan', fn ($lq) => $lq->where('assigned_officer_id', $officerId));
-        }
-
-        if ($request->filled('official_receipt_q')) {
-            $t = strtoupper(trim((string) $request->query('official_receipt_q')));
-            $q->where('official_receipt_number', 'like', '%'.$t.'%');
-        }
-        if ($request->filled('acknowledgement_receipt_q')) {
-            $t = strtoupper(trim((string) $request->query('acknowledgement_receipt_q')));
-            $q->where('acknowledgement_receipt_number', 'like', '%'.$t.'%');
-        }
-
-        if ($request->filled('borrower_search')) {
-            $b = trim((string) $request->query('borrower_search'));
-            $q->whereHas('loan.borrower', function ($bq) use ($b): void {
-                $bq->where('name', 'like', '%'.$b.'%')
-                    ->orWhere('email', 'like', '%'.$b.'%');
-            });
-        }
-
-        if ($request->filled('collector_search')) {
-            $c = trim((string) $request->query('collector_search'));
-            $q->whereHas('recordedByUser', function ($uq) use ($c): void {
-                $uq->where('name', 'like', '%'.$c.'%');
-            });
-        }
-
-        if ($request->filled('officer_search')) {
-            $o = trim((string) $request->query('officer_search'));
-            $q->whereHas('loan.assignedOfficer', function ($uq) use ($o): void {
-                $uq->where('name', 'like', '%'.$o.'%');
-            });
-        }
-
-        $dateField = $request->query('date_field', 'paid_at') === 'due_date' ? 'due_date' : 'paid_at';
-        if ($request->filled('date_from')) {
-            $from = Carbon::parse((string) $request->query('date_from'))->startOfDay();
-            if ($dateField === 'due_date') {
-                $q->whereDate('due_date', '>=', $from->toDateString());
-            } else {
-                $q->whereNotNull('paid_at')->whereDate('paid_at', '>=', $from->toDateString());
-            }
-        }
-        if ($request->filled('date_to')) {
-            $to = Carbon::parse((string) $request->query('date_to'))->endOfDay();
-            if ($dateField === 'due_date') {
-                $q->whereDate('due_date', '<=', $to->toDateString());
-            } else {
-                $q->whereDate('paid_at', '<=', $to->toDateString());
-            }
-        }
-
-        if ($request->query('approval_status') === 'missing_receipts') {
-            $q->where('status', Payment::STATUS_PAID)
-                ->where(function ($w): void {
-                    $w->where(function ($x): void {
-                        $x->whereNull('official_receipt_number')->orWhere('official_receipt_number', '');
-                    })->where(function ($x): void {
-                        $x->whereNull('acknowledgement_receipt_number')->orWhere('acknowledgement_receipt_number', '');
-                    });
-                });
-        } elseif ($request->query('approval_status') === 'verified') {
-            $q->whereNotNull('verified_by');
-        } elseif ($request->query('approval_status') === 'pending') {
-            $q->where('status', Payment::STATUS_PENDING);
-        } elseif ($request->query('approval_status') === 'paid') {
-            $q->where('status', Payment::STATUS_PAID);
-        }
-
-        if ($request->filled('receipt_status')) {
-            $q->where('receipt_status', (string) $request->query('receipt_status'));
-        }
-
-        if ($request->filled('receipt_document_coverage')) {
-            $cov = (string) $request->query('receipt_document_coverage');
-            if ($cov === 'or_only') {
-                $q->where(function ($w): void {
-                    $w->whereNotNull('official_receipt_number')->where('official_receipt_number', '!=', '')
-                        ->where(function ($x): void {
-                            $x->whereNull('acknowledgement_receipt_number')->orWhere('acknowledgement_receipt_number', '');
-                        });
-                });
-            } elseif ($cov === 'ar_only') {
-                $q->where(function ($w): void {
-                    $w->whereNotNull('acknowledgement_receipt_number')->where('acknowledgement_receipt_number', '!=', '')
-                        ->where(function ($x): void {
-                            $x->whereNull('official_receipt_number')->orWhere('official_receipt_number', '');
-                        });
-                });
-            } elseif ($cov === 'both') {
-                $q->where(function ($w): void {
-                    $w->whereNotNull('official_receipt_number')->where('official_receipt_number', '!=', '')
-                        ->whereNotNull('acknowledgement_receipt_number')->where('acknowledgement_receipt_number', '!=', '');
-                });
-            } elseif ($cov === 'none') {
-                $q->where(function ($w): void {
-                    $w->where(function ($x): void {
-                        $x->whereNull('official_receipt_number')->orWhere('official_receipt_number', '');
-                    })->where(function ($x): void {
-                        $x->whereNull('acknowledgement_receipt_number')->orWhere('acknowledgement_receipt_number', '');
-                    });
-                });
-            }
-        }
-
-        return $q;
+        return $this->paymentFilters->apply($this->paymentFilters->baseQuery(), $request);
     }
 
     private function logReceiptAudit(
@@ -884,6 +868,15 @@ class PaymentController extends Controller
         }
     }
 
+    private function stampManualEncoder(Payment $payment, User $user): void
+    {
+        $payment->encoded_by = $user->id;
+        $payment->encoder_name = trim((string) ($user->name ?? '')) ?: $user->email;
+        $payment->encoder_role = $this->staffRoleDisplayLabel($user);
+        $payment->processed_by_user_id = $user->id;
+        $payment->processed_by_name = $payment->encoder_name;
+    }
+
     private function canOverrideLocked(User $user): bool
     {
         return $user->hasPermission('payments.override_locked') || $user->hasPermission('roles.manage');
@@ -891,10 +884,16 @@ class PaymentController extends Controller
 
     private function staffRoleLabelForReceipt(User $user): string
     {
+        return $this->staffRoleDisplayLabel($user);
+    }
+
+    private function staffRoleDisplayLabel(User $user): string
+    {
         $slug = $user->derivePrimaryRoleFromRoles();
         $primary = strtolower((string) ($user->role ?? ''));
+        $role = $primary !== '' ? $primary : $slug;
 
-        return $primary !== '' ? $primary : $slug;
+        return ucwords(str_replace(['_', '-'], ' ', $role));
     }
 
     private function queuePaymentReceiptEmail(Payment $payment, User $admin): void
@@ -909,6 +908,13 @@ class PaymentController extends Controller
         $borrower = $payment->loan?->borrower;
         $email = trim((string) ($borrower?->email ?? ''));
         $validEmail = $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL);
+
+        try {
+            app(PaymentReceiptPdfService::class)->ensureOfficialPdf($payment, (int) $admin->id);
+            $payment->refresh();
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         if (! $validEmail) {
             EmailLog::query()->updateOrCreate(
@@ -965,42 +971,49 @@ class PaymentController extends Controller
     private function deferPaymentPaidNotifications(Payment $freshPayment, User $admin): void
     {
         $paymentId = (int) $freshPayment->id;
-        $loanId = (int) $freshPayment->loan_id;
         $adminId = (int) $admin->id;
         $self = $this;
 
-        dispatch(function () use ($self, $paymentId, $loanId, $adminId): void {
-            try {
-                $pay = Payment::query()->with(['loan.borrower'])->find($paymentId);
-                if (! $pay || ! $pay->loan?->borrower) {
-                    return;
-                }
-
-                $borrower = $pay->loan->borrower;
-                $remaining = (float) (Payment::query()
-                    ->where('loan_id', $loanId)
-                    ->selectRaw('COALESCE(SUM(GREATEST(amount_due - amount_paid, 0)), 0) AS r')
-                    ->value('r') ?? 0);
-                $remainingTxt = number_format($remaining, 2);
-
-                app(NotificationCenter::class)->notifyBorrower(
-                    $borrower,
-                    NotificationCenter::CATEGORY_PAYMENT_RECEIVED,
-                    'payment_received',
-                    'Payment recorded',
-                    'Installment #'.($pay->installment_no ?? '—').' is marked paid. Remaining balance (scheduled): ₱'.$remainingTxt.'. Thank you.',
-                    ['payment_id' => $pay->id, 'loan_id' => $pay->loan_id, 'remaining_balance' => $remaining],
-                    ['dedupe_key' => 'payment_paid:'.$pay->id, 'module' => NotificationCenter::MODULE_PAYMENTS],
-                );
-
-                $adminUser = User::query()->find($adminId);
-                if ($adminUser) {
-                    $self->notifyStaffPaymentConfirmed($pay, $adminUser);
-                }
-            } catch (\Throwable $e) {
-                report($e);
+        try {
+            $pay = Payment::query()->with(['loan.borrower'])->find($paymentId);
+            if (! $pay || ! $pay->loan?->borrower) {
+                return;
             }
-        })->afterResponse();
+
+            $borrower = $pay->loan->borrower;
+            $loanNumber = $pay->loan?->loan_number ?? ('LN-'.str_pad((string) $pay->loan_id, 6, '0', STR_PAD_LEFT));
+            $or = trim((string) ($pay->official_receipt_number ?? ''));
+            $message = 'Your payment for Loan '.$loanNumber.' has been successfully posted. Amount Paid: ₱'.number_format((float) $pay->amount_paid, 2).'. Receipt No: '.($or !== '' ? $or : 'Pending');
+
+            app(NotificationCenter::class)->notifyBorrower(
+                $borrower,
+                NotificationCenter::CATEGORY_PAYMENT_RECEIVED,
+                'receipt_generated',
+                'Payment Received',
+                $message,
+                [
+                    'payment_id' => $pay->id,
+                    'loan_id' => $pay->loan_id,
+                    'loan_number' => $loanNumber,
+                    'amount_paid' => (float) $pay->amount_paid,
+                    'official_receipt_number' => $or,
+                    'acknowledgement_receipt_number' => $pay->acknowledgement_receipt_number,
+                    'receipt_download_url' => '/borrower/payments/'.$pay->id.'/official-receipt',
+                ],
+                ['dedupe_key' => 'payment_paid:'.$pay->id, 'module' => NotificationCenter::MODULE_PAYMENTS],
+            );
+
+            $borrower->notify(new ReceiptGeneratedNotification($pay));
+
+            $pay->forceFill(['notification_sent_at' => now()])->save();
+
+            $adminUser = User::query()->find($adminId);
+            if ($adminUser) {
+                $self->notifyStaffPaymentConfirmed($pay, $adminUser);
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     private function notifyStaffPaymentConfirmed(Payment $payment, User $admin): void
@@ -1077,12 +1090,48 @@ class PaymentController extends Controller
         ];
     }
 
+    private function markMatchingSoaPaid(Payment $payment, int $adminId): void
+    {
+        if (! $payment->due_date) {
+            return;
+        }
+
+        $dueDate = $payment->due_date->copy();
+        $statementMonth = $dueDate->copy()->startOfMonth()->toDateString();
+
+        SoaStatement::query()
+            ->where('loan_id', $payment->loan_id)
+            ->where('status', '!=', SoaStatement::STATUS_PAID)
+            ->where(function (Builder $query) use ($dueDate, $statementMonth): void {
+                $query->whereDate('due_date', $dueDate->toDateString())
+                    ->orWhereDate('statement_month', $statementMonth);
+            })
+            ->get()
+            ->each(function (SoaStatement $statement) use ($adminId): void {
+                $statement->forceFill(['status' => SoaStatement::STATUS_PAID])->save();
+
+                SoaLog::query()->create([
+                    'soa_id' => $statement->id,
+                    'action' => 'paid',
+                    'description' => 'SOA hidden from borrower portal after admin confirmed the matching payment.',
+                    'created_by' => $adminId,
+                ]);
+            });
+    }
+
     private function paymentJustBecamePaid(string $previousStatus, string $currentStatus): bool
     {
         $prev = strtolower(trim($previousStatus));
         $cur = strtolower(trim($currentStatus));
 
         return $cur === Payment::STATUS_PAID && $prev !== Payment::STATUS_PAID;
+    }
+
+    private function hasPaymentEvidence(Payment $payment): bool
+    {
+        return (float) ($payment->amount_paid ?? 0) > 0
+            || trim((string) ($payment->reference_number ?? '')) !== ''
+            || trim((string) ($payment->receipt_path ?? '')) !== '';
     }
 
     /**

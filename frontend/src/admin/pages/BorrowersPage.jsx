@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import { Archive, Eye, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client.js'
 import { useToast } from '../context/ToastContext.jsx'
 import { useAdminApiAuth } from '../context/useAdminApiAuth.js'
 import { admin, TableSkeletonRows, EmptyTableRow } from '../components/AdminUi.jsx'
+import ConfirmModal from '../components/ConfirmModal.jsx'
 import CreateBorrowerModal from '../components/CreateBorrowerModal.jsx'
 import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
 
@@ -54,6 +56,12 @@ function fallbackAvatar(name) {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'Borrower')}&background=fee2e2&color=b91c1c&size=96&bold=true`
 }
 
+const ONGOING_LOAN_DELETE_MESSAGE = 'This borrower cannot be deleted because they still have an ongoing loan.'
+
+function hasOngoingLoan(borrower) {
+  return Boolean(borrower?.has_ongoing_loan)
+}
+
 export default function BorrowersPage() {
   const { showToast } = useToast()
   const { can } = useAdminApiAuth()
@@ -61,8 +69,8 @@ export default function BorrowersPage() {
   const [search, setSearch] = useState('')
   const [risk, setRisk] = useState('')
   const [loading, setLoading] = useState(true)
-  const [deletingId, setDeletingId] = useState(null)
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [actionLoadingId, setActionLoadingId] = useState(null)
+  const [confirmAction, setConfirmAction] = useState(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
 
   const load = async (page = 1) => {
@@ -86,35 +94,60 @@ export default function BorrowersPage() {
 
   const rows = data?.data || []
 
-  const requestDelete = (b) => {
-    if (!can('borrowers.delete') || deletingId) return
-    const loanCount = Number(b.loans_count ?? 0)
-    if (loanCount > 0) {
-      showToast('Cannot delete a borrower who has loan records.', 'error')
+  const openArchiveConfirm = (b) => {
+    if (!can('borrowers.archive') || actionLoadingId) return
+    setConfirmAction({ type: 'archive', borrower: b })
+  }
+
+  const openDeleteConfirm = (b) => {
+    if (!can('borrowers.delete') || actionLoadingId) return
+    if (hasOngoingLoan(b)) {
+      showToast(ONGOING_LOAN_DELETE_MESSAGE, 'error')
       return
     }
-    setConfirmDeleteId((prev) => (prev === b.id ? null : b.id))
+    setConfirmAction({ type: 'delete', borrower: b })
+  }
+
+  const handleArchive = async (b) => {
+    if (!can('borrowers.archive') || actionLoadingId) return
+    setActionLoadingId(b.id)
+    try {
+      await api(`/borrowers/${b.id}/archive`, { method: 'POST', body: '{}' })
+      showToast('Borrower archived successfully.', 'success')
+      await load(data?.current_page || 1)
+    } catch (e) {
+      showToast(e.message || 'Archive failed.', 'error')
+    } finally {
+      setActionLoadingId(null)
+    }
   }
 
   const handleDelete = async (b) => {
-    if (!can('borrowers.delete') || deletingId) return
-    const loanCount = Number(b.loans_count ?? 0)
-    if (loanCount > 0) {
-      showToast('Cannot delete a borrower who has loan records.', 'error')
+    if (!can('borrowers.delete') || actionLoadingId) return
+    if (hasOngoingLoan(b)) {
+      showToast(ONGOING_LOAN_DELETE_MESSAGE, 'error')
       return
     }
-    setDeletingId(b.id)
+    setActionLoadingId(b.id)
     try {
       await api(`/borrowers/${b.id}`, { method: 'DELETE', body: '{}' })
-      showToast('Borrower account deleted.', 'success')
-      setConfirmDeleteId(null)
+      showToast('Borrower moved to deleted pending.', 'success')
       await load(data?.current_page || 1)
     } catch (e) {
       showToast(e.message || 'Delete failed.', 'error')
     } finally {
-      setDeletingId(null)
+      setActionLoadingId(null)
     }
   }
+
+  const confirmTitle =
+    confirmAction?.type === 'delete'
+      ? 'Move borrower to deleted pending?'
+      : 'Archive borrower?'
+  const confirmDescription =
+    confirmAction?.type === 'delete'
+      ? 'This moves the borrower to Archived Borrowers as Deleted Pending. Permanent deletion is only available from the archive.'
+      : 'Are you sure you want to archive this borrower?'
 
   return (
     <div className="w-full min-w-0 space-y-6">
@@ -124,7 +157,10 @@ export default function BorrowersPage() {
           <p className={admin.pageSubtitle}></p>
         </div>
 
-        <div className="sticky top-2 z-20 w-full sm:static sm:z-auto sm:w-auto">
+        <div className="sticky top-2 z-20 flex w-full flex-col gap-2 sm:static sm:z-auto sm:w-auto sm:flex-row">
+          <Link to="/admin/borrowers/archived" className={`${admin.btnSecondary} w-full px-6 text-center sm:w-auto`}>
+            Archived Borrowers
+          </Link>
           <button
             type="button"
             onClick={() => setShowCreateModal(true)}
@@ -190,6 +226,8 @@ export default function BorrowersPage() {
                       src={getLaravelStorageFileUrl(borrowerAvatarPath(b))}
                       alt={b.name || 'Borrower'}
                       className="h-8 w-8 rounded-full border border-gray-200 object-cover dark:border-[#374151]"
+                      loading="lazy"
+                      decoding="async"
                       onError={(e) => {
                         e.currentTarget.onerror = null
                         e.currentTarget.src = fallbackAvatar(b.name || 'Borrower')
@@ -222,51 +260,44 @@ export default function BorrowersPage() {
               <p className={`text-xs ${admin.textMuted}`}>
                 Identity checks: {Number(b.liveness_verifications_count ?? 0) + Number(b.face_verifications_count ?? 0)}
               </p>
+              {hasOngoingLoan(b) ? (
+                <span className="inline-flex w-fit rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-300 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-500/30">
+                  Ongoing Loan
+                </span>
+              ) : null}
               <p className={`text-xs ${admin.textMuted}`}>
                 Email: {b.email_verified_at ? 'Verified' : 'Pending'}
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link
                   to={`/admin/borrowers/${b.id}`}
-                  className="inline-flex text-sm font-medium text-red-600 transition hover:text-red-700 hover:underline dark:text-red-400 dark:hover:text-red-300"
+                  className="inline-flex items-center gap-1 text-sm font-medium text-red-600 transition hover:text-red-700 hover:underline dark:text-red-400 dark:hover:text-red-300"
                 >
+                  <Eye className="h-4 w-4" />
                   View
                 </Link>
+                {can('borrowers.archive') ? (
+                  <button
+                    type="button"
+                    disabled={actionLoadingId === b.id}
+                    onClick={() => openArchiveConfirm(b)}
+                    className="inline-flex items-center gap-1 text-sm font-medium text-gray-700 underline-offset-2 transition hover:text-gray-900 hover:underline disabled:opacity-50 dark:text-gray-300 dark:hover:text-white"
+                  >
+                    <Archive className="h-4 w-4" />
+                    Archive
+                  </button>
+                ) : null}
                 {can('borrowers.delete') ? (
-                  confirmDeleteId === b.id ? (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={deletingId === b.id}
-                        onClick={() => handleDelete(b)}
-                        className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
-                      >
-                        {deletingId === b.id ? 'Deleting…' : 'Confirm'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={deletingId === b.id}
-                        onClick={() => setConfirmDeleteId(null)}
-                        className="rounded-md border border-gray-300 px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-[#1F2937]"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={deletingId === b.id || Number(b.loans_count ?? 0) > 0}
-                      title={
-                        Number(b.loans_count ?? 0) > 0
-                          ? 'Remove loan records before deleting this borrower.'
-                          : 'Delete borrower account'
-                      }
-                      onClick={() => requestDelete(b)}
-                      className="text-sm font-medium text-red-700/90 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-400/90"
-                    >
-                      Delete
-                    </button>
-                  )
+                  <button
+                    type="button"
+                    disabled={actionLoadingId === b.id || hasOngoingLoan(b)}
+                    onClick={() => openDeleteConfirm(b)}
+                    title={hasOngoingLoan(b) ? ONGOING_LOAN_DELETE_MESSAGE : undefined}
+                    className="inline-flex items-center gap-1 text-sm font-medium text-red-700/90 underline-offset-2 transition hover:underline disabled:opacity-50 dark:text-red-400/90"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {hasOngoingLoan(b) ? 'Cannot Delete' : 'Delete'}
+                  </button>
                 ) : null}
               </div>
             </div>
@@ -303,6 +334,8 @@ export default function BorrowersPage() {
                           src={getLaravelStorageFileUrl(borrowerAvatarPath(b))}
                           alt={b.name || 'Borrower'}
                           className="h-8 w-8 rounded-full border border-gray-200 object-cover dark:border-[#374151]"
+                          loading="lazy"
+                          decoding="async"
                           onError={(e) => {
                             e.currentTarget.onerror = null
                             e.currentTarget.src = fallbackAvatar(b.name || 'Borrower')
@@ -331,7 +364,16 @@ export default function BorrowersPage() {
                       '—'
                     )}
                   </td>
-                  <td className={`${admin.tableCell} tabular-nums`}>{b.loans_count ?? '—'}</td>
+                  <td className={`${admin.tableCell} tabular-nums`}>
+                    <div className="flex flex-col gap-1">
+                      <span>{b.loans_count ?? '—'}</span>
+                      {hasOngoingLoan(b) ? (
+                        <span className="inline-flex w-fit rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-300 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-500/30">
+                          Ongoing Loan
+                        </span>
+                      ) : null}
+                    </div>
+                  </td>
                   <td className={admin.tableCell}>
                     {b.email_verified_at ? (
                       <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
@@ -350,45 +392,33 @@ export default function BorrowersPage() {
                     <div className="flex flex-wrap items-center justify-end gap-3">
                       <Link
                         to={`/admin/borrowers/${b.id}`}
-                        className="text-sm font-medium text-red-600 transition hover:text-red-700 hover:underline dark:text-red-400 dark:hover:text-red-300"
+                        className="inline-flex items-center gap-1 text-sm font-medium text-red-600 transition hover:text-red-700 hover:underline dark:text-red-400 dark:hover:text-red-300"
                       >
+                        <Eye className="h-4 w-4" />
                         View
                       </Link>
+                      {can('borrowers.archive') ? (
+                        <button
+                          type="button"
+                          disabled={actionLoadingId === b.id}
+                          onClick={() => openArchiveConfirm(b)}
+                          className="inline-flex items-center gap-1 text-sm font-medium text-gray-700 underline-offset-2 transition hover:text-gray-900 hover:underline disabled:opacity-50 dark:text-gray-300 dark:hover:text-white"
+                        >
+                          <Archive className="h-4 w-4" />
+                          Archive
+                        </button>
+                      ) : null}
                       {can('borrowers.delete') ? (
-                        confirmDeleteId === b.id ? (
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              disabled={deletingId === b.id}
-                              onClick={() => handleDelete(b)}
-                              className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
-                            >
-                              {deletingId === b.id ? 'Deleting…' : 'Confirm'}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={deletingId === b.id}
-                              onClick={() => setConfirmDeleteId(null)}
-                              className="rounded-md border border-gray-300 px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-[#1F2937]"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={deletingId === b.id || Number(b.loans_count ?? 0) > 0}
-                            title={
-                              Number(b.loans_count ?? 0) > 0
-                                ? 'Remove loan records before deleting this borrower.'
-                                : 'Delete borrower account'
-                            }
-                            onClick={() => requestDelete(b)}
-                            className="text-sm font-medium text-red-700/90 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-400/90"
-                          >
-                            Delete
-                          </button>
-                        )
+                        <button
+                          type="button"
+                          disabled={actionLoadingId === b.id || hasOngoingLoan(b)}
+                          onClick={() => openDeleteConfirm(b)}
+                          title={hasOngoingLoan(b) ? ONGOING_LOAN_DELETE_MESSAGE : undefined}
+                          className="inline-flex items-center gap-1 text-sm font-medium text-red-700/90 underline-offset-2 transition hover:underline disabled:opacity-50 dark:text-red-400/90"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          {hasOngoingLoan(b) ? 'Cannot Delete' : 'Delete'}
+                        </button>
                       ) : null}
                     </div>
                   </td>
@@ -398,6 +428,49 @@ export default function BorrowersPage() {
           </tbody>
         </table>
       </div>
+
+      {data ? (
+        <div className="flex flex-col gap-2 text-sm text-gray-600 dark:text-gray-300 sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            Showing {data.from ?? 0}-{data.to ?? 0} of {data.total ?? 0} active borrowers
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className={admin.paginationBtn}
+              disabled={loading || !data.prev_page_url}
+              onClick={() => load(Math.max(1, Number(data.current_page || 1) - 1))}
+            >
+              Previous
+            </button>
+            <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Page {data.current_page ?? 1} of {data.last_page ?? 1}
+            </span>
+            <button
+              type="button"
+              className={admin.paginationBtn}
+              disabled={loading || !data.next_page_url}
+              onClick={() => load(Number(data.current_page || 1) + 1)}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <ConfirmModal
+        open={Boolean(confirmAction)}
+        onClose={() => setConfirmAction(null)}
+        title={confirmTitle}
+        description={confirmDescription}
+        confirmLabel={confirmAction?.type === 'delete' ? 'Move to Deleted Pending' : 'Archive Borrower'}
+        tone={confirmAction?.type === 'delete' ? 'danger' : 'default'}
+        onConfirm={() =>
+          confirmAction?.type === 'delete'
+            ? handleDelete(confirmAction.borrower)
+            : handleArchive(confirmAction.borrower)
+        }
+      />
 
       <CreateBorrowerModal
         open={showCreateModal}

@@ -13,11 +13,11 @@ module.exports = {
       name: 'amalgated-frontend',
       cwd: 'C:/xampp/htdocs/amalgated_lendingV2',
       script: 'C:/Windows/System32/cmd.exe',
-      args: '/d /s /c "npx vite preview --config frontend/vite.config.js --host 0.0.0.0 --port 5174 --strictPort"',
+      args: '/d /s /c "npx vite preview --config frontend/vite.config.js --host 0.0.0.0 --port 6174 --strictPort"',
       windowsHide: true,
       env: {
         NODE_ENV: 'production',
-        VITE_PORT: '5174',
+        VITE_PORT: '6174',
       },
       watch: false,
       autorestart: true,
@@ -30,7 +30,7 @@ module.exports = {
     {
       /**
        * Optional dev server (HMR) — NOT auto-started by `pm2 start ecosystem.config.cjs`
-       * because the public-facing service above already occupies port 5174. Use for
+       * because the public-facing service above already occupies port 6174. Use for
        * local development:
        *   pm2 start ecosystem.config.cjs --only amalgated-frontend-dev
        * (Pick a different port via `--port` if you also want the preview server up.)

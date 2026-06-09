@@ -69,6 +69,10 @@ function buildUrl(base, path) {
   return `${String(base).replace(/\/$/, '')}${p}`
 }
 
+export function laravelApiUrl(path, base = '') {
+  return buildUrl(base, path)
+}
+
 export function laravelApiBases() {
   const bases = []
   const explicit = (import.meta.env.VITE_LENDING_API_URL || '').trim().replace(/\/$/, '')

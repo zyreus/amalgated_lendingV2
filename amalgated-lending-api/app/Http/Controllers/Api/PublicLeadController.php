@@ -107,7 +107,14 @@ class PublicLeadController extends Controller
             return response()->json(['ok' => false, 'message' => 'Unauthorized lead chat access.'], 403);
         }
 
-        $messages = $lead->messages()->get()->map(function (LeadMessage $m) {
+        $perPage = max(10, min(100, (int) $request->query('per_page', 50)));
+        $rows = $lead->messages()
+            ->select(['id', 'lead_id', 'sender_type', 'message', 'attachment_name', 'attachment_path', 'created_at'])
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->simplePaginate($perPage);
+
+        $messages = $rows->getCollection()->reverse()->values()->map(function (LeadMessage $m) {
             return [
                 'id' => $m->id,
                 'sender_type' => $m->sender_type,
@@ -118,7 +125,16 @@ class PublicLeadController extends Controller
             ];
         });
 
-        return response()->json(['ok' => true, 'data' => $messages]);
+        return response()->json([
+            'ok' => true,
+            'data' => $messages,
+            'meta' => [
+                'current_page' => $rows->currentPage(),
+                'per_page' => $rows->perPage(),
+                'has_more_pages' => $rows->hasMorePages(),
+                'next_page_url' => $rows->nextPageUrl(),
+            ],
+        ]);
     }
 
     public function sendMessage(Request $request, Lead $lead): JsonResponse

@@ -10,6 +10,7 @@ use App\Models\LeadMessage;
 use App\Models\Loan;
 use App\Models\LoanApplication;
 use App\Models\Payment;
+use App\Models\SoaStatement;
 use App\Models\TravelApplication;
 use App\Models\User;
 use App\Services\NotificationCenter;
@@ -28,6 +29,10 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class BorrowerPortalController extends Controller
 {
+    private const BORROWER_CHAT_LOAN_TYPE = 'Borrower Support';
+
+    private const BORROWER_TICKET_LOAN_TYPE = 'Borrower Ticket';
+
     /**
      * @param  array<string, mixed>  $docStatus
      * @return array<int, array{key:string,label:string,url:string,name:string}>
@@ -141,10 +146,32 @@ class BorrowerPortalController extends Controller
         })->first();
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeLoanSoaSummary(SoaStatement $statement): array
+    {
+        return [
+            'id' => $statement->id,
+            'statement_number' => $statement->statement_number,
+            'statement_month' => $statement->statement_month?->toDateString(),
+            'statement_month_label' => $statement->statement_month?->format('F Y'),
+            'due_date' => $statement->due_date?->toDateString(),
+            'monthly_due' => (float) $statement->monthly_due,
+            'penalties' => (float) $statement->penalties,
+            'remaining_balance' => (float) $statement->remaining_balance,
+            'total_due' => (float) $statement->total_due,
+            'status' => $statement->status,
+            'email_sent' => (bool) $statement->email_sent,
+            'download_url' => '/api/v1/borrower/statements/'.$statement->id.'/download',
+        ];
+    }
+
     private function resolveBorrowerLead($user): Lead
     {
         $lead = Lead::query()
             ->where('email', $user->email)
+            ->where('loan_type', self::BORROWER_CHAT_LOAN_TYPE)
             ->orderByDesc('id')
             ->first();
 
@@ -162,7 +189,7 @@ class BorrowerPortalController extends Controller
             'name' => (string) $user->name,
             'email' => (string) $user->email,
             'organization' => null,
-            'loan_type' => 'Borrower Support',
+            'loan_type' => self::BORROWER_CHAT_LOAN_TYPE,
             'status' => 'ongoing',
             'initial_message' => 'Borrower opened support chat.',
             'chat_token' => bin2hex(random_bytes(20)),
@@ -235,13 +262,45 @@ class BorrowerPortalController extends Controller
             $loan = Loan::query()
                 ->whereKey($primaryRef->id)
                 ->with([
-                    'payments' => fn ($q) => $q->orderBy('due_date'),
+                    'payments' => fn ($q) => $q
+                        ->select([
+                            'id',
+                            'loan_id',
+                            'installment_no',
+                            'due_date',
+                            'amount_due',
+                            'amount_paid',
+                            'penalty_amount',
+                            'status',
+                            'paid_at',
+                            'encoded_by',
+                            'recorded_by',
+                            'confirmed_by',
+                            'receipt_pdf_path',
+                            'invoice_pdf_path',
+                            'reference_number',
+                            'official_receipt_number',
+                            'acknowledgement_receipt_number',
+                            'payment_method',
+                        ])
+                        ->with(['encodedByUser:id,name', 'recordedByUser:id,name', 'confirmedByUser:id,name'])
+                        ->orderBy('due_date'),
                     'loanApplication:id,loan_id,loan_type,loan_amount,approved_amount,monthly_pension',
                 ])
                 ->first();
         }
 
-        $loansSummary = $allLoans->map(function (Loan $l) {
+        $latestSoaByLoanId = SoaStatement::query()
+            ->where('borrower_id', $user->id)
+            ->whereIn('loan_id', $allLoans->pluck('id')->filter()->values())
+            ->visibleToBorrowerPortal()
+            ->orderByDesc('statement_month')
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('loan_id')
+            ->map(fn ($rows) => $rows->first());
+
+        $loansSummary = $allLoans->map(function (Loan $l) use ($latestSoaByLoanId) {
             $attrs = $l->getAttributes();
             $hasSchedule = array_key_exists('dash_has_schedule', $attrs)
                 ? (bool) $l->dash_has_schedule
@@ -279,6 +338,9 @@ class BorrowerPortalController extends Controller
                         ['loan' => $l->id]
                     )
                     : null,
+                'latest_soa' => $latestSoaByLoanId->has($l->id)
+                    ? $this->serializeLoanSoaSummary($latestSoaByLoanId->get($l->id))
+                    : null,
             ];
         })->values();
 
@@ -311,6 +373,17 @@ class BorrowerPortalController extends Controller
             ->all();
 
         if ($loan) {
+            $latestPrimarySoa = SoaStatement::query()
+                ->where('borrower_id', $user->id)
+                ->where('loan_id', $loan->id)
+                ->visibleToBorrowerPortal()
+                ->orderByDesc('statement_month')
+                ->orderByDesc('id')
+                ->first();
+            if ($latestPrimarySoa) {
+                $loan->setAttribute('latest_soa', $this->serializeLoanSoaSummary($latestPrimarySoa));
+            }
+
             $all = collect($loan->payments ?? []);
             $pendingRows = $all
                 ->filter(fn (Payment $p) => $p->status !== Payment::STATUS_PAID)
@@ -318,6 +391,8 @@ class BorrowerPortalController extends Controller
             $historyRows = $all
                 ->filter(fn (Payment $p) => $p->status === Payment::STATUS_PAID)
                 ->sortByDesc(fn (Payment $p) => $p->paid_at?->timestamp ?? 0)
+                ->take(10)
+                ->map(fn (Payment $p) => $this->withProcessorDisplay($p))
                 ->values();
 
             $dueTotal = (float) $all->sum(fn (Payment $p) => (float) $p->amount_due + (float) ($p->penalty_amount ?? 0));
@@ -380,6 +455,9 @@ class BorrowerPortalController extends Controller
             ->where('status', Payment::STATUS_PAID)
             ->with([
                 'loan' => fn ($q) => $q->select(['id', 'borrower_id', 'term_months']),
+                'encodedByUser:id,name',
+                'recordedByUser:id,name',
+                'confirmedByUser:id,name',
             ])
             ->orderByDesc('paid_at')
             ->paginate((int) $request->query('per_page', 15));
@@ -387,11 +465,26 @@ class BorrowerPortalController extends Controller
         $statusMap = $this->borrowerReceiptEmailStatusMap($rows->getCollection()->pluck('id'));
         $rows->getCollection()->each(function (Payment $p) use ($statusMap): void {
             $p->setAttribute('receipt_email_status', $statusMap[(int) $p->getKey()] ?? null);
-            $path = $p->invoice_pdf_path;
-            $p->setAttribute('official_receipt_pdf_url', $path ? PublicStorageUrl::apiUrl((string) $path) : null);
+            $path = $p->receipt_pdf_path ?: $p->invoice_pdf_path;
+            $p->setAttribute('official_receipt_pdf_url', $path ? '/borrower/payments/'.$p->id.'/official-receipt' : null);
+            $p->setAttribute('receipt_pdf_path', $path);
+            $this->withProcessorDisplay($p);
         });
 
         return response()->json(['ok' => true, 'data' => $rows]);
+    }
+
+    private function withProcessorDisplay(Payment $payment): Payment
+    {
+        $payment->setAttribute(
+            'processed_by_name',
+            $payment->processed_by_name ?: $payment->encoder_name ?: $payment->encodedByUser?->name ?: $payment->recordedByUser?->name ?: $payment->confirmedByUser?->name
+        );
+        $payment->setAttribute('processed_by_role', $payment->encoder_role ?: $payment->receipt_issued_role);
+        $payment->setAttribute('or_number', $payment->official_receipt_number);
+        $payment->setAttribute('ar_number', $payment->acknowledgement_receipt_number);
+
+        return $payment;
     }
 
     public function downloadOfficialReceipt(Request $request, Payment $payment, PaymentReceiptPdfService $pdfService): BinaryFileResponse|JsonResponse
@@ -405,13 +498,13 @@ class BorrowerPortalController extends Controller
             return response()->json(['ok' => false, 'message' => 'Receipt not available for this installment.'], 422);
         }
 
-        $path = trim((string) ($payment->invoice_pdf_path ?? ''));
+        $path = trim((string) ($payment->receipt_pdf_path ?: ($payment->invoice_pdf_path ?? '')));
         if ($path === '' || ! Storage::disk('public')->exists($path)) {
             $generated = $pdfService->ensureOfficialPdf($payment->fresh(['loan']), null);
             $path = $generated ? trim((string) $generated) : '';
         }
         $payment->refresh();
-        $path = trim((string) ($payment->invoice_pdf_path ?? ''));
+        $path = trim((string) ($payment->receipt_pdf_path ?: ($payment->invoice_pdf_path ?? '')));
         if ($path === '' || ! Storage::disk('public')->exists($path)) {
             return response()->json(['ok' => false, 'message' => 'Official PDF could not be generated.'], 404);
         }
@@ -724,6 +817,142 @@ class BorrowerPortalController extends Controller
                 'created_at' => optional($msg->created_at)?->toIso8601String(),
             ],
         ], 201);
+    }
+
+    public function tickets(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $tickets = Lead::query()
+            ->with(['messages.adminUser'])
+            ->where('user_id', $user->id)
+            ->where('loan_type', self::BORROWER_TICKET_LOAN_TYPE)
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get()
+            ->map(fn (Lead $lead) => $this->serializeBorrowerTicket($lead))
+            ->values();
+
+        return response()->json([
+            'ok' => true,
+            'data' => $tickets,
+        ]);
+    }
+
+    public function storeTicket(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $data = $request->validate([
+            'subject' => 'required|string|max:120',
+            'category' => 'nullable|string|max:64',
+            'priority' => 'nullable|string|max:16',
+            'body' => 'required|string|max:5000',
+        ]);
+
+        $subject = trim((string) $data['subject']);
+        $category = trim((string) ($data['category'] ?? 'Other')) ?: 'Other';
+        $priority = trim((string) ($data['priority'] ?? 'Medium')) ?: 'Medium';
+        $body = trim((string) $data['body']);
+
+        $lead = Lead::create([
+            'user_id' => $user->id,
+            'name' => (string) $user->name,
+            'email' => (string) $user->email,
+            'phone' => $user->phone,
+            'organization' => null,
+            'loan_type' => self::BORROWER_TICKET_LOAN_TYPE,
+            'source' => 'borrower_portal',
+            'source_page' => '/borrower/tickets',
+            'status' => 'new',
+            'initial_message' => $subject,
+            'chat_token' => bin2hex(random_bytes(20)),
+            'last_message_at' => now(),
+        ]);
+
+        LeadMessage::create([
+            'lead_id' => $lead->id,
+            'sender_type' => 'borrower',
+            'message' => "[Category: {$category}]\n[Priority: {$priority}]\n\n{$body}",
+        ]);
+
+        dispatch(static function () use ($user, $lead, $subject, $body): void {
+            try {
+                app(NotificationCenter::class)->notifyStaff(
+                    NotificationCenter::CATEGORY_SUPPORT_TICKET,
+                    'borrower_support_ticket_created',
+                    'New borrower support ticket',
+                    $user->name.' opened: '.$subject,
+                    [
+                        'lead_id' => $lead->id,
+                        'borrower_id' => $user->id,
+                        'subject' => $subject,
+                        'category' => $category,
+                        'priority' => $priority,
+                        'preview' => Str::limit($body, 180),
+                    ],
+                    null,
+                    [
+                        'module' => NotificationCenter::MODULE_CRM,
+                        'priority' => 3,
+                        'throttle_key' => 'borrower_support_ticket:'.$lead->id,
+                        'throttle_max' => 1,
+                        'throttle_decay_seconds' => 3600,
+                    ],
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        })->afterResponse();
+
+        $lead->load(['messages.adminUser']);
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Ticket submitted. Our support team will reply from CRM.',
+            'ticket' => $this->serializeBorrowerTicket($lead),
+        ], 201);
+    }
+
+    private function serializeBorrowerTicket(Lead $lead): array
+    {
+        $messages = $lead->messages->map(function (LeadMessage $m) {
+            return [
+                'id' => $m->id,
+                'sender_type' => $m->sender_type,
+                'message' => $m->message,
+                'attachment_name' => $m->attachment_name,
+                'attachment_url' => $m->attachment_path ? PublicStorageUrl::apiUrl($m->attachment_path) : null,
+                'admin_name' => $m->adminUser?->name,
+                'created_at' => optional($m->created_at)?->toIso8601String(),
+            ];
+        })->values();
+
+        $status = match ($lead->status) {
+            'ongoing' => 'In Progress',
+            'closed' => 'Closed',
+            default => 'Open',
+        };
+
+        $firstBorrowerMessage = $messages->firstWhere('sender_type', 'borrower');
+        $rawBody = is_array($firstBorrowerMessage) ? (string) ($firstBorrowerMessage['message'] ?? '') : '';
+        preg_match('/^\[Category:\s*(.+?)\]\R\[Priority:\s*(.+?)\]\R\R/s', $rawBody, $meta);
+        $body = $meta ? trim((string) substr($rawBody, strlen($meta[0]))) : $rawBody;
+
+        return [
+            'id' => $lead->id,
+            'crm_lead_id' => $lead->id,
+            'ticket_number' => 'TKT-'.str_pad((string) $lead->id, 5, '0', STR_PAD_LEFT),
+            'subject' => $lead->initial_message,
+            'category' => $meta[1] ?? 'Other',
+            'priority' => $meta[2] ?? 'Medium',
+            'body' => $body,
+            'status' => $status,
+            'created_at' => optional($lead->created_at)?->toIso8601String(),
+            'updated_at' => optional($lead->updated_at)?->toIso8601String(),
+            'last_message_at' => optional($lead->last_message_at)?->toIso8601String(),
+            'messages' => $messages,
+        ];
     }
 
     /**

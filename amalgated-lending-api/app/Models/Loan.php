@@ -11,6 +11,8 @@ class Loan extends Model
 {
     public const STATUS_PENDING = 'pending';
 
+    public const STATUS_PRE_APPROVED = 'pre-approved';
+
     public const STATUS_APPROVED = 'approved';
 
     public const STATUS_REJECTED = 'rejected';
@@ -133,6 +135,16 @@ class Loan extends Model
     public function receipts(): HasMany
     {
         return $this->hasMany(LoanReceipt::class);
+    }
+
+    public function statements(): HasMany
+    {
+        return $this->hasMany(LoanStatement::class);
+    }
+
+    public function soaStatements(): HasMany
+    {
+        return $this->hasMany(SoaStatement::class);
     }
 
     public function emailLogs(): HasMany

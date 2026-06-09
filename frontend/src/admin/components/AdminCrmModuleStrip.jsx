@@ -15,7 +15,6 @@ export default function AdminCrmModuleStrip() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-600 dark:text-red-400">CRM modules</p>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Jump into operational workflows backed by the same Laravel APIs.</p>
         </div>
       </div>
       <ul className="mt-5 grid list-none gap-3 sm:grid-cols-2 lg:grid-cols-3">

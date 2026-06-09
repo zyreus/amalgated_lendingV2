@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\BorrowerProfile;
-use App\Models\LoanApplication;
+use App\Models\Loan;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ActivityLogger;
@@ -21,6 +21,11 @@ use Illuminate\Validation\Rule;
 
 class BorrowerController extends Controller
 {
+    private const REASON_APPLICATION_REJECTED = 'Application Rejected';
+    private const REASON_MANUALLY_ARCHIVED = 'Manually Archived';
+    private const REASON_DELETED_PENDING = 'Deleted Pending';
+    private const ONGOING_LOAN_DELETE_MESSAGE = 'This borrower cannot be deleted because they still have an ongoing loan.';
+
     /**
      * Resolve optional verification-table presence using the SAME connection as the User model.
      * Uses Schema::connection() so probes match Eloquent queries (avoids mismatches when
@@ -74,6 +79,105 @@ class BorrowerController extends Controller
         return count($data) > 0;
     }
 
+    private function borrowerListQuery()
+    {
+        $tables = $this->verificationTables();
+        $hasLivenessTable = $tables['liveness'];
+        $hasFaceTable = $tables['face'];
+        $withCount = ['loans', 'loanApplications'];
+        if ($hasLivenessTable) {
+            $withCount[] = 'livenessVerifications';
+        }
+        if ($hasFaceTable) {
+            $withCount[] = 'faceVerifications';
+        }
+
+        $q = User::query()
+            ->withCount($withCount)
+            ->withExists([
+                'loans as has_ongoing_loan' => fn ($loanQuery) => $loanQuery->where('status', Loan::STATUS_ONGOING),
+            ])
+            ->with(['roles:id,name,slug']);
+
+        // Admin borrower list should show applicants / actual borrowers only.
+        // Co-maker-only accounts stay accessible through the applicant's borrower detail / loan detail.
+        // Include users with identity-verification history so portal checks are visible in Admin > Borrowers.
+        // Include borrowers even when they have no loan / application history yet.
+        $q->where(function ($w) use ($hasLivenessTable, $hasFaceTable) {
+            $w->where(function ($h) use ($hasLivenessTable, $hasFaceTable) {
+                $h->whereHas('loanApplications')
+                    ->orWhereHas('loans');
+
+                if ($hasLivenessTable) {
+                    $h->orWhereHas('livenessVerifications');
+                }
+                if ($hasFaceTable) {
+                    $h->orWhereHas('faceVerifications');
+                }
+            })->orWhere(function ($r) {
+                $r->where('role', 'borrower')
+                    ->orWhereHas('roles', function ($rq) {
+                        $rq->where('slug', 'borrower');
+                    });
+            });
+        });
+
+        return $q;
+    }
+
+    private function applyBorrowerSearchAndRiskFilters($q, Request $request): void
+    {
+        if ($search = $request->query('search')) {
+            $q->where(function ($w) use ($search) {
+                $w->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('email', 'like', '%'.$search.'%')
+                    ->orWhere('phone', 'like', '%'.$search.'%');
+            });
+        }
+
+        if ($request->filled('risk_level')) {
+            $q->where('risk_level', $request->query('risk_level'));
+        }
+    }
+
+    private function assertBorrowerManageable(User $admin, User $borrower): ?JsonResponse
+    {
+        $deny = $this->borrowerCrmAccessDeniedResponse($borrower);
+        if ($deny instanceof JsonResponse) {
+            return $deny;
+        }
+
+        if ($borrower->id === $admin->id) {
+            return response()->json(['ok' => false, 'message' => 'You cannot manage your own account as a borrower.'], 403);
+        }
+
+        if ($borrower->canAccessAdminPortal()) {
+            return response()->json(['ok' => false, 'message' => 'Cannot manage a user with admin portal access as a borrower.'], 403);
+        }
+
+        return null;
+    }
+
+    private function archiveBorrower(User $borrower, User $admin, string $reason, ?ActivityLogger $logger = null): User
+    {
+        $borrower->forceFill([
+            'is_archived' => true,
+            'archived_at' => now(),
+            'archive_reason' => $reason,
+            'deleted_at' => $reason === self::REASON_DELETED_PENDING ? now() : null,
+            'archived_by' => $admin->id,
+            'restored_by' => null,
+            'deleted_by' => $reason === self::REASON_DELETED_PENDING ? $admin->id : null,
+        ])->save();
+
+        $logger?->log($admin, 'borrowers.archive', $borrower, [
+            'reason' => $reason,
+            'borrower_id' => $borrower->id,
+        ]);
+
+        return $borrower->fresh();
+    }
+
     /**
      * Remove rows that still block `users` delete on databases without FK CASCADE (restored dumps, manual tables).
      */
@@ -81,6 +185,52 @@ class BorrowerController extends Controller
     {
         $tables = $this->verificationTables();
         $connectionName = $borrower->getConnection()->getName();
+        $schema = Schema::connection($connectionName);
+        $db = DB::connection($connectionName);
+
+        $hasColumn = static function (string $table, string $column) use ($schema): bool {
+            return $schema->hasTable($table) && $schema->hasColumn($table, $column);
+        };
+
+        $idsWhere = static function (string $table, string $column, int $value) use ($db, $hasColumn): array {
+            if (! $hasColumn($table, $column) || ! $hasColumn($table, 'id')) {
+                return [];
+            }
+
+            return $db->table($table)->where($column, $value)->pluck('id')->map(static fn ($id) => (int) $id)->all();
+        };
+
+        $idsWhereIn = static function (string $table, string $column, array $values) use ($db, $hasColumn): array {
+            if ($values === [] || ! $hasColumn($table, $column) || ! $hasColumn($table, 'id')) {
+                return [];
+            }
+
+            return $db->table($table)->whereIn($column, $values)->pluck('id')->map(static fn ($id) => (int) $id)->all();
+        };
+
+        $deleteWhere = static function (string $table, string $column, int $value) use ($db, $hasColumn): void {
+            if ($hasColumn($table, $column)) {
+                $db->table($table)->where($column, $value)->delete();
+            }
+        };
+
+        $deleteWhereIn = static function (string $table, string $column, array $values) use ($db, $hasColumn): void {
+            if ($values !== [] && $hasColumn($table, $column)) {
+                $db->table($table)->whereIn($column, $values)->delete();
+            }
+        };
+
+        $nullWhere = static function (string $table, string $column, int $value) use ($db, $hasColumn): void {
+            if ($hasColumn($table, $column)) {
+                $db->table($table)->where($column, $value)->update([$column => null]);
+            }
+        };
+
+        $nullWhereIn = static function (string $table, string $column, array $values) use ($db, $hasColumn): void {
+            if ($values !== [] && $hasColumn($table, $column)) {
+                $db->table($table)->whereIn($column, $values)->update([$column => null]);
+            }
+        };
 
         foreach (
             [
@@ -91,10 +241,59 @@ class BorrowerController extends Controller
             if (! $present) {
                 continue;
             }
-            DB::connection($connectionName)->table($table)->where('borrower_id', $borrower->id)->delete();
+            $db->table($table)->where('borrower_id', $borrower->id)->delete();
         }
 
-        LoanApplication::on($connectionName)->where('co_maker_id', $borrower->id)->update(['co_maker_id' => null]);
+        $loanIds = $idsWhere('loans', 'borrower_id', (int) $borrower->id);
+        $paymentIds = $idsWhereIn('payments', 'loan_id', $loanIds);
+        $loanApplicationIds = $idsWhere('loan_applications', 'user_id', (int) $borrower->id);
+        $documentLoanApplicationIds = $idsWhere('document_loan_applications', 'user_id', (int) $borrower->id);
+
+        $portalConversationIds = $idsWhere('portal_conversations', 'borrower_id', (int) $borrower->id);
+        $deleteWhereIn('portal_messages', 'portal_conversation_id', $portalConversationIds);
+        $deleteWhereIn('portal_conversations', 'id', $portalConversationIds);
+
+        $supportTicketIds = $idsWhere('support_tickets', 'borrower_id', (int) $borrower->id);
+        $supportTicketMessageIds = $idsWhereIn('support_ticket_messages', 'support_ticket_id', $supportTicketIds);
+        $deleteWhereIn('support_ticket_attachments', 'support_ticket_message_id', $supportTicketMessageIds);
+        $deleteWhereIn('support_ticket_attachments', 'support_ticket_id', $supportTicketIds);
+        $deleteWhereIn('support_ticket_notes', 'support_ticket_id', $supportTicketIds);
+        $deleteWhereIn('support_ticket_messages', 'support_ticket_id', $supportTicketIds);
+        $deleteWhereIn('support_tickets', 'id', $supportTicketIds);
+
+        $feedbackTicketIds = $idsWhere('feedback_tickets', 'borrower_id', (int) $borrower->id);
+        $deleteWhereIn('feedback_replies', 'feedback_id', $feedbackTicketIds);
+        $deleteWhereIn('feedback_analytics', 'feedback_id', $feedbackTicketIds);
+        $nullWhere('feedback_tickets', 'borrower_id', (int) $borrower->id);
+
+        $deleteWhere('borrower_notifications', 'user_id', (int) $borrower->id);
+        $deleteWhere('borrower_notification_preferences', 'user_id', (int) $borrower->id);
+        $deleteWhere('borrower_profiles', 'user_id', (int) $borrower->id);
+        $deleteWhereIn('uploaded_documents', 'document_loan_application_id', $documentLoanApplicationIds);
+        $deleteWhereIn('document_loan_applications', 'id', $documentLoanApplicationIds);
+        $deleteWhereIn('travel_loan_wizard_forms', 'loan_application_id', $loanApplicationIds);
+        $deleteWhereIn('loan_application_dependents', 'loan_application_id', $loanApplicationIds);
+        $deleteWhereIn('loan_application_contact_persons', 'loan_application_id', $loanApplicationIds);
+        $deleteWhereIn('loan_credit_memoranda', 'loan_application_id', $loanApplicationIds);
+        $deleteWhereIn('loan_documents', 'loan_application_id', $loanApplicationIds);
+        $deleteWhereIn('loan_applications', 'id', $loanApplicationIds);
+        $nullWhere('loan_applications', 'co_maker_id', (int) $borrower->id);
+        $nullWhere('leads', 'user_id', (int) $borrower->id);
+
+        $deleteWhereIn('payment_receipt_audits', 'payment_id', $paymentIds);
+        $deleteWhereIn('payment_adjustment_audits', 'payment_id', $paymentIds);
+        $deleteWhereIn('payment_receipts', 'payment_id', $paymentIds);
+        $nullWhereIn('email_logs', 'payment_id', $paymentIds);
+        $nullWhereIn('email_logs', 'loan_id', $loanIds);
+
+        $deleteWhereIn('loan_health_metrics', 'loan_id', $loanIds);
+        $deleteWhereIn('loan_receipts', 'loan_id', $loanIds);
+        $deleteWhereIn('loan_statements', 'loan_id', $loanIds);
+        $deleteWhere('loan_statements', 'borrower_id', (int) $borrower->id);
+        $deleteWhereIn('soa_statements', 'loan_id', $loanIds);
+        $deleteWhere('soa_statements', 'borrower_id', (int) $borrower->id);
+        $deleteWhereIn('payments', 'loan_id', $loanIds);
+        $deleteWhereIn('loans', 'id', $loanIds);
     }
 
     /**
@@ -135,57 +334,31 @@ class BorrowerController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $tables = $this->verificationTables();
-        $hasLivenessTable = $tables['liveness'];
-        $hasFaceTable = $tables['face'];
-        $withCount = ['loans', 'loanApplications'];
-        if ($hasLivenessTable) {
-            $withCount[] = 'livenessVerifications';
-        }
-        if ($hasFaceTable) {
-            $withCount[] = 'faceVerifications';
-        }
-
-        $q = User::query()
-            ->withCount($withCount)
-            ->with(['roles:id,name,slug']);
-        // Admin borrower list should show applicants / actual borrowers only.
-        // Co-maker-only accounts stay accessible through the applicant's borrower detail / loan detail.
-        // Include users with identity-verification history so portal checks are visible in Admin > Borrowers.
-        // Include borrowers even when they have no loan / application history yet.
-        $q->where(function ($w) use ($hasLivenessTable, $hasFaceTable) {
-            $w->where(function ($h) use ($hasLivenessTable, $hasFaceTable) {
-                $h->whereHas('loanApplications')
-                    ->orWhereHas('loans');
-
-                if ($hasLivenessTable) {
-                    $h->orWhereHas('livenessVerifications');
-                }
-                if ($hasFaceTable) {
-                    $h->orWhereHas('faceVerifications');
-                }
-            })->orWhere(function ($r) {
-                $r->where('role', 'borrower')
-                    ->orWhereHas('roles', function ($rq) {
-                        $rq->where('slug', 'borrower');
-                    });
-            });
-        });
-
-        if ($search = $request->query('search')) {
-            $q->where(function ($w) use ($search) {
-                $w->where('name', 'like', '%'.$search.'%')
-                    ->orWhere('email', 'like', '%'.$search.'%')
-                    ->orWhere('phone', 'like', '%'.$search.'%');
-            });
-        }
-
-        if ($request->filled('risk_level')) {
-            $q->where('risk_level', $request->query('risk_level'));
-        }
+        $q = $this->borrowerListQuery()->where('is_archived', false);
+        $this->applyBorrowerSearchAndRiskFilters($q, $request);
 
         $perPage = max(1, min(100, (int) $request->query('per_page', 15)));
         $rows = $q->orderByDesc('id')->paginate($perPage);
+
+        return response()->json(['ok' => true, 'data' => $rows]);
+    }
+
+    public function archived(Request $request): JsonResponse
+    {
+        $q = $this->borrowerListQuery()->where('is_archived', true);
+        $this->applyBorrowerSearchAndRiskFilters($q, $request);
+
+        $reason = (string) $request->query('archive_reason', '');
+        if ($reason === 'rejected') {
+            $q->where('archive_reason', self::REASON_APPLICATION_REJECTED);
+        } elseif ($reason === 'manual') {
+            $q->where('archive_reason', self::REASON_MANUALLY_ARCHIVED);
+        } elseif ($reason === 'deleted_pending') {
+            $q->where('archive_reason', self::REASON_DELETED_PENDING);
+        }
+
+        $perPage = max(1, min(100, (int) $request->query('per_page', 15)));
+        $rows = $q->orderByDesc('archived_at')->orderByDesc('id')->paginate($perPage);
 
         return response()->json(['ok' => true, 'data' => $rows]);
     }
@@ -224,6 +397,7 @@ class BorrowerController extends Controller
             };
         }
         $borrower->load($relations);
+        $borrower->setAttribute('has_ongoing_loan', $borrower->hasOngoingLoan());
 
         $self = $this;
         $borrower->loans->each(static function ($loan) use ($self) {
@@ -401,64 +575,129 @@ class BorrowerController extends Controller
         ], 201);
     }
 
-    /**
-     * Remove a borrower account (no loans or application history).
-     * Admin users cannot be deleted from this endpoint.
-     */
-    public function destroy(Request $request, User $borrower): JsonResponse
+    public function archive(Request $request, User $borrower, ActivityLogger $logger): JsonResponse
     {
         $admin = $request->user();
         if (! $admin) {
             return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
         }
 
-        $connectionName = $borrower->getConnection()->getName();
-        $tables = $this->verificationTables();
-        $role = Role::on($connectionName)->where('slug', 'borrower')->first();
-        $hasBorrowerPivot = $role && $borrower->roles()->where('roles.id', $role->id)->exists();
-        $hasBorrowerColumn = ($borrower->role ?? '') === 'borrower';
-        $hasLoanAsBorrower = $borrower->loans()->exists();
-        $hasLivenessOnlyProfile = ($tables['liveness'] ?? false) && $borrower->livenessVerifications()->exists();
-        $hasFaceOnlyProfile = ($tables['face'] ?? false) && $borrower->faceVerifications()->exists();
-        if (
-            ! $hasBorrowerPivot
-            && ! $hasBorrowerColumn
-            && ! $hasLoanAsBorrower
-            && ! $hasLivenessOnlyProfile
-            && ! $hasFaceOnlyProfile
-        ) {
-            return response()->json(['ok' => false, 'message' => 'User is not a borrower.'], 404);
+        $deny = $this->assertBorrowerManageable($admin, $borrower);
+        if ($deny instanceof JsonResponse) {
+            return $deny;
         }
 
-        if ($borrower->id === $admin->id) {
-            return response()->json(['ok' => false, 'message' => 'You cannot delete your own account.'], 403);
+        if ($borrower->is_archived) {
+            return response()->json(['ok' => false, 'message' => 'Borrower is already archived.'], 422);
         }
 
-        if ($borrower->canAccessAdminPortal()) {
-            return response()->json(['ok' => false, 'message' => 'Cannot delete a user with admin portal access.'], 403);
+        $archived = $this->archiveBorrower($borrower, $admin, self::REASON_MANUALLY_ARCHIVED, $logger);
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Borrower archived successfully.',
+            'borrower' => $archived,
+        ]);
+    }
+
+    public function restore(Request $request, User $borrower, ActivityLogger $logger): JsonResponse
+    {
+        $admin = $request->user();
+        if (! $admin) {
+            return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
         }
 
-        if ($borrower->loans()->exists()) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'Cannot delete borrower with existing loan records. Close or archive loans first.',
-            ], 422);
+        $deny = $this->assertBorrowerManageable($admin, $borrower);
+        if ($deny instanceof JsonResponse) {
+            return $deny;
         }
 
-        $hasSubmittedLoanHistory = LoanApplication::on($connectionName)
-            ->where('user_id', $borrower->id)
-            ->officiallySubmitted()
-            ->exists();
+        if (! $borrower->is_archived) {
+            return response()->json(['ok' => false, 'message' => 'Borrower is not archived.'], 422);
+        }
 
-        if ($hasSubmittedLoanHistory) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'Cannot delete borrower with loan application history.',
-            ], 422);
+        $previousReason = $borrower->archive_reason;
+        $borrower->forceFill([
+            'is_archived' => false,
+            'archived_at' => null,
+            'archive_reason' => null,
+            'deleted_at' => null,
+            'restored_by' => $admin->id,
+            'deleted_by' => null,
+        ])->save();
+
+        $logger->log($admin, 'borrowers.restore', $borrower, [
+            'previous_reason' => $previousReason,
+            'borrower_id' => $borrower->id,
+        ]);
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Borrower restored successfully.',
+            'borrower' => $borrower->fresh(),
+        ]);
+    }
+
+    public function destroy(Request $request, User $borrower, ActivityLogger $logger): JsonResponse
+    {
+        $admin = $request->user();
+        if (! $admin) {
+            return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
+        }
+
+        $deny = $this->assertBorrowerManageable($admin, $borrower);
+        if ($deny instanceof JsonResponse) {
+            return $deny;
+        }
+
+        if ($borrower->is_archived) {
+            return response()->json(['ok' => false, 'message' => 'Use permanent delete from archived borrowers.'], 422);
+        }
+
+        if ($borrower->hasOngoingLoan()) {
+            return response()->json(['ok' => false, 'message' => self::ONGOING_LOAN_DELETE_MESSAGE], 422);
+        }
+
+        $archived = $this->archiveBorrower($borrower, $admin, self::REASON_DELETED_PENDING, $logger);
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Borrower moved to deleted pending.',
+            'borrower' => $archived,
+        ]);
+    }
+
+    /**
+     * Permanently remove an archived borrower and cascade related borrower records.
+     * Admin users cannot be deleted from this endpoint.
+     */
+    public function permanentDestroy(Request $request, User $borrower, ActivityLogger $logger): JsonResponse
+    {
+        $admin = $request->user();
+        if (! $admin) {
+            return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
+        }
+
+        $deny = $this->assertBorrowerManageable($admin, $borrower);
+        if ($deny instanceof JsonResponse) {
+            return $deny;
+        }
+
+        if (! $borrower->is_archived) {
+            return response()->json(['ok' => false, 'message' => 'Archive the borrower before permanent deletion.'], 422);
+        }
+
+        if ($borrower->hasOngoingLoan()) {
+            return response()->json(['ok' => false, 'message' => self::ONGOING_LOAN_DELETE_MESSAGE], 422);
         }
 
         try {
-            DB::transaction(function () use ($borrower) {
+            DB::transaction(function () use ($borrower, $admin, $logger) {
+                $logger->log($admin, 'borrowers.permanent_delete', $borrower, [
+                    'borrower_id' => $borrower->id,
+                    'email' => $borrower->email,
+                    'archive_reason' => $borrower->archive_reason,
+                ]);
                 $this->purgeBorrowerDeleteBlockers($borrower);
                 $borrower->roles()->detach();
                 $borrower->delete();

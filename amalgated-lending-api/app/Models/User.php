@@ -39,6 +39,13 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
         'profile_photo_path',
         'profile_photo_name',
         'timezone',
+        'is_archived',
+        'archived_at',
+        'archive_reason',
+        'deleted_at',
+        'archived_by',
+        'restored_by',
+        'deleted_by',
     ];
 
     protected $hidden = [
@@ -50,6 +57,9 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
         'email_verified_at' => 'datetime',
         'is_active' => 'boolean',
         'credit_score' => 'decimal:2',
+        'is_archived' => 'boolean',
+        'archived_at' => 'datetime',
+        'deleted_at' => 'datetime',
     ];
 
     public function getJWTIdentifier(): mixed
@@ -70,6 +80,23 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
     public function loans(): HasMany
     {
         return $this->hasMany(Loan::class, 'borrower_id');
+    }
+
+    public function hasOngoingLoan(): bool
+    {
+        return $this->loans()
+            ->where('status', Loan::STATUS_ONGOING)
+            ->exists();
+    }
+
+    public function loanStatements(): HasMany
+    {
+        return $this->hasMany(LoanStatement::class, 'borrower_id');
+    }
+
+    public function soaStatements(): HasMany
+    {
+        return $this->hasMany(SoaStatement::class, 'borrower_id');
     }
 
     public function creditWellness(): HasOne

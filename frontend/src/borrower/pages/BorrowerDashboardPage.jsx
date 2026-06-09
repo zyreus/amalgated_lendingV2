@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
-import { borrowerApi } from '../api/client.js'
+import axios from 'axios'
+import { getLaravelStorageFileUrl, laravelApiBases, laravelApiUrl } from '../../utils/lendingLaravelApi.js'
+import { borrowerApi, getBorrowerToken } from '../api/client.js'
 import { getBorrowerDocumentLoanApplications } from '../../utils/documentLoanApi.js'
 import { dueCountdownLabel, formatDate, formatPeso, paymentOrArInvoiceSnippetHtml, paymentStatusBadge } from '../utils/formatters.js'
 import { corporatePrintHeaderBlock } from '../../utils/corporatePrintHeaderHtml.js'
@@ -29,6 +30,49 @@ function sameOriginPrintUrl(url) {
     return raw
   }
   return raw
+}
+
+function statusLabel(value) {
+  return String(value || 'ready').replace(/_/g, ' ')
+}
+
+async function downloadBorrowerSoaPdf(statement) {
+  const token = getBorrowerToken()
+  let lastError = null
+
+  for (const base of laravelApiBases()) {
+    try {
+      const response = await axios.get(laravelApiUrl(`/borrower/statements/${statement.id}/download`, base), {
+        headers: {
+          Accept: 'application/pdf',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        responseType: 'blob',
+        validateStatus: () => true,
+        timeout: 120000,
+      })
+
+      if (response.status >= 200 && response.status < 300) {
+        const blob = new Blob([response.data], { type: 'application/pdf' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `SOA-${statement.statement_month || statement.id}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
+        return
+      }
+
+      lastError = new Error(`SOA download failed (HTTP ${response.status}).`)
+      if (response.status !== 404 && response.status < 500) break
+    } catch (err) {
+      lastError = err
+    }
+  }
+
+  throw lastError || new Error('SOA download failed.')
 }
 
 function describeBorrowerLoanInterest(loan) {
@@ -77,6 +121,7 @@ export default function BorrowerDashboardPage() {
   const [lendingApps, setLendingApps] = useState({ general: [], general_drafts: [], travel: [] })
   const [deletingDraftId, setDeletingDraftId] = useState(null)
   const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState(null)
+  const [downloadingSoaId, setDownloadingSoaId] = useState(null)
 
   const load = useCallback(async (signal) => {
     setLoading(true)
@@ -222,6 +267,19 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
     URL.revokeObjectURL(url)
   }
 
+  const handleDownloadSoa = async (statement) => {
+    if (!statement?.id) return
+    setDownloadingSoaId(statement.id)
+    setError('')
+    try {
+      await downloadBorrowerSoaPdf(statement)
+    } catch (err) {
+      setError(err.message || 'Could not download SOA PDF.')
+    } finally {
+      setDownloadingSoaId(null)
+    }
+  }
+
   const submitUpload = async (e) => {
     e.preventDefault()
     if (!modalRow?.id || !form.receiptFile) return
@@ -365,6 +423,39 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
                       Statement of Account (SOA)
                     </a>
                   ) : null}
+                  {l.latest_soa ? (
+                    <div className="mt-3 rounded-xl border border-red-100 bg-red-50/60 p-3 text-xs dark:border-red-900/40 dark:bg-red-950/20">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-gray-900 dark:text-gray-100">
+                            Latest generated SOA · {l.latest_soa.statement_month_label || l.latest_soa.statement_month}
+                          </p>
+                          <p className={`mt-1 ${ui.tableMuted}`}>
+                            Due {formatDate(l.latest_soa.due_date)} · Total due {formatPeso(l.latest_soa.total_due)} ·{' '}
+                            <span className="capitalize">{statusLabel(l.latest_soa.status)}</span>
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Link
+                            to="/borrower/statements"
+                            className="rounded-lg border border-red-200 bg-white px-3 py-1.5 font-semibold text-red-700 transition hover:bg-red-100 dark:border-red-800 dark:bg-[#111827] dark:text-red-300 dark:hover:bg-red-950/40"
+                          >
+                            View
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadSoa(l.latest_soa)}
+                            disabled={downloadingSoaId === l.latest_soa.id}
+                            className="rounded-lg bg-brand-primary px-3 py-1.5 font-semibold text-white transition hover:bg-brand-primary-hover disabled:opacity-60"
+                          >
+                            {downloadingSoaId === l.latest_soa.id ? 'Preparing...' : 'Download PDF'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className={`mt-2 text-xs ${ui.tableMuted}`}>No generated monthly SOA yet.</p>
+                  )}
                 </div>
                 <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold capitalize text-gray-800 ring-1 ring-gray-200 dark:bg-[#0F172A] dark:text-gray-100 dark:ring-[#374151]">
                   {String(l.status || '—').replace(/_/g, ' ')}
@@ -794,6 +885,41 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
 
         <div className="rounded-2xl border border-gray-200/90 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.06)] transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg lg:p-10">
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Loan details</h3>
+          {loan?.latest_soa ? (
+            <div className="mt-4 rounded-xl border border-red-100 bg-red-50/70 p-4 dark:border-red-900/40 dark:bg-red-950/20">
+              <p className="text-xs font-semibold uppercase tracking-[0.15em] text-brand-primary">Latest monthly SOA</p>
+              <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                {loan.latest_soa.statement_number} · {loan.latest_soa.statement_month_label || loan.latest_soa.statement_month}
+              </p>
+              <dl className="mt-3 space-y-2 text-sm">
+                <Row label="Due date" value={formatDate(loan.latest_soa.due_date)} />
+                <Row label="Monthly due" value={formatPeso(loan.latest_soa.monthly_due)} />
+                <Row label="Penalties" value={formatPeso(loan.latest_soa.penalties)} />
+                <Row label="Total due" value={formatPeso(loan.latest_soa.total_due)} />
+                <Row label="SOA status" value={statusLabel(loan.latest_soa.status)} />
+              </dl>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link
+                  to="/borrower/statements"
+                  className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 dark:border-red-800 dark:bg-[#111827] dark:text-red-300 dark:hover:bg-red-950/40"
+                >
+                  Open Statements
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadSoa(loan.latest_soa)}
+                  disabled={downloadingSoaId === loan.latest_soa.id}
+                  className="rounded-lg bg-brand-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-brand-primary-hover disabled:opacity-60"
+                >
+                  {downloadingSoaId === loan.latest_soa.id ? 'Preparing...' : 'Download SOA PDF'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className={`mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-xs ${ui.textMuted} dark:border-[#374151] dark:bg-[#0F172A]/40`}>
+              No monthly SOA has been generated for this active loan yet.
+            </p>
+          )}
           <dl className="mt-3 space-y-2 text-sm">
             <Row label="Amount applied" value={formatPeso(loan?.applied_principal ?? loan?.requested_principal ?? loan?.principal)} />
             <Row

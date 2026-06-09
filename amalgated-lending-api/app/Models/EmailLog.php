@@ -19,6 +19,8 @@ class EmailLog extends Model
 
     public const NOTIFICATION_PAYMENT_RECEIPT = 'payment_receipt';
 
+    public const NOTIFICATION_SOA_STATEMENT = 'soa_statement';
+
     public const NOTIFICATION_PUBLIC_ACK = 'public_ack';
 
     public const NOTIFICATION_STAFF_ALERT = 'staff_alert';
@@ -39,6 +41,7 @@ class EmailLog extends Model
         'dedupe_key',
         'loan_id',
         'payment_id',
+        'soa_id',
         'notification_type',
         'mailable_class',
         'recipient_email',
@@ -67,5 +70,10 @@ class EmailLog extends Model
     public function payment(): BelongsTo
     {
         return $this->belongsTo(Payment::class);
+    }
+
+    public function soaStatement(): BelongsTo
+    {
+        return $this->belongsTo(SoaStatement::class, 'soa_id');
     }
 }

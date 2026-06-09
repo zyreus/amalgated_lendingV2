@@ -32,7 +32,9 @@ export default function ApplicationFlowPage() {
           ))}
         </ol>
         <div className="mt-10 flex flex-wrap gap-3">
-          <Link to="/apply" className="rounded-full bg-brand-primary px-6 py-3 text-sm font-semibold text-white">Apply Now</Link>
+          <Link to="/borrower/login" className="rounded-full bg-brand-primary px-6 py-3 text-sm font-semibold text-white">
+            Apply Now
+          </Link>
           <Link to="/contact" className="rounded-full border border-black/15 px-6 py-3 text-sm font-semibold">Talk to a Loan Officer</Link>
         </div>
       </main>

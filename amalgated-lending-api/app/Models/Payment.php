@@ -46,6 +46,7 @@ class Payment extends Model
         'status',
         'source',
         'payment_method',
+        'payment_type',
         'receipt_path',
         'receipt_name',
         'external_ref',
@@ -62,6 +63,11 @@ class Payment extends Model
         'rejected_at',
         'receipt_status',
         'recorded_by',
+        'processed_by_user_id',
+        'processed_by_name',
+        'encoded_by',
+        'encoder_name',
+        'encoder_role',
         'notes',
         'is_final_payment',
         'original_amount_due',
@@ -71,6 +77,9 @@ class Payment extends Model
         'confirmed_by',
         'confirmation_date',
         'invoice_pdf_path',
+        'receipt_pdf_path',
+        'emailed_at',
+        'notification_sent_at',
     ];
 
     protected $casts = [
@@ -91,6 +100,8 @@ class Payment extends Model
         'verified_at' => 'datetime',
         'approved_at' => 'datetime',
         'rejected_at' => 'datetime',
+        'emailed_at' => 'datetime',
+        'notification_sent_at' => 'datetime',
     ];
 
     public function loan(): BelongsTo
@@ -136,6 +147,16 @@ class Payment extends Model
     public function recordedByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'recorded_by');
+    }
+
+    public function processedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'processed_by_user_id');
+    }
+
+    public function encodedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'encoded_by');
     }
 
     public function receiptAudits(): HasMany

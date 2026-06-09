@@ -835,7 +835,7 @@ export default function LendingChatWidget() {
                 </svg>
               </button>
             )}
-            <img src="/amalgated-lending-logo.png" alt="" className="h-9 w-9 rounded-full bg-white/20 object-contain p-0.5" />
+            <img src="/amalgated-lending-logo.png" alt="" className="h-9 w-9 rounded-full bg-white/20 object-contain p-0.5" loading="lazy" decoding="async" />
             <div className="flex-1">
               <p className="text-sm font-semibold">Amalgated Lending Inc. Assistant</p>
               <p className="text-xs leading-snug text-white/70">
@@ -865,7 +865,7 @@ export default function LendingChatWidget() {
           <div className="chat-scrollbar flex-1 space-y-3 overflow-y-auto px-4 py-4">
             {messages.length === 0 && (
               <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-                <img src="/amalgated-lending-logo.png" alt="" className="h-16 w-16 rounded-full object-contain" />
+                <img src="/amalgated-lending-logo.png" alt="" className="h-16 w-16 rounded-full object-contain" loading="lazy" decoding="async" />
                 <div>
                   <p className="text-base font-semibold text-[#3A3F45]">Welcome to Amalgated Lending Inc.!</p>
                   <p className="mt-1 text-sm text-[#3A3F45]/80">How can we help you today?</p>

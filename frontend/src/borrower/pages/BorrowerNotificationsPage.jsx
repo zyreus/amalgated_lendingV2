@@ -307,6 +307,22 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
                   </div>
                 </div>
                 {n.body ? <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{n.body}</p> : null}
+                {['receipt_generated', 'payment_received'].includes(String(n.type || '')) ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <a
+                      href="/borrower/payments"
+                      className="rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:bg-[#0F172A] dark:text-red-300 dark:hover:bg-red-950/30"
+                    >
+                      View receipt
+                    </a>
+                    <a
+                      href="/borrower/payments"
+                      className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50 dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-100 dark:hover:bg-white/10"
+                    >
+                      Download or print PDF
+                    </a>
+                  </div>
+                ) : null}
                 <p className="mt-2 text-xs text-gray-500 dark:text-gray-500">{fmtDate(n.created_at)}</p>
               </div>
             </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
-import { borrowerApi } from '../api/client.js'
+import { getLaravelStorageFileUrl, laravelApiBases, laravelApiUrl } from '../../utils/lendingLaravelApi.js'
+import { borrowerApi, getBorrowerToken } from '../api/client.js'
 import { escapeHtmlForReceipt, formatDate, formatPeso, paymentStatusBadge } from '../utils/formatters.js'
 import { corporatePrintHeaderBlock } from '../../utils/corporatePrintHeaderHtml.js'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
@@ -25,6 +25,29 @@ function borrowerDisplayName(payment, user) {
   )
 }
 
+function processedByName(payment) {
+  return (
+    payment?.processed_by_name ||
+    payment?.encoder_name ||
+    payment?.recorded_by_user?.name ||
+    payment?.confirmed_by_user?.name ||
+    ''
+  )
+}
+
+function processedByRole(payment) {
+  const raw = String(payment?.processed_by_role || payment?.encoder_role || payment?.receipt_issued_role || '').trim()
+  return raw.replace(/[_-]+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
+}
+
+function officialReceiptNumber(payment) {
+  return String(payment?.official_receipt_number || payment?.or_number || '').trim()
+}
+
+function acknowledgementReceiptNumber(payment) {
+  return String(payment?.acknowledgement_receipt_number || payment?.ar_number || '').trim()
+}
+
 function buildInvoiceHtml(payment, user) {
   const invNo = invoiceNumber(payment)
   const paidDate = formatDate(payment?.paid_at || payment?.due_date)
@@ -34,8 +57,10 @@ function buildInvoiceHtml(payment, user) {
   const ref = paymentReference(payment)
   const name = borrowerDisplayName(payment, user)
   const email = user?.email || payment?.borrower_email || 'N/A'
-  const orNo = String(payment?.official_receipt_number ?? '').trim()
-  const arNo = String(payment?.acknowledgement_receipt_number ?? '').trim()
+  const orNo = officialReceiptNumber(payment)
+  const arNo = acknowledgementReceiptNumber(payment)
+  const processor = processedByName(payment) || 'Authorized representative'
+  const processorRole = processedByRole(payment)
   const brandLogoUrl =
     typeof window !== 'undefined'
       ? new URL('/amalgated-lending-logo.png', window.location.origin).toString()
@@ -107,6 +132,7 @@ function buildInvoiceHtml(payment, user) {
         <div class="row"><strong>Reference</strong><span class="mono">${ref}</span></div>
         <div class="row"><strong>OR No.</strong><span class="mono">${escapeHtmlForReceipt(orNo || '—')}</span></div>
         <div class="row"><strong>AR No.</strong><span class="mono">${escapeHtmlForReceipt(arNo || '—')}</span></div>
+        <div class="row"><strong>Processed by</strong><span>${escapeHtmlForReceipt(processor)}${processorRole ? ` - ${escapeHtmlForReceipt(processorRole)}` : ''}</span></div>
       </div>
     </div>
 
@@ -142,8 +168,49 @@ function buildInvoiceHtml(payment, user) {
 function officialPdfHref(payment) {
   const u = payment?.official_receipt_pdf_url
   if (u && String(u).trim()) return String(u).trim()
-  if (payment?.invoice_pdf_path) return getLaravelStorageFileUrl(payment.invoice_pdf_path)
+  if (payment?.id && (payment?.receipt_pdf_path || payment?.invoice_pdf_path)) return `/borrower/payments/${payment.id}/official-receipt`
   return ''
+}
+
+async function fetchOfficialReceiptBlob(payment) {
+  const path = officialPdfHref(payment)
+  if (!path) throw new Error('Official receipt PDF is not available.')
+  const headers = { Accept: 'application/pdf' }
+  const token = getBorrowerToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  for (const base of laravelApiBases()) {
+    const res = await fetch(laravelApiUrl(path, base), { headers })
+    if (res.status === 404 || res.status >= 500) continue
+    if (!res.ok) throw new Error(`Could not download receipt (HTTP ${res.status}).`)
+    return res.blob()
+  }
+  throw new Error('Could not download receipt.')
+}
+
+async function openOfficialReceipt(payment, mode = 'view') {
+  const blob = await fetchOfficialReceiptBlob(payment)
+  const url = URL.createObjectURL(blob)
+  if (mode === 'download') {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${officialReceiptNumber(payment) || invoiceNumber(payment)}.pdf`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    return
+  }
+  const win = window.open(url, '_blank', 'noopener,noreferrer')
+  if (mode === 'print' && win) {
+    win.addEventListener('load', () => {
+      try {
+        win.print()
+      } catch {
+        // Browser popup/print restrictions are handled by opening the PDF tab.
+      }
+    })
+  }
 }
 
 function receiptEmailStatusLabel(status) {
@@ -173,6 +240,7 @@ export default function BorrowerPaymentsPage() {
   const [historyRows, setHistoryRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [receiptBusyId, setReceiptBusyId] = useState(null)
 
   useEffect(() => {
     let mounted = true
@@ -324,8 +392,11 @@ export default function BorrowerPaymentsPage() {
                 <th className={`${ui.tableCell} text-left`}>Date paid</th>
                 <th className={`${ui.tableCell} text-left`}>Amount</th>
                 <th className={`${ui.tableCell} text-left`}>Reference</th>
+                <th className={`${ui.tableCell} text-left`}>OR #</th>
+                <th className={`${ui.tableCell} text-left`}>AR #</th>
                 <th className={`${ui.tableCell} text-left`}>Proof</th>
                 <th className={`${ui.tableCell} text-left`}>Official PDF</th>
+                <th className={`${ui.tableCell} text-left`}>Processed By</th>
                 <th className={`${ui.tableCell} text-left`}>Email status</th>
                 <th className={`${ui.tableCell} text-left`}>Invoice (HTML)</th>
               </tr>
@@ -336,6 +407,8 @@ export default function BorrowerPaymentsPage() {
                   <td className={ui.tableCell}>{formatDate(p.paid_at || p.due_date)}</td>
                   <td className={ui.tableCell}>{formatPeso(p.amount_paid)}</td>
                   <td className={ui.tableCell}>{p.reference_number || '-'}</td>
+                  <td className={`${ui.tableCell} font-mono text-xs`}>{officialReceiptNumber(p) || '-'}</td>
+                  <td className={`${ui.tableCell} font-mono text-xs`}>{acknowledgementReceiptNumber(p) || '-'}</td>
                   <td className={ui.tableCell}>
                     {p.receipt_path ? (
                       <a
@@ -352,17 +425,39 @@ export default function BorrowerPaymentsPage() {
                   </td>
                   <td className={ui.tableCell}>
                     {officialPdfHref(p) ? (
-                      <a
-                        href={officialPdfHref(p)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-sm font-medium text-red-600 underline dark:text-red-400"
-                      >
-                        Download PDF
-                      </a>
+                      <div className="flex flex-wrap gap-2">
+                        {['view', 'download', 'print'].map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            disabled={receiptBusyId === p.id}
+                            onClick={async () => {
+                              try {
+                                setReceiptBusyId(p.id)
+                                await openOfficialReceipt(p, mode)
+                              } catch (err) {
+                                setError(err.message || 'Could not open receipt.')
+                              } finally {
+                                setReceiptBusyId(null)
+                              }
+                            }}
+                            className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-[#374151] dark:text-red-300 dark:hover:bg-red-950/30"
+                          >
+                            {mode === 'view' ? 'View' : mode === 'download' ? 'Download' : 'Print'}
+                          </button>
+                        ))}
+                      </div>
                     ) : (
                       <span className={`text-xs ${ui.textMuted}`}>—</span>
                     )}
+                  </td>
+                  <td className={ui.tableCell}>
+                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      {processedByName(p) || '—'}
+                    </div>
+                    {processedByRole(p) ? (
+                      <small className={ui.textMuted}>{processedByRole(p)}</small>
+                    ) : null}
                   </td>
                   <td className={`${ui.tableCell} text-xs ${ui.textMuted}`}>
                     {receiptEmailStatusLabel(p.receipt_email_status) || '—'}
@@ -382,7 +477,7 @@ export default function BorrowerPaymentsPage() {
               ))}
               {!historyRows.length ? (
                 <tr>
-                  <td colSpan={7} className={`${ui.tableCell} py-8 text-center ${ui.textMuted}`}>
+                    <td colSpan={10} className={`${ui.tableCell} py-8 text-center ${ui.textMuted}`}>
                     No completed payments yet.
                   </td>
                 </tr>

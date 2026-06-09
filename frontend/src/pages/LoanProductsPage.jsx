@@ -4,12 +4,12 @@ import SubPageHeader from '../components/SubPageHeader.jsx'
 import Footer from '../components/Footer.jsx'
 import LoanProductIcon from '../components/loan/LoanProductIcon.jsx'
 import LoanProductsCalculator from '../components/loan/LoanProductsCalculator.jsx'
-import EligibilityChecker from '../components/loan/EligibilityChecker.jsx'
 import { tierAccentClass, tierCardClass, tierIconWrapClass } from '../components/loan/loanProductStyles.js'
 import { getLoanProducts } from '../utils/loanProductsPublicApi.js'
 import { loanProductApplyPath } from '../utils/loanProductApplyPath.js'
+import { borrowerLoginApplyPath } from '../utils/borrowerAuthApplyPath.js'
 
-function ProductDetail({ product, onCheckEligibility }) {
+function ProductDetail({ product }) {
   const tier = product.tier || 'blue'
   const rateLabel =
     product.rate_type === 'fixed'
@@ -32,13 +32,6 @@ function ProductDetail({ product, onCheckEligibility }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-2 sm:justify-end">
-          <button
-            type="button"
-            onClick={() => onCheckEligibility(product)}
-            className="rounded-xl border border-brand-primary/40 px-4 py-2 text-sm font-semibold text-brand-primary transition hover:bg-brand-primary/10"
-          >
-            Check eligibility
-          </button>
           <Link
             to={loanProductApplyPath(product.slug)}
             className="rounded-xl bg-brand-primary px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-brand-primary-hover"
@@ -46,10 +39,10 @@ function ProductDetail({ product, onCheckEligibility }) {
             Apply now
           </Link>
           <Link
-            to={`/apply/documents/${encodeURIComponent(product.slug)}`}
-            className="rounded-xl border border-red-600/50 bg-red-600/10 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-600/15 dark:text-red-300 dark:hover:bg-red-600/20"
+            to="/contact"
+            className="rounded-xl border border-brand-secondary/50 px-4 py-2 text-sm font-semibold text-brand-text transition hover:bg-black/[0.04] dark:border-[#374151] dark:text-white dark:hover:bg-white/5"
           >
-            Document upload
+            Inquire now
           </Link>
         </div>
       </div>
@@ -104,7 +97,6 @@ export default function LoanProductsPage() {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [eligProduct, setEligProduct] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -163,7 +155,7 @@ export default function LoanProductsPage() {
           ) : (
             <div className="space-y-8">
               {products.map((p) => (
-                <ProductDetail key={p.id} product={p} onCheckEligibility={setEligProduct} />
+                <ProductDetail key={p.id} product={p} />
               ))}
             </div>
           )}
@@ -215,28 +207,22 @@ export default function LoanProductsPage() {
             </div>
             <div className="flex flex-wrap items-center justify-center gap-3">
               <Link
-                to="/apply"
+                to={borrowerLoginApplyPath('')}
                 className="inline-flex min-w-[10rem] items-center justify-center rounded-full bg-brand-primary px-6 py-3 text-sm font-semibold text-white shadow-brand-primary transition hover:bg-brand-primary-hover"
               >
                 Apply now
               </Link>
-              <button
-                type="button"
-                onClick={() => products.length && setEligProduct(products[0])}
-                disabled={!products.length}
-                className="inline-flex min-w-[10rem] items-center justify-center rounded-full border border-white/30 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              <Link
+                to="/contact"
+                className="inline-flex min-w-[10rem] items-center justify-center rounded-full border border-white/25 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
               >
-                Check eligibility
-              </button>
+                Inquire now
+              </Link>
             </div>
           </section>
         </div>
       </main>
       <Footer />
-
-      {eligProduct ? (
-        <EligibilityChecker product={eligProduct} onClose={() => setEligProduct(null)} />
-      ) : null}
     </div>
   )
 }

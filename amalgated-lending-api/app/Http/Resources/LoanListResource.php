@@ -54,6 +54,7 @@ class LoanListResource extends JsonResource
             'adjusted_monthly_rate_percent' => $this->adjusted_monthly_rate_percent != null ? (float) $this->adjusted_monthly_rate_percent : null,
             'outstanding_balance' => $this->outstanding_balance != null ? (float) $this->outstanding_balance : null,
             'status' => $this->status,
+            'rejection_reason' => $this->rejection_reason,
             'borrower' => $this->whenLoaded('borrower', function () {
                 return [
                     'id' => $this->borrower?->id,
@@ -75,6 +76,7 @@ class LoanListResource extends JsonResource
                 ];
             }),
             'approved_at' => optional($this->approved_at)?->toIso8601String(),
+            'rejected_at' => optional($this->rejected_at)?->toIso8601String(),
             'disbursed_at' => optional($this->disbursed_at)?->toIso8601String(),
             'completed_at' => optional($this->completed_at)?->toIso8601String(),
             'created_at' => optional($this->created_at)?->toIso8601String(),

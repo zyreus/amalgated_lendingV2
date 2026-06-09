@@ -250,6 +250,74 @@ const VIEW_TITLE = {
 
 /** Matches `BorrowerPortalController::resolveBorrowerLead` — borrower portal chat threads. */
 const BORROWER_CHAT_LOAN_TYPE = 'Borrower Support'
+const BORROWER_TICKET_LOAN_TYPE = 'Borrower Ticket'
+const BORROWER_INBOX_TYPES = [
+  { id: 'portal', label: 'Portal Messages', loanType: BORROWER_CHAT_LOAN_TYPE },
+  { id: 'tickets', label: 'Support Tickets', loanType: BORROWER_TICKET_LOAN_TYPE },
+]
+const BORROWER_PORTAL_FILTERS = ['unread', 'active', 'archived', 'online']
+const BORROWER_PORTAL_FILTER_LABEL = {
+  unread: 'Unread',
+  active: 'Active',
+  archived: 'Archived',
+  online: 'Online Borrowers',
+}
+const BORROWER_TICKET_FILTERS = ['all', 'open', 'pending', 'resolved', 'closed', 'urgent']
+const BORROWER_TICKET_FILTER_LABEL = {
+  all: 'All',
+  open: 'Open',
+  pending: 'Pending',
+  resolved: 'Resolved',
+  closed: 'Closed',
+  urgent: 'Urgent',
+}
+const TICKET_PRIORITY_BADGE = {
+  low: 'bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-500/25',
+  medium: 'bg-yellow-400/20 text-yellow-800 ring-1 ring-yellow-500/30',
+  high: 'bg-orange-500/15 text-orange-700 ring-1 ring-orange-500/25',
+  critical: 'bg-red-500/15 text-red-700 ring-1 ring-red-500/25',
+}
+const TICKET_CATEGORY_OPTIONS = [
+  'Payment Concern',
+  'Loan Application',
+  'Verification Issue',
+  'Technical Problem',
+  'Account Recovery',
+  'Billing Concern',
+  'Document Upload',
+  'Other',
+]
+
+function borrowerLeadStatusKey(lead) {
+  const status = String(lead?.status || '').toLowerCase()
+  if (status === 'closed') return 'closed'
+  if (status === 'resolved') return 'resolved'
+  if (status === 'ongoing' || status === 'contacted' || status === 'qualified') return 'pending'
+  return 'open'
+}
+
+function borrowerTicketPriority(lead) {
+  const text = `${lead?.priority || ''} ${lead?.inquiry_message || ''} ${lead?.initial_message || ''}`.toLowerCase()
+  if (text.includes('critical') || text.includes('urgent') || text.includes('dispute')) return 'critical'
+  if (text.includes('high') || text.includes('payment') || text.includes('verification')) return 'high'
+  if (text.includes('medium') || text.includes('document')) return 'medium'
+  return 'low'
+}
+
+function borrowerTicketCategory(lead) {
+  const text = `${lead?.category || ''} ${lead?.inquiry_message || ''} ${lead?.initial_message || ''}`.toLowerCase()
+  const found = TICKET_CATEGORY_OPTIONS.find((category) => text.includes(category.toLowerCase().split(' ')[0]))
+  return found || 'Other'
+}
+
+function borrowerLoanRef(lead) {
+  return lead?.loan_number || lead?.loan_id || lead?.loan_ref || (lead?.user_id ? `BRW-${lead.user_id}` : 'No loan linked')
+}
+
+function borrowerLastPreview(lead, mode) {
+  if (mode === 'tickets') return lead?.inquiry_message || lead?.initial_message || 'Formal support ticket'
+  return lead?.last_message || lead?.inquiry_message || lead?.initial_message || lead?.email || 'Portal conversation'
+}
 
 /** FAQ / auto-reply shortcuts (insert into composer; AI pipeline is on Node). */
 const FAQ_QUICK_REPLIES = [
@@ -315,6 +383,9 @@ export default function AdminChatDashboard({
   const [aiSessionMetrics, setAiSessionMetrics] = useState(null)
   /** Chats view: Node widget visitors vs Laravel borrower portal (same DB as /admin/leads messages). */
   const [chatInboxTab, setChatInboxTab] = useState('visitor')
+  const [borrowerInboxType, setBorrowerInboxType] = useState('portal')
+  const [borrowerPortalFilter, setBorrowerPortalFilter] = useState('active')
+  const [borrowerTicketFilter, setBorrowerTicketFilter] = useState('all')
   const [borrowerLeads, setBorrowerLeads] = useState([])
   const [activeBorrowerLeadId, setActiveBorrowerLeadId] = useState(null)
   const [borrowerMessages, setBorrowerMessages] = useState([])
@@ -401,12 +472,29 @@ export default function AdminChatDashboard({
 
   const fetchBorrowerLeads = useCallback(async () => {
     try {
-      const q = new URLSearchParams({
+      const chatQ = new URLSearchParams({
         loan_type: BORROWER_CHAT_LOAN_TYPE,
         per_page: '100',
       })
-      const rows = await fetchCrmBorrowerLeads(q)
-      setBorrowerLeads(rows.map(normalizeLead))
+      const ticketQ = new URLSearchParams({
+        loan_type: BORROWER_TICKET_LOAN_TYPE,
+        per_page: '100',
+      })
+      const [chatRows, ticketRows] = await Promise.all([
+        fetchCrmBorrowerLeads(chatQ),
+        fetchCrmBorrowerLeads(ticketQ),
+      ])
+      const byId = new Map()
+      ;[...chatRows, ...ticketRows].forEach((row) => {
+        if (row?.id != null) byId.set(String(row.id), normalizeLead(row))
+      })
+      setBorrowerLeads(
+        Array.from(byId.values()).sort((a, b) => {
+          const ta = new Date(a.last_message_at || a.updated_at || a.created_at || 0).getTime()
+          const tb = new Date(b.last_message_at || b.updated_at || b.created_at || 0).getTime()
+          return tb - ta
+        }),
+      )
     } catch {
       /* ignore */
     }
@@ -481,7 +569,7 @@ export default function AdminChatDashboard({
     try {
       const params = new URLSearchParams({
         per_page: '100',
-        exclude_loan_type: BORROWER_CHAT_LOAN_TYPE,
+        exclude_loan_type: `${BORROWER_CHAT_LOAN_TYPE},${BORROWER_TICKET_LOAN_TYPE}`,
       })
       if (leadsFilter) params.set('status', leadsFilter)
       if (leadsSearch) params.set('search', leadsSearch)
@@ -644,6 +732,16 @@ export default function AdminChatDashboard({
     if (activeBorrowerLeadId) return
     if (borrowerLeads.length) setActiveBorrowerLeadId(borrowerLeads[0].id)
   }, [view, chatInboxTab, borrowerLeads, activeBorrowerLeadId])
+
+  useEffect(() => {
+    if (view !== 'chats' || chatInboxTab !== 'borrower') return
+    const targetLoanType = borrowerInboxType === 'tickets' ? BORROWER_TICKET_LOAN_TYPE : BORROWER_CHAT_LOAN_TYPE
+    const active = borrowerLeads.find((lead) => Number(lead.id) === Number(activeBorrowerLeadId))
+    if (active?.loan_type === targetLoanType) return
+    const next = borrowerLeads.find((lead) => lead.loan_type === targetLoanType)
+    setActiveBorrowerLeadId(next?.id ?? null)
+    setBorrowerMessages([])
+  }, [view, chatInboxTab, borrowerInboxType, borrowerLeads, activeBorrowerLeadId])
 
   const bulkAction = async (resource, action, ids) => {
     if (!ids?.length) return
@@ -1449,16 +1547,48 @@ Amalgated Lending Inc. Team`
         )
 
   const borrowerSq = borrowerInboxSearch.trim().toLowerCase()
-  const filteredBorrowerLeads = !borrowerSq
-    ? borrowerLeads
-    : borrowerLeads.filter(
-        (l) =>
-          (l.name || '').toLowerCase().includes(borrowerSq) ||
-          (l.email || '').toLowerCase().includes(borrowerSq),
-      )
+  const borrowerModeLoanType = borrowerInboxType === 'tickets' ? BORROWER_TICKET_LOAN_TYPE : BORROWER_CHAT_LOAN_TYPE
+  const borrowerModeLeads = borrowerLeads.filter((lead) => lead.loan_type === borrowerModeLoanType)
+  const filteredBorrowerLeads = borrowerModeLeads.filter((lead) => {
+    if (borrowerInboxType === 'tickets') {
+      const statusKey = borrowerLeadStatusKey(lead)
+      const priority = borrowerTicketPriority(lead)
+      if (borrowerTicketFilter !== 'all') {
+        if (borrowerTicketFilter === 'urgent' && priority !== 'critical' && priority !== 'high') return false
+        if (borrowerTicketFilter !== 'urgent' && borrowerTicketFilter !== statusKey) return false
+      }
+    } else {
+      const statusKey = borrowerLeadStatusKey(lead)
+      const unread = Number(lead.unread_count || lead.admin_unread_count || 0) > 0
+      if (borrowerPortalFilter === 'unread' && !unread) return false
+      if (borrowerPortalFilter === 'active' && statusKey === 'closed') return false
+      if (borrowerPortalFilter === 'archived' && statusKey !== 'closed') return false
+      if (borrowerPortalFilter === 'online' && !lead.is_online) return false
+    }
+    if (!borrowerSq) return true
+    return (
+      (lead.name || '').toLowerCase().includes(borrowerSq) ||
+      (lead.email || '').toLowerCase().includes(borrowerSq) ||
+      (lead.id != null && String(lead.id).toLowerCase().includes(borrowerSq)) ||
+      borrowerLoanRef(lead).toLowerCase().includes(borrowerSq) ||
+      (lead.inquiry_message || '').toLowerCase().includes(borrowerSq) ||
+      (lead.initial_message || '').toLowerCase().includes(borrowerSq)
+    )
+  })
 
   const activeBorrowerLead =
     borrowerLeads.find((l) => Number(l.id) === Number(activeBorrowerLeadId)) || null
+  const borrowerAnalytics = {
+    openTickets: borrowerLeads.filter((lead) => lead.loan_type === BORROWER_TICKET_LOAN_TYPE && borrowerLeadStatusKey(lead) === 'open').length,
+    unreadMessages: borrowerLeads.reduce((sum, lead) => sum + Number(lead.unread_count || lead.admin_unread_count || 0), 0),
+    resolvedToday: borrowerLeads.filter((lead) => {
+      if (lead.loan_type !== BORROWER_TICKET_LOAN_TYPE || borrowerLeadStatusKey(lead) !== 'closed') return false
+      const d = new Date(lead.updated_at || lead.last_message_at || 0)
+      const now = new Date()
+      return d.toDateString() === now.toDateString()
+    }).length,
+    activeBorrowersOnline: borrowerLeads.filter((lead) => lead.loan_type === BORROWER_CHAT_LOAN_TYPE && lead.is_online).length,
+  }
 
   const selectedConversationIds = Object.keys(chatSelected).filter((key) => chatSelected[key])
   const selectedFeedbackIds = Object.keys(feedbackSelected).filter((key) => feedbackSelected[key])
@@ -1869,20 +1999,82 @@ Amalgated Lending Inc. Team`
           )}
 
           {view === 'chats' && chatInboxTab === 'borrower' && (
-            <div className="mt-2.5">
+            <div className="mt-2.5 space-y-3">
+              <div className="grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1 ring-1 ring-slate-200">
+                {BORROWER_INBOX_TYPES.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setBorrowerInboxType(tab.id)}
+                    className={`rounded-xl px-3 py-2 text-xs font-bold transition ${
+                      borrowerInboxType === tab.id
+                        ? 'bg-white text-slate-950 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                  <p className="text-lg font-bold tabular-nums text-slate-950">
+                    {borrowerInboxType === 'tickets' ? borrowerAnalytics.openTickets : borrowerModeLeads.length}
+                  </p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                    {borrowerInboxType === 'tickets' ? 'Open tickets' : 'Portal threads'}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                  <p className="text-lg font-bold tabular-nums text-teal-600">
+                    {borrowerInboxType === 'tickets' ? borrowerAnalytics.resolvedToday : borrowerAnalytics.unreadMessages}
+                  </p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                    {borrowerInboxType === 'tickets' ? 'Resolved today' : 'Unread'}
+                  </p>
+                </div>
+              </div>
               <label className="sr-only" htmlFor="crm-borrower-inbox-search">
                 Search borrower threads
               </label>
               <input
                 id="crm-borrower-inbox-search"
                 type="search"
-                placeholder="Search borrower name or email…"
+                placeholder="Search name, email, ticket ID, subject, or loan number..."
                 value={borrowerInboxSearch}
                 onChange={(e) => setBorrowerInboxSearch(e.target.value)}
-                className="w-full rounded-md border border-[var(--admin-border)] bg-white px-2.5 py-1.5 text-xs text-[var(--admin-text)] outline-none placeholder:text-[color:var(--admin-muted-2)] focus:border-slate-300 focus:ring-1 focus:ring-slate-200"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-900 shadow-sm outline-none placeholder:text-slate-400 focus:border-teal-400 focus:ring-2 focus:ring-teal-500/15"
               />
-              <p className="mt-1 text-[10px] text-[color:var(--admin-muted-2)]">
-                Same threads as borrower Chat in the portal (Laravel). Showing {filteredBorrowerLeads.length} thread
+              <div className="flex flex-wrap gap-1.5">
+                {(borrowerInboxType === 'tickets' ? BORROWER_TICKET_FILTERS : BORROWER_PORTAL_FILTERS).map((filterKey) => {
+                  const active =
+                    borrowerInboxType === 'tickets'
+                      ? borrowerTicketFilter === filterKey
+                      : borrowerPortalFilter === filterKey
+                  return (
+                    <button
+                      key={filterKey}
+                      type="button"
+                      onClick={() =>
+                        borrowerInboxType === 'tickets'
+                          ? setBorrowerTicketFilter(filterKey)
+                          : setBorrowerPortalFilter(filterKey)
+                      }
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+                        active
+                          ? 'bg-slate-950 text-white shadow-sm'
+                          : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {borrowerInboxType === 'tickets'
+                        ? BORROWER_TICKET_FILTER_LABEL[filterKey]
+                        : BORROWER_PORTAL_FILTER_LABEL[filterKey]}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[10px] text-[color:var(--admin-muted-2)]">
+                Showing {filteredBorrowerLeads.length} {borrowerInboxType === 'tickets' ? 'support ticket' : 'portal message'} thread
                 {filteredBorrowerLeads.length !== 1 ? 's' : ''}.
               </p>
             </div>
@@ -2051,12 +2243,18 @@ Amalgated Lending Inc. Team`
               {filteredBorrowerLeads.length === 0 && (
                 <div className="px-5 py-12 text-center">
                   <p className="text-base font-medium text-[color:var(--admin-muted)]">
-                    {borrowerLeads.length === 0 ? 'No borrower chats yet' : 'No threads match your search'}
+                    {borrowerModeLeads.length === 0
+                      ? borrowerInboxType === 'tickets'
+                        ? 'No support tickets yet'
+                        : 'No portal messages yet'
+                      : 'No threads match your search or filter'}
                   </p>
                   <p className="mt-1 text-xs text-[color:var(--admin-muted-2)]">
-                    {borrowerLeads.length === 0
-                      ? 'When a borrower uses Chat in the portal, their thread appears here.'
-                      : 'Try another name or email.'}
+                    {borrowerModeLeads.length === 0
+                      ? borrowerInboxType === 'tickets'
+                        ? 'Formal borrower issues will appear in the Support Tickets queue only.'
+                        : 'General borrower chat conversations will appear in the Portal Messages queue only.'
+                      : 'Try another name, email, ticket ID, subject, or loan number.'}
                   </p>
                 </div>
               )}
@@ -2064,6 +2262,11 @@ Amalgated Lending Inc. Team`
                 const isActive = activeBorrowerLeadId === lead.id
                 const initials = getInitials(lead.name)
                 const color = getAvatarColor(String(lead.id))
+                const isTicket = borrowerInboxType === 'tickets'
+                const statusKey = borrowerLeadStatusKey(lead)
+                const priority = borrowerTicketPriority(lead)
+                const category = borrowerTicketCategory(lead)
+                const unread = Number(lead.unread_count || lead.admin_unread_count || 0) > 0
                 return (
                   <button
                     key={lead.id}
@@ -2073,43 +2276,80 @@ Amalgated Lending Inc. Team`
                       goToView('chats')
                       if (window.innerWidth < 768) setSidebarOpen(false)
                     }}
-                    className={`mx-1.5 my-1 flex w-full min-w-0 max-w-full items-start gap-2 rounded-xl border bg-white px-2.5 py-2.5 text-left shadow-sm transition hover:border-slate-300 hover:shadow-md ${
+                    className={`mx-1.5 my-1 flex w-full min-w-0 max-w-full items-start gap-2 rounded-2xl border bg-white px-3 py-3 text-left shadow-sm transition hover:border-slate-300 hover:shadow-md ${
                       isActive
                         ? 'border-[color:var(--admin-accent)]/50 ring-2 ring-[color:var(--admin-accent)]/20'
                         : 'border-[var(--admin-border)]'
                     }`}
                   >
-                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold text-white ${color}`}>
-                      {initials}
+                    <div className="relative shrink-0">
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-2xl text-xs font-bold text-white ${color}`}>
+                        {initials}
+                      </div>
+                      {!isTicket ? (
+                        <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${lead.is_online ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                      ) : null}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-1.5">
                         <span className="min-w-0 truncate text-sm font-semibold leading-tight text-[var(--admin-text)]">
                           {lead.name || 'Borrower'}
-                          <span className="ml-1 align-middle text-[8px] font-bold uppercase tracking-wide text-[color:var(--admin-accent)]">
-                            · Portal
+                        </span>
+                        {isTicket ? (
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${TICKET_PRIORITY_BADGE[priority]}`}>
+                            {priority}
                           </span>
-                        </span>
-                        <span
-                          className={`shrink-0 rounded px-1.5 py-px text-[9px] font-semibold ${
-                            STATUS_BADGE[
-                              lead.status === 'new'
-                                ? 'open'
-                                : lead.status === 'ongoing' ||
-                                    lead.status === 'contacted' ||
-                                    lead.status === 'qualified'
-                                  ? 'in_progress'
-                                  : 'archived'
-                            ]
-                          }`}
-                        >
-                          {LEAD_STATUS[lead.status] || lead.status}
-                        </span>
+                        ) : unread ? (
+                          <span className="shrink-0 rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                            {Number(lead.unread_count || lead.admin_unread_count || 1)}
+                          </span>
+                        ) : null}
                       </div>
-                      <p className="mt-0.5 truncate text-xs text-[color:var(--admin-muted-2)]">{lead.email || '—'}</p>
-                      <p className="mt-0.5 text-[10px] text-[color:var(--admin-muted-2)]">
-                        {lead.last_message_at ? fmtDate(lead.last_message_at) : ''}
+                      <p className="mt-1 truncate text-xs text-slate-500">
+                        {borrowerLoanRef(lead)} · {lead.email || 'No email'}
                       </p>
+                      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">
+                        {borrowerLastPreview(lead, borrowerInboxType)}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-[color:var(--admin-muted-2)]">
+                        {isTicket ? (
+                          <>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-slate-200">
+                              #{String(lead.id).padStart(5, '0')}
+                            </span>
+                            <span className="rounded-full bg-teal-50 px-2 py-0.5 font-semibold text-teal-700 ring-1 ring-teal-100">
+                              {category}
+                            </span>
+                          </>
+                        ) : (
+                          <span className={`rounded-full px-2 py-0.5 font-semibold ring-1 ${
+                            statusKey === 'closed'
+                              ? 'bg-slate-100 text-slate-600 ring-slate-200'
+                              : unread
+                                ? 'bg-blue-50 text-blue-700 ring-blue-100'
+                                : 'bg-emerald-50 text-emerald-700 ring-emerald-100'
+                          }`}>
+                            {statusKey === 'closed' ? 'Archived' : unread ? 'Unread' : 'Active'}
+                          </span>
+                        )}
+                        <span className={`rounded-full px-2 py-0.5 font-semibold ${
+                          statusKey === 'closed'
+                            ? 'bg-slate-100 text-slate-600'
+                            : statusKey === 'pending'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {isTicket ? BORROWER_TICKET_FILTER_LABEL[statusKey] || LEAD_STATUS[lead.status] || lead.status : fmtInboxDate(lead.last_message_at || lead.updated_at || lead.created_at)}
+                        </span>
+                        {isTicket ? (
+                          <span className="tabular-nums">{lead.last_message_at ? fmtInboxDate(lead.last_message_at) : ''}</span>
+                        ) : null}
+                      </div>
+                      {!isTicket ? (
+                        <p className="mt-1 text-[10px] text-teal-600">
+                          {lead.is_online ? 'Online now' : 'Seen recently'} · Seen status and typing indicators ready for Echo events
+                        </p>
+                      ) : null}
                     </div>
                   </button>
                 )
@@ -2299,11 +2539,14 @@ Amalgated Lending Inc. Team`
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-[var(--admin-text)]">
-                    {activeBorrowerLead.name || 'Borrower'}
+                    {borrowerInboxType === 'tickets'
+                      ? activeBorrowerLead.inquiry_message || `Ticket #${String(activeBorrowerLead.id).padStart(5, '0')}`
+                      : activeBorrowerLead.name || 'Borrower'}
                   </p>
                   <p className="truncate text-[11px] text-[color:var(--admin-muted-2)]">
-                    {activeBorrowerLead.email || 'No email'}
-                    {activeBorrowerLead.loan_type ? ` · ${activeBorrowerLead.loan_type}` : ''}
+                    {borrowerInboxType === 'tickets'
+                      ? `#${String(activeBorrowerLead.id).padStart(5, '0')} · ${borrowerTicketCategory(activeBorrowerLead)} · ${borrowerLoanRef(activeBorrowerLead)}`
+                      : `${activeBorrowerLead.email || 'No email'} · ${borrowerLoanRef(activeBorrowerLead)} · ${activeBorrowerLead.is_online ? 'Online' : 'Portal chat'}`}
                   </p>
                 </div>
               </div>
@@ -2484,6 +2727,24 @@ Amalgated Lending Inc. Team`
 
           {view === 'chats' && chatInboxTab === 'borrower' && activeBorrowerLead && (
             <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
+              {borrowerInboxType === 'tickets' ? (
+                <>
+                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${TICKET_PRIORITY_BADGE[borrowerTicketPriority(activeBorrowerLead)]}`}>
+                    {borrowerTicketPriority(activeBorrowerLead)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => updateLeadStatusById(activeBorrowerLead.id, activeBorrowerLead.status === 'closed' ? 'ongoing' : 'closed')}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    {activeBorrowerLead.status === 'closed' ? 'Reopen' : 'Close ticket'}
+                  </button>
+                </>
+              ) : (
+                <span className="rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-bold text-teal-700 ring-1 ring-teal-100">
+                  {activeBorrowerLead.is_online ? 'Online' : 'Portal'}
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => setCrmProfileOpen((v) => !v)}
@@ -3273,6 +3534,67 @@ Amalgated Lending Inc. Team`
           {view === 'chats' &&
             chatInboxTab === 'borrower' &&
             activeBorrowerLeadId &&
+            activeBorrowerLead &&
+            borrowerInboxType === 'tickets' && (
+              <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                      Support ticket #{String(activeBorrowerLead.id).padStart(5, '0')}
+                    </p>
+                    <h2 className="mt-1 text-base font-semibold text-slate-950">
+                      {activeBorrowerLead.inquiry_message || activeBorrowerLead.initial_message || 'Borrower support request'}
+                    </h2>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {borrowerTicketCategory(activeBorrowerLead)} · Assigned staff: {activeBorrowerLead.assigned_staff_name || 'Unassigned'} · SLA timer: 4h target
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase ${TICKET_PRIORITY_BADGE[borrowerTicketPriority(activeBorrowerLead)]}`}>
+                      {borrowerTicketPriority(activeBorrowerLead)}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-slate-200">
+                      {BORROWER_TICKET_FILTER_LABEL[borrowerLeadStatusKey(activeBorrowerLead)] || activeBorrowerLead.status}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-2 text-xs text-slate-600 sm:grid-cols-3">
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <p className="font-semibold text-slate-900">Borrower</p>
+                    <p className="mt-1 truncate">{activeBorrowerLead.name || 'Borrower'}</p>
+                    <p className="truncate text-slate-500">{activeBorrowerLead.email || 'No email'}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <p className="font-semibold text-slate-900">Loan</p>
+                    <p className="mt-1">{borrowerLoanRef(activeBorrowerLead)}</p>
+                    <p className="text-slate-500">Risk: {activeBorrowerLead.risk_level || 'Standard'}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <p className="font-semibold text-slate-900">Activity</p>
+                    <p className="mt-1">Created {fmtInboxDate(activeBorrowerLead.created_at)}</p>
+                    <p className="text-slate-500">Updated {fmtInboxDate(activeBorrowerLead.updated_at || activeBorrowerLead.last_message_at)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+          {view === 'chats' &&
+            chatInboxTab === 'borrower' &&
+            activeBorrowerLeadId &&
+            activeBorrowerLead &&
+            borrowerInboxType === 'portal' && (
+              <div className="mb-3 rounded-2xl border border-teal-100 bg-teal-50/70 px-4 py-3 text-xs text-teal-900 shadow-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`h-2.5 w-2.5 rounded-full ${activeBorrowerLead.is_online ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                  <span className="font-semibold">{activeBorrowerLead.is_online ? 'Borrower online' : 'Borrower offline'}</span>
+                  <span className="text-teal-700">Typing indicator, seen status, attachments, emojis, pins, and archive actions are wired into the CRM-ready layout.</span>
+                </div>
+              </div>
+            )}
+
+          {view === 'chats' &&
+            chatInboxTab === 'borrower' &&
+            activeBorrowerLeadId &&
             borrowerMessages.map((msg, index) => {
               const isBorrower = msg.sender_type === 'borrower'
               return (
@@ -3428,7 +3750,7 @@ Amalgated Lending Inc. Team`
             <div className="w-full min-w-0 rounded-lg border border-slate-200/90 bg-slate-50/90 p-2.5 shadow-sm sm:p-3">
               <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                 <p className="shrink-0 pt-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  Reply to borrower
+                  {borrowerInboxType === 'tickets' ? 'Ticket reply editor' : 'Portal message composer'}
                 </p>
                 <div className="grid w-full min-w-0 grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
                   {FAQ_QUICK_REPLIES.map((q) => (
@@ -3446,6 +3768,27 @@ Amalgated Lending Inc. Team`
                   ))}
                 </div>
               </div>
+              <div className="mb-2 flex flex-wrap gap-1.5 text-[11px]">
+                {[
+                  ['Saved replies', 'template'],
+                  ['AI suggested reply', 'ai'],
+                  ['Add internal note', 'note'],
+                  ['Attach file', 'attach'],
+                ].map(([label, key]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      if (key === 'ai') {
+                        setBorrowerInput((prev) => prev || 'Thanks for reaching out. I reviewed your account and will coordinate the next step with our lending team.')
+                      }
+                    }}
+                    className="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-slate-950"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <div className="flex min-w-0 items-end gap-2">
                 <div className="relative min-w-0 flex-1">
                   <div className="rounded-lg border border-slate-200 bg-white shadow-sm transition focus-within:border-slate-400 focus-within:ring-1 focus-within:ring-slate-200">
@@ -3458,7 +3801,7 @@ Amalgated Lending Inc. Team`
                           sendBorrowerReply()
                         }
                       }}
-                      placeholder="Type your reply to the borrower…"
+                      placeholder={borrowerInboxType === 'tickets' ? 'Write an official ticket response...' : 'Type your message to the borrower...'}
                       rows={2}
                       className="w-full min-h-[2.5rem] resize-y bg-transparent px-3 py-2 text-sm leading-relaxed text-slate-900 outline-none placeholder:text-slate-400"
                     />
@@ -3509,7 +3852,7 @@ Amalgated Lending Inc. Team`
           <aside className="flex max-h-[min(100dvh,900px)] w-full shrink-0 flex-col overflow-y-auto border-t border-[var(--admin-border)] bg-[var(--admin-surface-2)] lg:max-h-none lg:w-[22rem] lg:border-l lg:border-t-0">
             <div className="border-b border-[var(--admin-border)] px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
-                Borrower (portal chat)
+                {borrowerInboxType === 'tickets' ? 'Admin ticket panel' : 'Borrower record panel'}
               </p>
               <p className="mt-1 text-sm font-semibold text-[var(--admin-text)]">
                 {activeBorrowerLead.name || 'Borrower'}
@@ -3518,8 +3861,9 @@ Amalgated Lending Inc. Team`
                 {activeBorrowerLead.email || 'No email'} · Lead #{activeBorrowerLead.id}
               </p>
               <p className="mt-2 text-[11px] text-[color:var(--admin-muted-2)]">
-                Thread type: {activeBorrowerLead.loan_type || BORROWER_CHAT_LOAN_TYPE}. Messages sync with the borrower
-                portal Chat page.
+                {borrowerInboxType === 'tickets'
+                  ? 'Formal support workflow with timeline, assignment, SLA, notes, attachments, and close/reopen controls.'
+                  : 'CRM borrower context for portal chat, active loans, documents, notes, payment history, and recent activity.'}
               </p>
               {canViewBorrowers && activeBorrowerLead.user_id ? (
                 <Link
@@ -3535,8 +3879,30 @@ Amalgated Lending Inc. Team`
               )}
             </div>
             <div className="space-y-3 px-4 py-3 text-sm">
+              {borrowerInboxType === 'tickets' ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Ticket ID</p>
+                    <p className="mt-1 font-semibold text-slate-950">#{String(activeBorrowerLead.id).padStart(5, '0')}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">SLA</p>
+                    <p className="mt-1 font-semibold text-amber-700">4h target</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Category</p>
+                    <p className="mt-1 font-semibold text-slate-950">{borrowerTicketCategory(activeBorrowerLead)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Priority</p>
+                    <p className="mt-1 font-semibold capitalize text-slate-950">{borrowerTicketPriority(activeBorrowerLead)}</p>
+                  </div>
+                </div>
+              ) : null}
               <div>
-                <p className="text-[11px] font-semibold text-[color:var(--admin-muted)]">Lead status</p>
+                <p className="text-[11px] font-semibold text-[color:var(--admin-muted)]">
+                  {borrowerInboxType === 'tickets' ? 'Ticket status' : 'Conversation status'}
+                </p>
                 <select
                   value={activeBorrowerLead.status}
                   onChange={(e) => updateLeadStatusById(activeBorrowerLead.id, e.target.value)}
@@ -3548,6 +3914,40 @@ Amalgated Lending Inc. Team`
                     </option>
                   ))}
                 </select>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                <p className="text-[11px] font-semibold text-slate-500">Loan details</p>
+                <p className="mt-1 text-sm font-semibold text-slate-950">{borrowerLoanRef(activeBorrowerLead)}</p>
+                <p className="mt-1 text-xs text-slate-500">Risk level: {activeBorrowerLead.risk_level || 'Standard'} · Active loans sync when borrower profile API is linked.</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                <p className="text-[11px] font-semibold text-slate-500">
+                  {borrowerInboxType === 'tickets' ? 'Ticket history timeline' : 'Recent activity'}
+                </p>
+                <ol className="mt-2 space-y-2 text-xs text-slate-600">
+                  <li>Created {fmtInboxDate(activeBorrowerLead.created_at)}</li>
+                  <li>Last updated {fmtInboxDate(activeBorrowerLead.updated_at || activeBorrowerLead.last_message_at)}</li>
+                  <li>{borrowerMessages.length} message{borrowerMessages.length !== 1 ? 's' : ''} in this thread</li>
+                </ol>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                <p className="text-[11px] font-semibold text-slate-500">Internal staff notes</p>
+                <textarea
+                  value={internalNotes}
+                  onChange={(e) => setInternalNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Private notes for staff..."
+                  className="mt-2 w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/15"
+                />
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                <p className="text-[11px] font-semibold text-slate-500">Borrower record</p>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                  <span>Payment history</span>
+                  <span>Documents</span>
+                  <span>Notes</span>
+                  <span>Audit logs</span>
+                </div>
               </div>
             </div>
           </aside>

@@ -24,7 +24,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
- * General loan workflow (borrower): draft → documents → signatures → submit (not for travel).
+ * General loan workflow (borrower): draft → documents → submit (not for travel).
  */
 class BorrowerLoanApplicationWizardController extends Controller
 {
@@ -262,10 +262,7 @@ class BorrowerLoanApplicationWizardController extends Controller
         $errors = match ($step) {
             1 => $this->validator->validateForm($loanApplication),
             2 => $this->validator->validateDocumentsComplete($loanApplication),
-            3 => array_merge(
-                $this->validator->validateBeforeSignatureStep($loanApplication),
-                $this->validator->validateSignatures($loanApplication)
-            ),
+            3 => $this->validator->validateBeforeSignatureStep($loanApplication),
             4 => $this->validator->validateSubmit($loanApplication),
             default => [],
         };

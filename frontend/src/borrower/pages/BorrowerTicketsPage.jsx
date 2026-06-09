@@ -1,58 +1,77 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import PortalCard from '../../components/portal/PortalCard.jsx'
 import { BorrowerPageHeader } from '../../components/portal/BorrowerPageHeader.jsx'
-
-const STORAGE_KEY = 'al-borrower-tickets-v1'
-
-function loadTickets() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
+import { borrowerApi } from '../api/client.js'
 
 export default function BorrowerTicketsPage() {
-  const [tickets, setTickets] = useState(() => loadTickets())
+  const [tickets, setTickets] = useState([])
   const [subject, setSubject] = useState('')
+  const [category, setCategory] = useState('Payment Concern')
+  const [priority, setPriority] = useState('Medium')
   const [body, setBody] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  const loadTickets = useCallback(async () => {
+    try {
+      const res = await borrowerApi('/borrower/tickets')
+      setTickets(Array.isArray(res.data) ? res.data : [])
+      setError('')
+    } catch (err) {
+      setError(err.message || 'Failed to load tickets.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(tickets))
-    } catch {
-      /* ignore */
-    }
-  }, [tickets])
+    loadTickets()
+  }, [loadTickets])
 
   const onSubmit = useCallback(
-    (e) => {
+    async (e) => {
       e.preventDefault()
       const s = subject.trim()
       const b = body.trim()
       if (!s || !b) return
-      const row = {
-        id: `T-${Date.now()}`,
-        subject: s,
-        body: b,
-        status: 'Open',
-        createdAt: new Date().toISOString(),
+      setSubmitting(true)
+      setError('')
+      setNotice('')
+      try {
+        const res = await borrowerApi('/borrower/tickets', {
+          method: 'POST',
+          body: JSON.stringify({ subject: s, category, priority, body: b }),
+        })
+        if (res.ticket) {
+          setTickets((prev) => [res.ticket, ...prev.filter((t) => Number(t.id) !== Number(res.ticket.id))])
+        } else {
+          await loadTickets()
+        }
+        setSubject('')
+        setBody('')
+        setNotice(res.message || 'Ticket submitted. Our team will follow up in CRM.')
+      } catch (err) {
+        setError(err.message || 'Failed to submit ticket.')
+      } finally {
+        setSubmitting(false)
       }
-      setTickets((prev) => [row, ...prev])
-      setSubject('')
-      setBody('')
     },
-    [subject, body],
+    [subject, category, priority, body, loadTickets],
   )
 
   const rows = useMemo(
     () =>
       tickets.map((t) => ({
         ...t,
-        when: new Date(t.createdAt).toLocaleString(),
+        when: new Date(t.created_at || t.createdAt).toLocaleString(),
+        ticketNumber: t.ticket_number || `TKT-${String(t.id).padStart(5, '0')}`,
+        category: t.category || 'Other',
+        priority: t.priority || 'Medium',
+        latestReply: Array.isArray(t.messages)
+          ? [...t.messages].reverse().find((m) => m.sender_type === 'admin' && m.message)
+          : null,
       })),
     [tickets],
   )
@@ -66,8 +85,18 @@ export default function BorrowerTicketsPage() {
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <PortalCard title="New ticket" subtitle="Stored locally in this browser (demo). Wire to Laravel in production.">
+        <PortalCard title="New ticket" subtitle="Sent to CRM & Chat for admin follow-up.">
           <form onSubmit={onSubmit} className="space-y-4">
+            {error ? (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+                {error}
+              </p>
+            ) : null}
+            {notice ? (
+              <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                {notice}
+              </p>
+            ) : null}
             <div>
               <label htmlFor="t-subject" className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 Subject
@@ -80,6 +109,38 @@ export default function BorrowerTicketsPage() {
                 placeholder="e.g. Payment receipt not showing"
                 maxLength={120}
               />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="t-category" className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  Category
+                </label>
+                <select
+                  id="t-category"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-brand-primary/40 focus:ring-2 focus:ring-brand-primary/15 dark:border-gray-600 dark:bg-[#0F172A] dark:text-white"
+                >
+                  {['Payment Concern', 'Loan Application', 'Verification Issue', 'Technical Problem', 'Account Recovery', 'Billing Concern', 'Document Upload', 'Other'].map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="t-priority" className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  Priority
+                </label>
+                <select
+                  id="t-priority"
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-brand-primary/40 focus:ring-2 focus:ring-brand-primary/15 dark:border-gray-600 dark:bg-[#0F172A] dark:text-white"
+                >
+                  {['Low', 'Medium', 'High', 'Critical'].map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div>
               <label htmlFor="t-body" className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
@@ -96,26 +157,45 @@ export default function BorrowerTicketsPage() {
             </div>
             <button
               type="submit"
+              disabled={submitting || !subject.trim() || !body.trim()}
               className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white shadow-brand-primary transition hover:bg-brand-primary-hover sm:w-auto sm:px-8"
             >
-              Submit ticket
+              {submitting ? 'Submitting...' : 'Submit ticket'}
             </button>
           </form>
         </PortalCard>
 
         <PortalCard title="Your tickets" subtitle={rows.length ? `${rows.length} total` : 'No tickets yet'}>
-          {rows.length === 0 ? (
+          {loading ? (
+            <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading tickets...</p>
+          ) : rows.length === 0 ? (
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">When you submit a ticket, it will appear here.</p>
           ) : (
             <ul className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
               {rows.map((t) => (
                 <li key={t.id} className="rounded-xl border border-black/[0.06] bg-brand-background-alt/50 p-4 dark:border-white/10 dark:bg-[#0F172A]/60">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-semibold text-brand-text dark:text-white">{t.subject}</p>
-                    <span className="rounded-full bg-brand-primary/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-brand-primary">{t.status}</span>
+                    <div>
+                      <p className="font-semibold text-brand-text dark:text-white">{t.subject}</p>
+                      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        {t.ticketNumber} · {t.category}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <span className="rounded-full bg-brand-primary/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-brand-primary">{t.status}</span>
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">{t.priority}</span>
+                    </div>
                   </div>
                   <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{t.when}</p>
                   <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{t.body}</p>
+                  {t.latestReply ? (
+                    <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-100">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide">
+                        Latest admin reply{t.latestReply.admin_name ? ` · ${t.latestReply.admin_name}` : ''}
+                      </p>
+                      <p className="mt-1">{t.latestReply.message}</p>
+                    </div>
+                  ) : null}
                 </li>
               ))}
             </ul>

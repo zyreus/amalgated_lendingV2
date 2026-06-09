@@ -268,6 +268,36 @@ export default function LoanDetailPage() {
     }
   }
 
+  const runPreApprove = async () => {
+    try {
+      const res = await api(`/applications/${id}/pre-approve`, {
+        method: 'POST',
+        body: JSON.stringify({ admin_notes: notes?.trim() ? notes.trim() : null }),
+      })
+      setLoan(mergeLoanFromApi(res))
+      showToast('Application pre-approved.', 'success')
+      void load()
+    } catch (e) {
+      showToast(e.message, 'error')
+      throw e
+    }
+  }
+
+  const runReturnToPending = async () => {
+    try {
+      const res = await api(`/applications/${id}/return-to-pending`, {
+        method: 'POST',
+        body: JSON.stringify({ admin_notes: notes?.trim() ? notes.trim() : null }),
+      })
+      setLoan(mergeLoanFromApi(res))
+      showToast('Application returned to pending.', 'success')
+      void load()
+    } catch (e) {
+      showToast(e.message, 'error')
+      throw e
+    }
+  }
+
   const assignOfficer = async () => {
     if (!officerId) {
       showToast('Select an officer', 'error')
@@ -368,7 +398,7 @@ export default function LoanDetailPage() {
         </div>
       </div>
 
-      {loan.status === 'pending' && can('loans.approve') && (
+      {['pending', 'pre-approved'].includes(loan.status) && can('loans.approve') && (
         <div className={`grid gap-4 p-5 lg:grid-cols-2 ${admin.cardNoHover}`}>
           <div>
             <label className={`text-xs font-medium ${admin.textMuted}`}>Admin notes (optional)</label>
@@ -380,11 +410,20 @@ export default function LoanDetailPage() {
             />
             <button
               type="button"
-              onClick={() => setConfirmLoanAction('approve')}
+              onClick={() => setConfirmLoanAction(loan.status === 'pending' ? 'pre-approve' : 'approve')}
               className="mt-3 rounded-xl bg-[#DC2626] px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-red-700"
             >
-              Approve &amp; generate schedule
+              {loan.status === 'pending' ? 'Pre-Approve' : 'Approve & generate schedule'}
             </button>
+            {loan.status === 'pre-approved' ? (
+              <button
+                type="button"
+                onClick={() => setConfirmLoanAction('return-pending')}
+                className="ml-2 mt-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-900/30 dark:text-amber-100"
+              >
+                Return to pending
+              </button>
+            ) : null}
           </div>
           <div>
             <label className={`text-xs font-medium ${admin.textMuted}`}>Reject reason</label>
@@ -535,6 +574,8 @@ export default function LoanDetailPage() {
                             src={getLaravelStorageFileUrl(doc.path)}
                             alt="Applicant face"
                             className="max-h-56 rounded-lg border border-gray-200 object-contain dark:border-[#1F2937]"
+                            loading="lazy"
+                            decoding="async"
                           />
                         </a>
                       ) : (
@@ -705,13 +746,31 @@ export default function LoanDetailPage() {
       ) : null}
 
       <ConfirmModal
+        open={confirmLoanAction === 'pre-approve'}
+        onClose={() => setConfirmLoanAction(null)}
+        title="Pre-approve this application?"
+        description="This will move the application into the pre-approved queue for final approval or rejection."
+        confirmLabel="Pre-Approve"
+        tone="default"
+        onConfirm={runPreApprove}
+      />
+      <ConfirmModal
         open={confirmLoanAction === 'approve'}
         onClose={() => setConfirmLoanAction(null)}
         title="Approve this loan?"
-        description="This will generate the repayment schedule, mark the loan ongoing, and queue a decision email to the borrower. Continue?"
+        description="This will generate the repayment schedule, mark the application approved, and queue a decision email to the borrower. Continue?"
         confirmLabel="Approve"
         tone="default"
         onConfirm={runApprove}
+      />
+      <ConfirmModal
+        open={confirmLoanAction === 'return-pending'}
+        onClose={() => setConfirmLoanAction(null)}
+        title="Return to pending?"
+        description="This will move the pre-approved application back to pending review."
+        confirmLabel="Return to pending"
+        tone="default"
+        onConfirm={runReturnToPending}
       />
       <ConfirmModal
         open={confirmLoanAction === 'reject'}

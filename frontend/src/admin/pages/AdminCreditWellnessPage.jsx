@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '../api/client.js'
 import { admin } from '../components/AdminUi.jsx'
-import { fintechPalette } from '../../theme/designTokens.js'
+
+const CreditWellnessSegmentsChart = lazy(() => import('../components/CreditWellnessSegmentsChart.jsx'))
 
 const SEGMENT_LABELS = {
   excellent: 'Excellent',
@@ -88,17 +88,9 @@ export default function AdminCreditWellnessPage() {
       <div className={admin.chartCard}>
         <h2 className="mb-4 text-sm font-semibold text-gray-900 dark:text-gray-100">Risk segments</h2>
         {segmentChart.length > 0 ? (
-          <div className="h-64 w-full min-w-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={segmentChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-                <XAxis dataKey="segment" tick={{ fontSize: 10 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
-                <Tooltip />
-                <Bar dataKey="count" fill={fintechPalette.crimson.main} radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <Suspense fallback={<div className="h-64 w-full animate-pulse rounded-lg bg-gray-100 dark:bg-[#1F2937]/80" />}>
+            <CreditWellnessSegmentsChart data={segmentChart} />
+          </Suspense>
         ) : (
           <p className={`text-sm ${admin.textMuted}`}>No wellness data yet — scores populate after payments are recorded.</p>
         )}

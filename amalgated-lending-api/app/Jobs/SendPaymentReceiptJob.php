@@ -47,7 +47,7 @@ class SendPaymentReceiptJob implements ShouldQueue
         $dedupeKey = self::dedupeKey($this->paymentId, $this->receiptNumber);
 
         $payment = Payment::query()
-            ->with(['loan.borrower'])
+            ->with(['loan.borrower', 'processedByUser', 'recordedByUser', 'confirmedByUser'])
             ->find($this->paymentId);
 
         if (! $payment || $payment->status !== Payment::STATUS_PAID) {
@@ -108,6 +108,12 @@ class SendPaymentReceiptJob implements ShouldQueue
         $pdfPath = null;
         try {
             $pdfPath = $pdfService->ensureOfficialPdf($payment, $this->confirmedByAdminId);
+            if ($pdfPath) {
+                $payment->forceFill([
+                    'receipt_pdf_path' => $pdfPath,
+                    'invoice_pdf_path' => $payment->invoice_pdf_path ?: $pdfPath,
+                ])->save();
+            }
         } catch (Throwable $e) {
             Log::warning('Payment receipt PDF skipped; sending email without attachment.', [
                 'payment_id' => $payment->id,
@@ -116,10 +122,11 @@ class SendPaymentReceiptJob implements ShouldQueue
         }
         $payment->refresh();
 
-        $mailable = new PaymentReceiptMail($payment->fresh(['loan.borrower']));
+        $payment = $payment->fresh(['loan.borrower', 'processedByUser', 'recordedByUser', 'confirmedByUser']);
+        $mailable = new PaymentReceiptMail($payment);
 
-        $invoiceNumber = 'INV-'.str_pad((string) $payment->id, 6, '0', STR_PAD_LEFT);
-        $subject = 'Payment confirmed — '.$invoiceNumber.' ('.$this->receiptNumber.') — '.config('app.name', 'Amalgated Lending Inc.');
+        $loanNumber = $payment->loan?->loan_number ?? ('LN-'.str_pad((string) ($payment->loan_id ?? 0), 6, '0', STR_PAD_LEFT));
+        $subject = 'Payment Receipt - Loan '.$loanNumber;
 
         try {
             $send = $sender->sendHtmlMailable($mailable, $email, (string) ($borrower?->name ?: $email), $subject, [
@@ -138,6 +145,7 @@ class SendPaymentReceiptJob implements ShouldQueue
                     'sent_at' => now(),
                     'error_message' => null,
                 ]);
+                $payment->forceFill(['emailed_at' => now()])->save();
                 Cache::put($cacheKey, $this->receiptNumber, now()->addDays(45));
             } else {
                 EmailLog::query()->where('dedupe_key', $dedupeKey)->update([

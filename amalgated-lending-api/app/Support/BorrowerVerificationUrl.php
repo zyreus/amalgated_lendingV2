@@ -18,11 +18,40 @@ final class BorrowerVerificationUrl
         if ($base === '') {
             $base = rtrim((string) config('services.borrower_verify.base_url', ''), '/');
         }
+
+        // Local split stack: verify links hit Laravel (e.g. :8001) while Vite runs elsewhere (e.g. :6174).
+        // When the user verified on the Laravel/public host, send them to login on that same origin so they
+        // are not bounced to a different port that may be down or unrelated to the link they clicked.
+        $verifyBase = rtrim((string) config('services.borrower_verify.base_url', ''), '/');
+        $requestOrigin = $request->getSchemeAndHttpHost();
+        if (
+            $verifyBase !== ''
+            && str_starts_with($verifyBase, $requestOrigin)
+            && self::originKey($base) !== self::originKey($verifyBase)
+            && self::originKey($requestOrigin) === self::originKey($verifyBase)
+        ) {
+            $base = $requestOrigin;
+        }
+
         $base = self::alignHostWithRequest($request, $base);
         $path = '/'.ltrim((string) config('services.borrower_verify.login_path', '/borrower/login'), '/');
         $query = http_build_query(array_filter($params, static fn ($v) => $v !== null && $v !== ''));
 
         return $query !== '' ? "{$base}{$path}?{$query}" : "{$base}{$path}";
+    }
+
+    private static function originKey(string $url): string
+    {
+        $parts = parse_url($url);
+        if (! is_array($parts) || empty($parts['host'])) {
+            return $url;
+        }
+
+        $scheme = strtolower((string) ($parts['scheme'] ?? 'http'));
+        $host = strtolower((string) $parts['host']);
+        $port = $parts['port'] ?? ($scheme === 'https' ? 443 : 80);
+
+        return "{$scheme}://{$host}:{$port}";
     }
 
     private static function alignHostWithRequest(Request $request, string $url): string

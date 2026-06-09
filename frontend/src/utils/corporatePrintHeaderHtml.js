@@ -9,13 +9,6 @@ const TAGLINE =
   (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_COMPANY_PRINT_TAGLINE) ||
   'Lending Hope, Building Futures.'
 
-const ADDRESS_LINES = [
-  'ACI IT and Corporate Centre,',
-  'Doña Carolina Uy Kim Peng Building, Cor.',
-  'JP Laurel Avenue and Inigo Street,',
-  'Bajada, Davao City 8000',
-]
-
 export const CORPORATE_PRINT_LEGAL_NAME = LEGAL
 export const CORPORATE_PRINT_TAGLINE = TAGLINE
 
@@ -27,12 +20,11 @@ export function corporatePrintHeaderBlock(logoUrl, logoPx = 52) {
   const px = Math.max(32, Number(logoPx) || 52)
   const ring = Math.max(2, Math.round(px * 0.07))
   const inner = Math.max(22, px - ring * 2 - 6)
-  const addr = ADDRESS_LINES.join('<br>')
   return `
 <div class="corp-hdr-wrap" style="width:100%;margin:0 0 12px;">
   <table cellpadding="0" cellspacing="0" role="presentation" style="width:100%;border-collapse:collapse;margin:0;padding:0;">
     <tr>
-      <td style="width:58%;vertical-align:middle;padding:0;border:0;">
+      <td style="width:100%;vertical-align:middle;padding:0;border:0;">
         <table cellpadding="0" cellspacing="0" role="presentation" style="border-collapse:collapse;margin:0;padding:0;">
           <tr>
             <td style="width:${px + 16}px;padding:0 12px 0 0;vertical-align:middle;border:0;">
@@ -46,9 +38,6 @@ export function corporatePrintHeaderBlock(logoUrl, logoPx = 52) {
             </td>
           </tr>
         </table>
-      </td>
-      <td style="width:42%;vertical-align:top;text-align:right;padding:0;border:0;">
-        <div style="font-family:ui-sans-serif,system-ui,Arial,Helvetica,sans-serif;font-size:11px;line-height:1.45;color:#000;margin:0;">${addr}</div>
       </td>
     </tr>
   </table>

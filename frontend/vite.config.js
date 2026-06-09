@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -280,7 +281,7 @@ export default defineConfig(({ mode }) => {
       devNoCacheOptimizedDeps(),
     ],
     server: {
-      port: 5174,
+      port: 6174,
       host: '0.0.0.0',
       proxy,
       allowedHosts: true

@@ -134,8 +134,7 @@ class LoanApplicationWorkflowValidator
         return array_merge(
             $this->validateForm($app),
             $this->validateProductLoanRules($app),
-            $this->validateDocumentsComplete($app),
-            $this->validateSignatures($app)
+            $this->validateDocumentsComplete($app)
         );
     }
 

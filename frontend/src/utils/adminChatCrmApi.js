@@ -155,7 +155,7 @@ export async function fetchCrmBorrowerLeads(params) {
 
 export async function fetchCrmLeadMessages(leadId) {
   try {
-    const res = await adminApi(`/admin/leads/${leadId}/messages`)
+    const res = await adminApi(`/admin/leads/${leadId}/messages?per_page=50`)
     return Array.isArray(res?.data) ? res.data : []
   } catch {
     return []

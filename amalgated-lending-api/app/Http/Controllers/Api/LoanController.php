@@ -35,6 +35,14 @@ class LoanController extends Controller
         private LoanProductRateResolver $loanProductRates,
     ) {}
 
+    private const APPLICATION_STATUSES = [
+        Loan::STATUS_PENDING,
+        Loan::STATUS_PRE_APPROVED,
+        Loan::STATUS_APPROVED,
+        Loan::STATUS_REJECTED,
+        Loan::STATUS_COMPLETED,
+    ];
+
     public function index(Request $request): JsonResponse
     {
         /**
@@ -75,9 +83,11 @@ class LoanController extends Controller
                 'total_interest',
                 'outstanding_balance',
                 'status',
+                'rejection_reason',
                 'assigned_officer_id',
                 'approved_by',
                 'approved_at',
+                'rejected_at',
                 'disbursed_at',
                 'completed_at',
                 'created_at',
@@ -90,19 +100,31 @@ class LoanController extends Controller
                 'assignedOfficer:id,name,email',
             ]);
 
-        if ($request->filled('status')) {
-            $q->where('status', $request->query('status'));
+        $status = $this->normalizeApplicationStatus($request->query('status'));
+        if ($status !== null) {
+            if ($status === Loan::STATUS_APPROVED) {
+                $q->whereIn('status', [Loan::STATUS_APPROVED, Loan::STATUS_ONGOING]);
+            } else {
+                $q->where('status', $status);
+            }
         }
         if ($search = $request->query('search')) {
+            $search = trim((string) $search);
             $like = '%'.$search.'%';
             /** Subquery on `users` avoids correlated `whereHas` per loan row (better plan with `users.email` / name lookups). */
-            $q->whereIn('borrower_id', function ($sub) use ($like) {
-                $sub->select('id')
-                    ->from('users')
-                    ->where(function ($w) use ($like) {
-                        $w->where('name', 'like', $like)
-                            ->orWhere('email', 'like', $like);
-                    });
+            $q->where(function ($where) use ($search, $like) {
+                if (preg_match('/\d+/', $search, $m)) {
+                    $where->orWhere('id', (int) $m[0]);
+                }
+
+                $where->orWhereIn('borrower_id', function ($sub) use ($like) {
+                    $sub->select('id')
+                        ->from('users')
+                        ->where(function ($w) use ($like) {
+                            $w->where('name', 'like', $like)
+                                ->orWhere('email', 'like', $like);
+                        });
+                });
             });
         }
 
@@ -111,6 +133,23 @@ class LoanController extends Controller
         $loans->setCollection(LoanListResource::collection($loans->getCollection())->collection);
 
         return response()->json(['ok' => true, 'data' => $loans]);
+    }
+
+    private function normalizeApplicationStatus(mixed $status): ?string
+    {
+        if ($status === null) {
+            return null;
+        }
+
+        $value = Str::of((string) $status)->trim()->lower()->replace('_', '-')->toString();
+        if ($value === '' || $value === 'all') {
+            return null;
+        }
+        if ($value === Loan::STATUS_ONGOING) {
+            return Loan::STATUS_APPROVED;
+        }
+
+        return in_array($value, self::APPLICATION_STATUSES, true) ? $value : null;
     }
 
     public function show(Loan $loan): JsonResponse
@@ -145,6 +184,91 @@ class LoanController extends Controller
         ]);
     }
 
+    public function preApprove(Request $request, Loan $loan, ActivityLogger $logger): JsonResponse
+    {
+        $request->validate([
+            'admin_notes' => 'nullable|string|max:5000',
+        ]);
+
+        $result = DB::transaction(function () use ($request, $loan, $logger) {
+            $locked = Loan::query()
+                ->whereKey($loan->getKey())
+                ->lockForUpdate()
+                ->with('loanApplication')
+                ->firstOrFail();
+
+            if ($locked->status !== Loan::STATUS_PENDING) {
+                return response()->json(['ok' => false, 'message' => 'Only pending applications can be pre-approved.'], 422);
+            }
+
+            $locked->status = Loan::STATUS_PRE_APPROVED;
+            $locked->approved_by = $request->user()->id;
+            $locked->approved_at = now();
+            $locked->rejected_at = null;
+            $locked->rejection_reason = null;
+            $locked->admin_notes = $request->input('admin_notes') ?? $locked->admin_notes;
+            $locked->save();
+
+            if ($locked->loanApplication) {
+                $locked->loanApplication->status = LoanApplication::STATUS_PRE_APPROVED;
+                $locked->loanApplication->verified_at = now();
+                $locked->loanApplication->rejection_reason = null;
+                $locked->loanApplication->save();
+            }
+
+            $logger->log($request->user(), 'loans.pre_approve', $locked, ['loan_id' => $locked->id]);
+
+            return $locked->fresh(['borrower', 'approver', 'loanApplication']);
+        });
+
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+
+        return response()->json(['ok' => true, 'loan' => $result]);
+    }
+
+    public function returnToPending(Request $request, Loan $loan, ActivityLogger $logger): JsonResponse
+    {
+        $request->validate([
+            'admin_notes' => 'nullable|string|max:5000',
+        ]);
+
+        $result = DB::transaction(function () use ($request, $loan, $logger) {
+            $locked = Loan::query()
+                ->whereKey($loan->getKey())
+                ->lockForUpdate()
+                ->with('loanApplication')
+                ->firstOrFail();
+
+            if ($locked->status !== Loan::STATUS_PRE_APPROVED) {
+                return response()->json(['ok' => false, 'message' => 'Only pre-approved applications can return to pending.'], 422);
+            }
+
+            $locked->status = Loan::STATUS_PENDING;
+            $locked->approved_by = null;
+            $locked->approved_at = null;
+            $locked->admin_notes = $request->input('admin_notes') ?? $locked->admin_notes;
+            $locked->save();
+
+            if ($locked->loanApplication) {
+                $locked->loanApplication->status = LoanApplication::STATUS_PENDING;
+                $locked->loanApplication->verified_at = null;
+                $locked->loanApplication->save();
+            }
+
+            $logger->log($request->user(), 'loans.return_to_pending', $locked, ['loan_id' => $locked->id]);
+
+            return $locked->fresh(['borrower', 'approver', 'loanApplication']);
+        });
+
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+
+        return response()->json(['ok' => true, 'loan' => $result]);
+    }
+
     public function approve(Request $request, Loan $loan, ActivityLogger $logger): JsonResponse
     {
         $request->validate([
@@ -154,8 +278,8 @@ class LoanController extends Controller
             'monthly_rate_percent' => 'sometimes|numeric|min:0|max:100',
         ]);
 
-        if ($loan->status !== Loan::STATUS_PENDING) {
-            return response()->json(['ok' => false, 'message' => 'Only pending loans can be approved.'], 422);
+        if (! in_array($loan->status, [Loan::STATUS_PENDING, Loan::STATUS_PRE_APPROVED], true)) {
+            return response()->json(['ok' => false, 'message' => 'Only pending or pre-approved applications can be approved.'], 422);
         }
 
         $payload = is_array($loan->application_payload) ? $loan->application_payload : [];
@@ -189,8 +313,8 @@ class LoanController extends Controller
                 ->with('loanApplication')
                 ->firstOrFail();
 
-            if ($loan->status !== Loan::STATUS_PENDING) {
-                return response()->json(['ok' => false, 'message' => 'Only pending loans can be approved.'], 422);
+            if (! in_array($loan->status, [Loan::STATUS_PENDING, Loan::STATUS_PRE_APPROVED], true)) {
+                return response()->json(['ok' => false, 'message' => 'Only pending or pre-approved applications can be approved.'], 422);
             }
 
             $principal = (float) $loan->principal;
@@ -401,8 +525,8 @@ class LoanController extends Controller
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if ($locked->status !== Loan::STATUS_PENDING) {
-                return response()->json(['ok' => false, 'message' => 'Only pending loans can be rejected.'], 422);
+            if (! in_array($locked->status, [Loan::STATUS_PENDING, Loan::STATUS_PRE_APPROVED], true)) {
+                return response()->json(['ok' => false, 'message' => 'Only pending or pre-approved applications can be rejected.'], 422);
             }
 
             $locked->status = Loan::STATUS_REJECTED;
@@ -421,6 +545,29 @@ class LoanController extends Controller
             }
 
             $logger->log($request->user(), 'loans.reject', $locked);
+
+            $borrower = User::query()
+                ->whereKey($locked->borrower_id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($borrower && ! $borrower->is_archived && ! $borrower->canAccessAdminPortal()) {
+                $borrower->forceFill([
+                    'is_archived' => true,
+                    'archived_at' => now(),
+                    'archive_reason' => 'Application Rejected',
+                    'deleted_at' => null,
+                    'archived_by' => $request->user()->id,
+                    'restored_by' => null,
+                    'deleted_by' => null,
+                ])->save();
+
+                $logger->log($request->user(), 'borrowers.archive', $borrower, [
+                    'reason' => 'Application Rejected',
+                    'loan_id' => $locked->id,
+                    'borrower_id' => $borrower->id,
+                ]);
+            }
 
             return $locked->fresh(['borrower', 'approver', 'loanApplication']);
         });

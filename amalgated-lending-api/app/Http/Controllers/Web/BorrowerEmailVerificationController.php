@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Services\BorrowerEmailVerificationService;
 use App\Support\BorrowerVerificationUrl;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -34,7 +35,7 @@ class BorrowerEmailVerificationController extends Controller
     /**
      * Canonical signed route: /borrower/email/verify/{id}/{hash}?expires=&signature=
      */
-    public function verify(Request $request, int $id, string $hash): Response|RedirectResponse
+    public function verify(Request $request, int $id, string $hash): Response|RedirectResponse|JsonResponse
     {
         Log::debug('borrower.email.verify.hit', [
             'id' => $id,
@@ -48,7 +49,7 @@ class BorrowerEmailVerificationController extends Controller
     /**
      * Legacy emails used query params on /borrower/email/verify — redirect to path form when possible.
      */
-    public function verifyLegacyQuery(Request $request): Response|RedirectResponse
+    public function verifyLegacyQuery(Request $request): Response|RedirectResponse|JsonResponse
     {
         $id = (int) $request->query('id');
         $hash = trim((string) $request->query('hash'));
@@ -93,7 +94,7 @@ class BorrowerEmailVerificationController extends Controller
      *   login_params: array<string, string>
      * }  $result
      */
-    private function respond(Request $request, array $result): Response|RedirectResponse
+    private function respond(Request $request, array $result): Response|RedirectResponse|JsonResponse
     {
         if ($request->expectsJson()) {
             return response()->json([

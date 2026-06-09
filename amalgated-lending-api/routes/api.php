@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\ActivityLogController;
+use App\Http\Controllers\Api\AdminBorrowerCommunicationController;
 use App\Http\Controllers\Api\AdminCollectionsController;
 use App\Http\Controllers\Api\AdminAuthController;
 use App\Http\Controllers\Api\AdminChatController;
@@ -16,6 +17,7 @@ use App\Http\Controllers\Api\BorrowerLendingSignatureController;
 use App\Http\Controllers\Api\BorrowerLoanApplicationWizardController;
 use App\Http\Controllers\Api\BorrowerNotificationController;
 use App\Http\Controllers\Api\BorrowerPortalController;
+use App\Http\Controllers\Api\BorrowerStatementController;
 use App\Http\Controllers\Api\ChatbotFeedbackController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\ChattelMortgageController;
@@ -45,6 +47,7 @@ use App\Http\Controllers\Api\PrintableFormBorrowerController;
 use App\Http\Controllers\Api\PublicChatController;
 use App\Http\Controllers\Api\PublicFeedbackSubmitController;
 use App\Http\Controllers\Api\PublicFileController;
+use App\Http\Controllers\Api\PublicApplicationDisabledController;
 use App\Http\Controllers\Api\PublicInquiryController;
 use App\Http\Controllers\Api\PublicLeadController;
 use App\Http\Controllers\Api\PublicWebsiteTestimonialsController;
@@ -52,6 +55,7 @@ use App\Http\Controllers\Api\RealEstateMortgageController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SalaryLoanController;
+use App\Http\Controllers\Api\SOAController;
 use App\Http\Controllers\Api\SssPensionLoanController;
 use App\Http\Controllers\Api\SupportChatSyncController;
 use App\Http\Controllers\Api\SystemSettingController;
@@ -113,15 +117,14 @@ Route::prefix('v1')->group(function () {
     Route::get('/loan-products/slug/{slug}/requirements', [LoanProductController::class, 'documentRequirementsBySlug']);
     Route::get('/loan-products/{loanProduct}/requirements', [LoanProductController::class, 'documentRequirements']);
 
-    Route::post('/loan-applications', [DocumentLoanApplicationController::class, 'store']);
-    Route::post('/public/loan-applications', [LoanController::class, 'publicApply']);
-    Route::post('/public/chattel-mortgage/apply', [ChattelMortgageController::class, 'apply']);
-    Route::post('/public/real-estate-mortgage/apply', [RealEstateMortgageController::class, 'apply']);
-    Route::post('/public/salary-loan/apply', [SalaryLoanController::class, 'apply']);
-    Route::post('/public/travel-assistance-loan/apply', [TravelAssistanceController::class, 'apply']);
-    // Travel wizard endpoint used by frontend `postTravelLoanWizardApplication`.
-    Route::post('/loan/apply', [TravelLoanWizardController::class, 'apply']);
-    Route::post('/public/sss-pension-loan/apply', [SssPensionLoanController::class, 'apply']);
+    Route::post('/loan-applications', PublicApplicationDisabledController::class);
+    Route::post('/public/loan-applications', PublicApplicationDisabledController::class);
+    Route::post('/public/chattel-mortgage/apply', PublicApplicationDisabledController::class);
+    Route::post('/public/real-estate-mortgage/apply', PublicApplicationDisabledController::class);
+    Route::post('/public/salary-loan/apply', PublicApplicationDisabledController::class);
+    Route::post('/public/travel-assistance-loan/apply', PublicApplicationDisabledController::class);
+    Route::post('/loan/apply', PublicApplicationDisabledController::class);
+    Route::post('/public/sss-pension-loan/apply', PublicApplicationDisabledController::class);
     Route::post('/public/leads', [PublicLeadController::class, 'store']);
     Route::post('/public/inquiry', [PublicInquiryController::class, 'store'])->middleware('throttle:20,1');
     Route::get('/public/leads/{lead}/messages', [PublicLeadController::class, 'messages']);
@@ -190,12 +193,15 @@ Route::prefix('v1')->group(function () {
         });
 
         Route::middleware('permission:loans.view')->group(function () {
+            Route::get('/applications', [LoanController::class, 'index']);
             Route::get('/loans', [LoanController::class, 'index']);
             Route::get('/loans/{loan}', [LoanController::class, 'show']);
         });
         Route::middleware('permission:loans.approve')->group(function () {
             Route::post('/loans', [LoanController::class, 'store']);
             Route::patch('/loans/{loan}/document-review', [LoanController::class, 'patchDocumentReview']);
+            Route::post('/applications/{loan}/pre-approve', [LoanController::class, 'preApprove']);
+            Route::post('/applications/{loan}/return-to-pending', [LoanController::class, 'returnToPending']);
             Route::post('/loans/{loan}/approve', [LoanController::class, 'approve']);
             Route::post('/loans/{loan}/reject', [LoanController::class, 'reject']);
             Route::put('/loan/{loanApplication}', [TravelLoanApplicationAdminController::class, 'update']);
@@ -215,6 +221,7 @@ Route::prefix('v1')->group(function () {
 
         Route::middleware('permission:borrowers.view')->group(function () {
             Route::get('/borrowers', [BorrowerController::class, 'index']);
+            Route::get('/borrowers/archived', [BorrowerController::class, 'archived']);
             Route::get('/borrowers/{borrower}/uploaded-files', [BorrowerController::class, 'uploadedFiles']);
             Route::get('/borrowers/{borrower}', [BorrowerController::class, 'show']);
             Route::get('/borrowers/{borrower}/credit-wellness', [CreditWellnessController::class, 'showBorrower']);
@@ -234,12 +241,37 @@ Route::prefix('v1')->group(function () {
 
         Route::middleware('permission:borrowers.delete')->group(function () {
             Route::delete('/borrowers/{borrower}', [BorrowerController::class, 'destroy']);
+            Route::delete('/borrowers/{borrower}/permanent', [BorrowerController::class, 'permanentDestroy']);
+        });
+
+        Route::middleware('permission:borrowers.archive')->group(function () {
+            Route::post('/borrowers/{borrower}/archive', [BorrowerController::class, 'archive']);
+        });
+
+        Route::middleware('permission:borrowers.restore')->group(function () {
+            Route::post('/borrowers/{borrower}/restore', [BorrowerController::class, 'restore']);
         });
 
         Route::middleware('permission:reports.view')->group(function () {
             Route::get('/reports/summary', [ReportController::class, 'summary']);
             Route::post('/reports/print-log', [ReportController::class, 'logPrint']);
             Route::get('/reports/payments/ledger', [ReportController::class, 'paymentLedger']);
+        });
+
+        Route::middleware('permission:soa.view')->group(function () {
+            Route::get('/soa', [SOAController::class, 'index']);
+            Route::get('/soa/analytics', [SOAController::class, 'analytics']);
+            Route::get('/soa/export', [SOAController::class, 'export']);
+            Route::get('/soa/eligible-loans', [SOAController::class, 'eligibleLoans']);
+            Route::get('/soa/{statement}', [SOAController::class, 'show']);
+            Route::get('/soa/{statement}/preview', [SOAController::class, 'preview']);
+            Route::get('/soa/{statement}/preview-pdf', [SOAController::class, 'previewPdf']);
+            Route::get('/soa/{statement}/download', [SOAController::class, 'download']);
+        });
+        Route::middleware('permission:soa.manage')->group(function () {
+            Route::post('/soa/generate', [SOAController::class, 'generate']);
+            Route::post('/soa/batch-generate', [SOAController::class, 'batch']);
+            Route::post('/soa/{statement}/resend-email', [SOAController::class, 'resend']);
         });
 
         Route::middleware('permission:payments.export')->group(function () {
@@ -249,6 +281,7 @@ Route::prefix('v1')->group(function () {
         Route::middleware('permission:payments.manage')->group(function () {
             Route::get('/collections/pipeline-summary', [AdminCollectionsController::class, 'pipelineSummary']);
             Route::get('/payments', [PaymentController::class, 'index']);
+            Route::get('/payments/manual-options', [PaymentController::class, 'manualOptions']);
             Route::put('/payments/{payment}', [PaymentController::class, 'record']);
             Route::patch('/payments/{payment}/status', [PaymentController::class, 'updateStatus']);
             Route::patch('/payments/{payment}/verify', [PaymentController::class, 'verify']);
@@ -358,6 +391,15 @@ Route::prefix('v1')->group(function () {
         Route::get('/leads/{lead}/messages', [AdminLeadController::class, 'messages']);
         Route::post('/leads/{lead}/messages', [AdminLeadController::class, 'sendMessage']);
         Route::post('/leads/{leadRef}/email', [AdminLeadController::class, 'sendEmail']);
+        Route::get('/borrower-communications/dashboard', [AdminBorrowerCommunicationController::class, 'dashboard']);
+        Route::get('/borrower-communications/portal-conversations', [AdminBorrowerCommunicationController::class, 'portalConversations']);
+        Route::get('/borrower-communications/portal-conversations/{conversation}/messages', [AdminBorrowerCommunicationController::class, 'portalMessages']);
+        Route::post('/borrower-communications/portal-conversations/{conversation}/messages', [AdminBorrowerCommunicationController::class, 'sendPortalMessage']);
+        Route::get('/borrower-communications/support-tickets', [AdminBorrowerCommunicationController::class, 'tickets']);
+        Route::get('/borrower-communications/support-tickets/{ticket}', [AdminBorrowerCommunicationController::class, 'ticketMessages']);
+        Route::patch('/borrower-communications/support-tickets/{ticket}', [AdminBorrowerCommunicationController::class, 'updateTicket']);
+        Route::post('/borrower-communications/support-tickets/{ticket}/messages', [AdminBorrowerCommunicationController::class, 'replyTicket']);
+        Route::post('/borrower-communications/support-tickets/{ticket}/notes', [AdminBorrowerCommunicationController::class, 'storeTicketNote']);
         Route::get('/chat/conversations', [AdminChatController::class, 'conversations']);
         Route::get('/chat/conversations/{sessionId}/messages', [AdminChatController::class, 'messages']);
         Route::post('/chat/conversations/{sessionId}/messages', [AdminChatController::class, 'sendMessage']);
@@ -407,6 +449,9 @@ Route::prefix('v1')->group(function () {
         Route::get('/dashboard', [BorrowerPortalController::class, 'dashboard']);
         Route::get('/credit-wellness', [CreditWellnessController::class, 'borrowerDashboard']);
         Route::get('/credit-wellness/eligibility', [CreditWellnessController::class, 'borrowerEligibility']);
+        Route::get('/statements', [BorrowerStatementController::class, 'index']);
+        Route::get('/statements/{statement}', [BorrowerStatementController::class, 'show']);
+        Route::get('/statements/{statement}/download', [BorrowerStatementController::class, 'download']);
         Route::get('/payments', [BorrowerPortalController::class, 'payments']);
         Route::get('/payments/history', [BorrowerPortalController::class, 'paymentHistory']);
         Route::get('/payments/{payment}/official-receipt', [BorrowerPortalController::class, 'downloadOfficialReceipt']);
@@ -424,6 +469,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/notification-preferences', [NotificationPreferenceController::class, 'show']);
         Route::put('/notification-preferences', [NotificationPreferenceController::class, 'update']);
         Route::post('/profile', [BorrowerPortalController::class, 'updateProfile']);
+        Route::get('/tickets', [BorrowerPortalController::class, 'tickets']);
+        Route::post('/tickets', [BorrowerPortalController::class, 'storeTicket'])->middleware('throttle:12,1');
         Route::get('/chat/messages', [BorrowerPortalController::class, 'chatMessages']);
         Route::post('/chat/messages', [BorrowerPortalController::class, 'sendChatMessage']);
 

@@ -236,12 +236,6 @@ export default function ReportsPage() {
         </div>
       )}
 
-      <p className={`text-xs ${admin.textMuted}`}>
-        Printing records an activity log entry (<code className="rounded bg-gray-100 px-1 py-0.5 text-[10px]">POST /reports/print-log</code>) and requires permission{' '}
-        <code className="rounded bg-gray-100 px-1 py-0.5 text-[10px]">reports.view</code>. Use your browser print dialog;
-        enable headers and footers if you need automatic page numbers.
-      </p>
-
       {/* Off-screen on screen; sole visible content when printing (see index.css @media print) */}
       <div id="financial-report-print-root" className="print-only-amalg financial-print-doc">
         <div className="financial-print-watermark" aria-hidden>

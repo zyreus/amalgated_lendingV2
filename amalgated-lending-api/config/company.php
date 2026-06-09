@@ -12,17 +12,12 @@ return [
     /** Italic serif tagline; Blade/JS wrap with curly quotes for display. */
     'print_tagline' => env('COMPANY_PRINT_TAGLINE', 'Lending Hope, Building Futures.'),
 
-    /** Right-aligned address block (one string per line). */
+    /** Optional right-aligned address block (one string per line). Hidden by default on printable forms. */
     'print_address_lines' => array_values(array_filter(array_map(
         'trim',
         preg_split(
             '/\r\n|\r|\n/',
-            (string) env('COMPANY_PRINT_ADDRESS', implode("\n", [
-                'ACI IT and Corporate Centre,',
-                'Doña Carolina Uy Kim Peng Building, Cor.',
-                'JP Laurel Avenue and Inigo Street,',
-                'Bajada, Davao City 8000',
-            ]))
+            (string) env('COMPANY_PRINT_ADDRESS', '')
         )
     ))),
 ];

@@ -18,7 +18,7 @@ class PaymentReceiptMail extends Mailable
     public function __construct(
         public Payment $payment,
     ) {
-        $this->payment->loadMissing(['loan.borrower']);
+        $this->payment->loadMissing(['loan.borrower', 'processedByUser', 'recordedByUser', 'confirmedByUser']);
     }
 
     public function build(): static
@@ -56,13 +56,19 @@ class PaymentReceiptMail extends Mailable
 
         $disk = Storage::disk('public');
         $borrowerProofPath = $this->payment->receipt_path;
-        $officialPdfPath = $this->payment->invoice_pdf_path;
+        $officialPdfPath = $this->payment->receipt_pdf_path ?: $this->payment->invoice_pdf_path;
 
         $attachmentNote = 'Your official PDF receipt is attached when available. You can also download it anytime from Borrower Portal → Payments.';
 
         $portalBase = rtrim((string) config('app.frontend_url', (string) config('app.url')), '/');
 
-        $this->subject('Payment confirmed — '.$invoiceNumber.' ('.$loanNumber.') — '.config('app.name'))
+        $processedBy = trim((string) ($this->payment->processed_by_name ?? ''))
+            ?: trim((string) ($this->payment->processedByUser?->name ?? ''))
+            ?: trim((string) ($this->payment->recordedByUser?->name ?? ''))
+            ?: trim((string) ($this->payment->confirmedByUser?->name ?? ''))
+            ?: 'Authorized representative';
+
+        $this->subject('Payment Receipt - Loan '.$loanNumber)
             ->view('mail.payment-receipt', $this->mailViewData([
                 'borrowerName' => $borrowerName,
                 'invoiceNumber' => $invoiceNumber,
@@ -78,6 +84,7 @@ class PaymentReceiptMail extends Mailable
                 'attachmentNote' => $attachmentNote,
                 'paymentMethodLabel' => $paymentMethodLabel,
                 'referenceNumber' => trim((string) ($this->payment->reference_number ?? '')),
+                'processedBy' => $processedBy,
                 'portalPaymentsUrl' => $portalBase.'/borrower/payments',
             ]));
 

@@ -9,9 +9,31 @@ import { useLogoutConfirm } from '../context/useLogoutConfirm.js'
 import { admin } from './components/AdminUi.jsx'
 import AdminHeaderClock from './components/AdminHeaderClock.jsx'
 import { ADMIN_NAV_GROUPS } from './adminNavConfig.js'
+import {
+  BarChart3,
+  Bell,
+  BriefcaseBusiness,
+  ClipboardList,
+  CreditCard,
+  FileText,
+  History,
+  LayoutDashboard,
+  Megaphone,
+  Menu,
+  MessageCircleMore,
+  MessageSquareHeart,
+  PieChart,
+  Settings,
+  ShieldCheck,
+  ShieldPlus,
+  UserRound,
+  UsersRound,
+  WalletCards,
+} from 'lucide-react'
 
 /** Retired admin routes — hidden from API-driven nav (legacy DB rows). */
 const RETIRED_ADMIN_PATHS = new Set([
+  '/admin/loans',
   '/admin/underwriting-queue',
   '/admin/document-verification',
   '/admin/risk-analytics',
@@ -26,22 +48,55 @@ import amalgatedLogo from '../assets/amalgated-lending-logo.png'
  */
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage.jsx'))
 
-function NavIcon({ name, className }) {
-  const c = className || 'h-5 w-5 shrink-0'
-  if (name === 'dash') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12h7V3H3v9zm11 9h7V12h-7v9zM3 21h7v-7H3v7zm11-9h7V3h-7v9z" /></svg>
-  if (name === 'users') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-  if (name === 'roles') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-  if (name === 'loans') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-  if (name === 'pay') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
-  if (name === 'settings') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-  if (name === 'activity') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-  if (name === 'bell') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-  if (name === 'chat') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-  if (name === 'borrowers') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-  if (name === 'report') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-  if (name === 'products') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-  if (name === 'forms') return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-  return <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7" /></svg>
+const ICON_CONFIG = {
+  dash: { Icon: LayoutDashboard, wrapper: 'bg-rose-100 text-rose-600' },
+  borrowers: { Icon: UsersRound, wrapper: 'bg-pink-100 text-pink-600' },
+  products: { Icon: BriefcaseBusiness, wrapper: 'bg-blue-100 text-blue-600' },
+  forms: { Icon: FileText, wrapper: 'bg-green-100 text-green-600' },
+  loans: { Icon: ClipboardList, wrapper: 'bg-violet-100 text-violet-600' },
+  pay: { Icon: CreditCard, wrapper: 'bg-rose-100 text-rose-600' },
+  collections: { Icon: WalletCards, wrapper: 'bg-orange-100 text-orange-600' },
+  soa: { Icon: BarChart3, wrapper: 'bg-cyan-100 text-cyan-600' },
+  reports: { Icon: PieChart, wrapper: 'bg-purple-100 text-purple-600' },
+  wellness: { Icon: ShieldPlus, wrapper: 'bg-emerald-100 text-emerald-600' },
+  chat: { Icon: MessageCircleMore, wrapper: 'bg-sky-100 text-sky-600' },
+  feedback: { Icon: MessageSquareHeart, wrapper: 'bg-amber-100 text-amber-600' },
+  news: { Icon: Megaphone, wrapper: 'bg-fuchsia-100 text-fuchsia-600' },
+  users: { Icon: UserRound, wrapper: 'bg-blue-100 text-blue-600' },
+  roles: { Icon: ShieldCheck, wrapper: 'bg-green-100 text-green-600' },
+  settings: { Icon: Settings, wrapper: 'bg-violet-100 text-violet-600' },
+  activity: { Icon: History, wrapper: 'bg-yellow-100 text-yellow-600' },
+  bell: { Icon: Bell, wrapper: 'bg-amber-100 text-amber-600' },
+  report: { Icon: BarChart3, wrapper: 'bg-cyan-100 text-cyan-600' },
+}
+
+function iconKeyForItem(item) {
+  const path = item?.path || ''
+  if (path === '/admin/collections') return 'collections'
+  if (path === '/admin/soa') return 'soa'
+  if (path === '/admin/reports') return 'reports'
+  if (path === '/admin/credit-wellness') return 'wellness'
+  if (path === '/admin/feedback') return 'feedback'
+  if (path === '/admin/newsletter') return 'news'
+  return item?.icon_key || 'dash'
+}
+
+function NavIcon({ item, name, active = false }) {
+  const config = ICON_CONFIG[name || iconKeyForItem(item)] || ICON_CONFIG.dash
+  const Icon = config.Icon
+  return (
+    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-200 ease-in-out group-hover:scale-105 group-hover:shadow-sm ${config.wrapper} ${active ? 'ring-2 ring-white/80' : ''}`}>
+      <Icon className="size-[18px] stroke-[2]" aria-hidden />
+    </span>
+  )
+}
+
+function SidebarTooltip({ children }) {
+  return (
+    <span className="pointer-events-none absolute left-[calc(100%+0.75rem)] top-1/2 z-[90] hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-[#0F172A] px-3 py-2 text-xs font-semibold text-white opacity-0 shadow-lg transition-all duration-200 ease-in-out group-hover:translate-x-1 group-hover:opacity-100 lg:block">
+      {children}
+    </span>
+  )
 }
 
 function normalizeNavItem(item, i) {
@@ -113,9 +168,9 @@ function mergeApiNav(rows, can) {
 }
 
 const shell =
-  'flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden portal-shell-bg text-brand-text'
+  'flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden bg-[#F5EEDF] text-brand-text'
 const asideBase =
-  'fixed inset-y-0 left-0 z-50 flex h-[100dvh] flex-col border-r border-black/[0.06] bg-white/95 shadow-[4px_0_40px_rgba(29,29,31,0.07)] backdrop-blur-xl transition-[transform,width] duration-300 ease-out lg:translate-x-0'
+  'fixed inset-y-0 left-0 z-50 flex h-[100dvh] flex-col border-r border-[#E5E7EB] bg-[#F8F8F8] shadow-[8px_0_32px_rgba(15,23,42,0.06)] transition-[transform,width] duration-300 ease-out lg:translate-x-0'
 
 const SIDEBAR_COLLAPSED_KEY = 'al-admin-sidebar-collapsed'
 
@@ -357,12 +412,12 @@ export default function AdminLayout() {
   }
 
   const navInactive =
-    'border-transparent text-gray-600 hover:bg-brand-primary/[0.06] hover:text-brand-text'
+    'border-transparent text-[#475569] hover:scale-[1.01] hover:bg-white hover:text-[#0F172A] hover:shadow-sm hover:shadow-rose-900/5'
   const navActive =
-    'border-brand-primary bg-brand-primary/10 text-brand-primary shadow-[inset_0_0_0_1px_rgba(217,34,67,0.14)]'
+    'border-[#F8B4C3] bg-[#FCE7EF] text-[#E11D48] shadow-sm shadow-rose-900/10 before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-[#E11D48]'
   const sidebarTransform = mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-  const asideWidthClass = sidebarCollapsed ? 'w-[17.5rem] lg:w-[4.75rem]' : 'w-[17.5rem]'
-  const mainPlClass = sidebarCollapsed ? 'lg:pl-[4.75rem]' : 'lg:pl-[17.5rem]'
+  const asideWidthClass = sidebarCollapsed ? 'w-[240px] lg:w-[72px]' : 'w-[240px]'
+  const mainPlClass = sidebarCollapsed ? 'lg:pl-[72px]' : 'lg:pl-[240px]'
 
   return (
     <div className={`${shell} portal-page`}>
@@ -376,17 +431,17 @@ export default function AdminLayout() {
       ) : null}
 
       <aside className={`${asideBase} ${asideWidthClass} ${sidebarTransform}`}>
-        <div className="flex h-full min-h-0 flex-col">
+        <div className="flex h-full min-h-0 flex-col gap-2 px-3 py-4">
           <div
-            className={`shrink-0 border-b border-gray-100 bg-gradient-to-br from-white to-gray-50/80 px-3 py-3 ${sidebarCollapsed ? 'lg:px-2 lg:py-2.5' : ''}`}
+            className={`shrink-0 ${sidebarCollapsed ? 'lg:flex lg:flex-col lg:items-center' : ''}`}
           >
             <div
-              className={`flex items-center justify-between gap-2 ${sidebarCollapsed ? 'lg:flex-col lg:items-center lg:gap-2' : ''}`}
+              className={`flex items-center justify-between gap-3 ${sidebarCollapsed ? 'lg:flex-col lg:items-center' : ''}`}
             >
               <div
-                className={`flex min-w-0 flex-1 items-center gap-2.5 ${sidebarCollapsed ? 'lg:flex-col lg:items-center' : ''}`}
+                className={`flex min-w-0 flex-1 items-center gap-3 ${sidebarCollapsed ? 'lg:flex-col lg:items-center' : ''}`}
               >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white shadow-sm shadow-red-500/10 ring-1 ring-black/5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm shadow-rose-900/10 ring-1 ring-[#E5E7EB]">
                   <img
                     src={amalgatedLogo}
                     alt="Amalgated Lending Inc."
@@ -396,11 +451,11 @@ export default function AdminLayout() {
                   />
                 </div>
                 <div className={`min-w-0 flex-1 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
-                  <p className="truncate text-[9px] font-semibold uppercase leading-tight tracking-[0.12em] text-brand-primary">
+                  <p className="truncate text-[10px] font-semibold uppercase leading-tight tracking-[0.18em] text-[#E11D48]">
                     Amalgated Lending Inc.
                   </p>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <p className="shrink-0 text-sm font-semibold leading-tight tracking-tight text-gray-900">Admin</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <p className="shrink-0 text-base font-semibold leading-tight tracking-tight text-[#0F172A]">Admin</p>
                     {user && displayRoles.length > 0 ? (
                       <div className="flex min-w-0 flex-wrap gap-1" aria-label="Your roles">
                         {displayRoles.map((r) => (
@@ -420,95 +475,98 @@ export default function AdminLayout() {
               <button
                 type="button"
                 onClick={toggleSidebarCollapsed}
-                className="hidden shrink-0 rounded-lg border border-gray-200/80 p-1 text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 lg:inline-flex"
+                className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#E5E7EB] bg-white text-[#64748B] shadow-sm transition hover:scale-105 hover:text-[#0F172A] lg:inline-flex"
                 title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                 aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                 aria-expanded={!sidebarCollapsed}
               >
-                {sidebarCollapsed ? (
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
-                ) : (
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                  </svg>
-                )}
+                <Menu className="h-4 w-4" aria-hidden />
               </button>
             </div>
           </div>
 
-          <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-3 py-4">
+          <nav className="scrollbar-thin scrollbar-thumb-[#D8D8D8] scrollbar-track-transparent min-h-0 flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden overscroll-contain scroll-smooth py-2 [scrollbar-color:#D8D8D8_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#D8D8D8] [&::-webkit-scrollbar-track]:bg-transparent">
             {navLoading && navGroups.length === 0 ? (
               <p className="px-2 text-sm text-gray-500">Loading menu…</p>
             ) : (
-              navGroups.map((group) => (
-                <div key={group.id}>
-                  <p
-                    className={`mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 ${sidebarCollapsed ? 'lg:hidden' : ''}`}
-                  >
-                    {group.label}
-                  </p>
-                  <div className="space-y-0.5">
-                    {group.items.map((item) => (
-                      <NavLink
-                        key={item.id ?? item.path}
-                        to={item.path}
-                        end={Boolean(item.match_end)}
-                        title={sidebarCollapsed ? item.label : undefined}
-                        onClick={() => setMobileOpen(false)}
-                        className={({ isActive }) =>
-                          [
-                            'relative flex items-center gap-3 rounded-lg border-l-[3px] px-2.5 py-2 text-sm font-medium transition-colors duration-150',
-                            sidebarCollapsed ? 'lg:justify-center lg:gap-0 lg:px-2' : '',
-                            isActive ? navActive : navInactive,
-                          ].join(' ')
-                        }
+              navGroups.map((group) => {
+                const isOverview = group.id === 'overview'
+                return (
+                  <div key={group.id} className={isOverview ? 'space-y-1.5' : 'mt-5 space-y-1.5 first:mt-0'}>
+                    {!isOverview ? (
+                      <p
+                        className={`mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF] ${sidebarCollapsed ? 'lg:hidden' : ''}`}
                       >
-                        <span className="relative inline-flex shrink-0">
-                          <NavIcon name={item.icon_key || 'dash'} />
-                          {item.path === '/admin/notifications' && notifUnread != null && notifUnread > 0 && sidebarCollapsed ? (
-                            <span className="absolute -right-2 -top-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
-                              {notifUnread > 99 ? '99+' : notifUnread}
-                            </span>
-                          ) : null}
-                          {item.path === '/admin/chat-crm' && crmVisitorPing > 0 && sidebarCollapsed ? (
-                            <span
-                              className="absolute -right-0.5 -top-1 h-2 w-2 rounded-full bg-red-600 ring-2 ring-white"
-                              title="Unread visitor chats"
-                              aria-label="CRM has live visitor activity"
-                            />
-                          ) : null}
-                        </span>
-                        <span className={`min-w-0 flex-1 leading-snug ${sidebarCollapsed ? 'lg:sr-only' : ''}`}>{item.label}</span>
-                        {item.path === '/admin/notifications' && notifUnread != null && notifUnread > 0 && !sidebarCollapsed ? (
-                          <span className="ml-auto inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
-                            {notifUnread > 99 ? '99+' : notifUnread}
-                          </span>
-                        ) : null}
-                        {item.path === '/admin/chat-crm' && crmVisitorPing > 0 && !sidebarCollapsed ? (
-                          <span
-                            className="ml-auto inline-flex h-2 w-2 rounded-full bg-red-600 ring-2 ring-white"
-                            title="Unread visitor chats"
-                            aria-label="CRM live"
-                          />
-                        ) : null}
-                      </NavLink>
-                    ))}
+                        {group.label}
+                      </p>
+                    ) : null}
+                    <div className="space-y-1.5">
+                      {group.items.map((item) => (
+                        <div key={item.id ?? item.path} className="group relative">
+                          <NavLink
+                            to={item.path}
+                            end={Boolean(item.match_end)}
+                            title={sidebarCollapsed ? item.label : undefined}
+                            onClick={() => setMobileOpen(false)}
+                            className={({ isActive }) =>
+                              [
+                                'relative flex h-[52px] w-full items-center gap-3 overflow-hidden rounded-xl border border-transparent border-l-4 px-3 py-2 text-[15px] font-medium transition-all duration-200 ease-in-out',
+                                sidebarCollapsed ? 'lg:justify-center lg:gap-0 lg:border lg:p-0' : '',
+                                isActive ? navActive : navInactive,
+                              ].join(' ')
+                            }
+                          >
+                            {({ isActive }) => (
+                              <>
+                                <span className="relative inline-flex shrink-0">
+                                  <NavIcon item={item} active={isActive} />
+                                  {item.path === '/admin/notifications' && notifUnread != null && notifUnread > 0 && sidebarCollapsed ? (
+                                    <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
+                                      {notifUnread > 99 ? '99+' : notifUnread}
+                                    </span>
+                                  ) : null}
+                                  {item.path === '/admin/chat-crm' && crmVisitorPing > 0 && sidebarCollapsed ? (
+                                    <span
+                                      className="absolute -right-0.5 -top-1 h-2 w-2 rounded-full bg-red-600 ring-2 ring-white"
+                                      title="Unread visitor chats"
+                                      aria-label="CRM has live visitor activity"
+                                    />
+                                  ) : null}
+                                </span>
+                                <span className={`min-w-0 flex-1 leading-snug ${isActive ? 'font-semibold' : ''} ${sidebarCollapsed ? 'lg:sr-only' : ''}`}>{item.label}</span>
+                                {item.path === '/admin/notifications' && notifUnread != null && notifUnread > 0 && !sidebarCollapsed ? (
+                                  <span className="ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1.5 text-[10px] font-bold leading-none text-white">
+                                    {notifUnread > 99 ? '99+' : notifUnread}
+                                  </span>
+                                ) : null}
+                                {item.path === '/admin/chat-crm' && crmVisitorPing > 0 && !sidebarCollapsed ? (
+                                  <span
+                                    className="ml-auto inline-flex h-2.5 w-2.5 rounded-full bg-red-600 ring-2 ring-white"
+                                    title="Unread visitor chats"
+                                    aria-label="CRM live"
+                                  />
+                                ) : null}
+                              </>
+                            )}
+                          </NavLink>
+                          {sidebarCollapsed ? <SidebarTooltip>{item.label}</SidebarTooltip> : null}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))
+                )
+              })
             )}
           </nav>
 
-          <div className={`shrink-0 space-y-1 border-t border-gray-100 bg-gray-50/50 p-3 ${sidebarCollapsed ? 'lg:px-2' : ''}`}>
+          <div className="shrink-0">
             <Link
               to="/"
               onClick={() => setMobileOpen(false)}
               title="Public site"
-              className={`flex items-center gap-2 rounded-lg px-2.5 py-2.5 text-sm text-gray-700 transition hover:bg-white hover:text-gray-900 ${sidebarCollapsed ? 'lg:justify-center' : ''}`}
+              className={`flex items-center gap-2 rounded-xl px-3 py-2 text-[15px] font-medium text-[#475569] transition hover:bg-white hover:text-[#0F172A] hover:shadow-sm ${sidebarCollapsed ? 'lg:justify-center lg:px-2' : ''}`}
             >
-              <span aria-hidden>←</span>
+              <Menu className="h-4 w-4 shrink-0" aria-hidden />
               <span className={sidebarCollapsed ? 'lg:sr-only' : ''}>Public site</span>
             </Link>
           </div>

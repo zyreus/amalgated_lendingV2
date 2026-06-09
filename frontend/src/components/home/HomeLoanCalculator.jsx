@@ -8,6 +8,15 @@ function peso(v) {
   return Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function formatAmountInput(value) {
+  const digits = String(value || '').replace(/\D/g, '')
+  return digits ? Number(digits).toLocaleString() : ''
+}
+
+function cleanAmountInput(value) {
+  return String(value || '').replace(/\D/g, '')
+}
+
 function isTravelProduct(product) {
   const cfg = product?.calculator_config || {}
   return product?.slug === 'travel-assistance-loan' || cfg?.fee_profile === 'travel'
@@ -38,7 +47,6 @@ export default function HomeLoanCalculator() {
         const rows = await getLoanProducts()
         if (cancelled) return
         setProducts(Array.isArray(rows) ? rows : [])
-        if (rows?.[0]?.id) setProductId(String(rows[0].id))
       } catch {
         if (!cancelled) setProducts([])
       }
@@ -118,59 +126,83 @@ export default function HomeLoanCalculator() {
       </p>
 
       <div className="mt-8 grid gap-5 sm:grid-cols-2">
-        <select
-          className={loanCalculatorSelectClass}
-          value={productId}
-          onChange={(e) => setProductId(e.target.value)}
-          aria-label="Loan type"
-        >
-          <option value="">Select loan product</option>
-          {products.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-        <input
-          className={loanCalculatorAmountInputClass}
-          type="number"
-          min="1000"
-          max={travelMode ? 2000000 : undefined}
-          value={loanAmount}
-          onChange={(e) => setLoanAmount(e.target.value)}
-          placeholder={travelMode ? 'Loan amount (max 2,000,000)' : 'Loan amount'}
-          aria-label="Loan amount"
-        />
-        {travelMode ? (
-          <select
-            className={`${loanCalculatorSelectClass} cursor-not-allowed opacity-80`}
-            disabled
-            value="1"
-            aria-label="Loan term in months"
-          >
-            <option value="1">1</option>
-          </select>
-        ) : (
+        <label className="block">
+          <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-brand-text/70">
+            Loan Products
+          </span>
           <select
             className={loanCalculatorSelectClass}
-            value={termMonths}
-            onChange={(e) => setTermMonths(e.target.value)}
-            aria-label="Loan term in months"
+            value={productId}
+            onChange={(e) => setProductId(e.target.value)}
+            aria-label="Loan Products"
           >
-            {termMonthOptions.map((m) => (
-              <option key={m} value={String(m)}>
-                {m}
-              </option>
+            <option value="">Select loan product</option>
+            {products.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
-        )}
-        <select
-          className={loanCalculatorSelectClass}
-          value={nature}
-          onChange={(e) => setNature(e.target.value)}
-          aria-label="New loan or re-loan"
-        >
-          <option value="new">New loan</option>
-          <option value="reloan">Re-loan</option>
-        </select>
+        </label>
+        <label className="block">
+          <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-brand-text/70">
+            Enter Amount in Peso
+          </span>
+          <span className="relative block">
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-black dark:text-white">
+              ₱
+            </span>
+            <input
+              className={`${loanCalculatorAmountInputClass} pl-9`}
+              type="text"
+              inputMode="numeric"
+              value={formatAmountInput(loanAmount)}
+              onChange={(e) => setLoanAmount(cleanAmountInput(e.target.value))}
+              placeholder={travelMode ? 'Amount (max 2,000,000)' : 'Amount'}
+              aria-label="Enter Amount in Peso"
+            />
+          </span>
+        </label>
+        <label className="block">
+          <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-brand-text/70">
+            Loan Month Terms
+          </span>
+          {travelMode ? (
+            <select
+              className={`${loanCalculatorSelectClass} cursor-not-allowed opacity-80`}
+              disabled
+              value="1"
+              aria-label="Loan Month Terms"
+            >
+              <option value="1">1</option>
+            </select>
+          ) : (
+            <select
+              className={loanCalculatorSelectClass}
+              value={termMonths}
+              onChange={(e) => setTermMonths(e.target.value)}
+              aria-label="Loan Month Terms"
+            >
+              {termMonthOptions.map((m) => (
+                <option key={m} value={String(m)}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          )}
+        </label>
+        <label className="block">
+          <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-transparent">
+            Loan Nature
+          </span>
+          <select
+            className={loanCalculatorSelectClass}
+            value={nature}
+            onChange={(e) => setNature(e.target.value)}
+            aria-label="New loan or re-loan"
+          >
+            <option value="new">New loan</option>
+            <option value="reloan">Re-loan</option>
+          </select>
+        </label>
         {pensionMode ? (
           <>
             <input

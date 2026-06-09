@@ -37,6 +37,15 @@ export function BorrowerAuthProvider({ children }) {
     return () => window.removeEventListener('lending-borrower-unauthorized', onUnauth)
   }, [])
 
+  /** Refresh profile after inbox verification (user may still be logged in from registration). */
+  useEffect(() => {
+    const onVerified = () => {
+      if (getBorrowerToken()) void loadMe()
+    }
+    window.addEventListener('lending-borrower-email-verified', onVerified)
+    return () => window.removeEventListener('lending-borrower-email-verified', onVerified)
+  }, [loadMe])
+
   const login = useCallback(async (username, password) => {
     const res = await borrowerApi('/borrower/login', {
       method: 'POST',
