@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
@@ -12,7 +13,6 @@ import {
   FileText,
   Home,
   Landmark,
-  LockKeyhole,
   LogIn,
   MapPin,
   Menu,
@@ -142,10 +142,10 @@ function BrandMark({ onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="group flex min-w-0 max-w-[17rem] items-center gap-3 rounded-3xl p-1.5 pr-3 text-left outline-none transition hover:bg-white/70 focus-visible:ring-2 focus-visible:ring-brand-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white sm:max-w-[21rem] xl:max-w-[19rem] 2xl:max-w-[23rem]"
+      className="group flex min-w-0 max-w-[13.5rem] items-center gap-2 rounded-3xl p-1 pr-2 text-left outline-none transition hover:bg-white/70 focus-visible:ring-2 focus-visible:ring-brand-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white min-[380px]:max-w-[15rem] sm:max-w-[21rem] sm:gap-3 sm:p-1.5 sm:pr-3 xl:max-w-[19rem] 2xl:max-w-[23rem]"
       aria-label="Go to Amalgated Lending homepage"
     >
-      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white shadow-[0_12px_30px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/80 transition duration-300 group-hover:-translate-y-0.5 group-hover:ring-brand-primary/30 sm:h-14 sm:w-14">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white shadow-[0_12px_30px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/80 transition duration-300 group-hover:-translate-y-0.5 group-hover:ring-brand-primary/30 sm:h-14 sm:w-14">
         <img
           src="/amalgated-lending-logo.png"
           alt=""
@@ -153,11 +153,11 @@ function BrandMark({ onClick }) {
           height={52}
           decoding="async"
           fetchPriority="high"
-          className="h-10 w-10 rounded-xl object-contain sm:h-12 sm:w-12"
+          className="h-8 w-8 rounded-xl object-contain sm:h-12 sm:w-12"
         />
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-base font-bold tracking-tight text-slate-950 sm:text-xl xl:text-lg 2xl:text-xl">
+        <span className="block truncate text-sm font-bold tracking-tight text-slate-950 min-[380px]:text-base sm:text-xl xl:text-lg 2xl:text-xl">
           Amalgated Lending Inc.
         </span>
         <span className="mt-0.5 hidden truncate text-sm font-medium text-slate-500 sm:block xl:text-xs 2xl:text-sm">
@@ -260,14 +260,16 @@ function MobileDrawer({ open, id, reduceMotion, close, goToSection, goHome }) {
     }
   }, [open])
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <AnimatePresence>
       {open ? (
         <>
           <motion.button
             type="button"
             aria-label="Close navigation overlay"
-            className="fixed inset-0 z-[70] bg-slate-950/35 backdrop-blur-sm xl:hidden"
+            className="fixed inset-0 z-[90] bg-slate-950/35 backdrop-blur-sm xl:hidden"
             initial={reduceMotion ? false : { opacity: 0 }}
             animate={reduceMotion ? {} : { opacity: 1 }}
             exit={reduceMotion ? {} : { opacity: 0 }}
@@ -276,14 +278,14 @@ function MobileDrawer({ open, id, reduceMotion, close, goToSection, goHome }) {
           <motion.nav
             id={id}
             aria-label="Mobile navigation"
-            className="fixed bottom-0 right-0 top-0 z-[80] flex w-[min(92vw,420px)] flex-col overflow-hidden border-l border-white/70 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.28)] xl:hidden"
+            className="fixed bottom-0 right-0 top-0 z-[100] flex w-full flex-col overflow-hidden bg-white shadow-[0_30px_80px_rgba(15,23,42,0.28)] sm:w-[min(92vw,420px)] sm:border-l sm:border-white/70 xl:hidden"
             initial={reduceMotion ? false : { x: '100%' }}
             animate={reduceMotion ? {} : { x: 0 }}
             exit={reduceMotion ? {} : { x: '100%' }}
             transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
           >
-            <div className="flex items-center justify-between border-b border-slate-200/80 px-5 py-4">
-              <div>
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 px-4 py-4 sm:px-5">
+              <div className="min-w-0">
                 <p className="text-sm font-bold text-slate-950">Amalgated Lending</p>
                 <p className="text-xs font-medium text-slate-500">Secure borrower navigation</p>
               </div>
@@ -296,7 +298,7 @@ function MobileDrawer({ open, id, reduceMotion, close, goToSection, goHome }) {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex-1 space-y-3 overflow-y-auto px-4 py-5">
+            <div className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-5">
               <button
                 type="button"
                 onClick={() => {
@@ -385,20 +387,13 @@ function MobileDrawer({ open, id, reduceMotion, close, goToSection, goHome }) {
                   <LogIn className="h-4 w-4" />
                   Borrower Login
                 </Link>
-                <Link
-                  to="/admin/login"
-                  onClick={close}
-                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm transition hover:border-brand-primary/30 hover:text-brand-primary"
-                >
-                  <LockKeyhole className="h-4 w-4" />
-                  Admin Portal
-                </Link>
               </div>
             </div>
           </motion.nav>
         </>
       ) : null}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   )
 }
 
@@ -510,13 +505,15 @@ export default function Header() {
     <header
       ref={headerRef}
       className={`sticky top-0 z-[60] w-full border-b transition-all duration-300 ${
-        scrolled
-          ? 'border-white/70 bg-white/82 shadow-[0_18px_60px_rgba(15,23,42,0.10)] backdrop-blur-2xl'
-          : 'border-white/55 bg-white/64 backdrop-blur-xl'
+        mobileOpen
+          ? 'border-white/70 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.10)]'
+          : scrolled
+            ? 'border-white/70 bg-white/82 shadow-[0_18px_60px_rgba(15,23,42,0.10)] backdrop-blur-2xl'
+            : 'border-white/55 bg-white/64 backdrop-blur-xl'
       }`}
     >
       <div className="app-container relative">
-        <div className="flex min-h-[72px] items-center gap-3 py-2.5 xl:grid xl:min-h-[86px] xl:grid-cols-[minmax(270px,0.72fr)_minmax(560px,1fr)_auto] xl:gap-4 2xl:min-h-[92px] 2xl:grid-cols-[minmax(320px,0.9fr)_minmax(650px,1.15fr)_auto] 2xl:gap-6">
+        <div className="flex min-h-16 items-center gap-2 py-2 sm:min-h-[72px] sm:gap-3 sm:py-2.5 xl:grid xl:min-h-[86px] xl:grid-cols-[minmax(270px,0.72fr)_minmax(560px,1fr)_auto] xl:gap-4 2xl:min-h-[92px] 2xl:grid-cols-[minmax(320px,0.9fr)_minmax(650px,1.15fr)_auto] 2xl:gap-6">
           <div className="min-w-0">
             <BrandMark onClick={goHome} />
           </div>

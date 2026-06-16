@@ -60,7 +60,7 @@ module.exports = {
       env: {
         NODE_ENV: 'development',
         // PHP 8.3+ — set PHP_BINARY in repo root `.env` (do not use XAMPP 8.2 `php` on PATH).
-        LARAVEL_PORT: '8001',
+        LARAVEL_PORT: '8000',
       },
       watch: false,
       autorestart: true,

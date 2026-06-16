@@ -11,6 +11,8 @@
     "artisan": "node scripts/artisan.cjs",
     "migrate": "node scripts/artisan.cjs migrate",
     "serve:laravel": "node scripts/serve-laravel.cjs",
+    "serve:octane": "node scripts/serve-octane.cjs",
+    "octane:benchmark": "node scripts/octane-benchmark.cjs",
     "serve:chat": "cd chat-server && node server.js",
     "dev:vite": "npx vite --config frontend/vite.config.js",
     "dev:vite:delayed": "node scripts/wait-laravel.cjs && npx vite --config frontend/vite.config.js",

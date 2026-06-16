@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Mail, Smartphone } from 'lucide-react'
 import PasswordInput from '../../components/PasswordInput.jsx'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 import PrivacyPolicyModal from '../../components/privacy/PrivacyPolicyModal.jsx'
@@ -9,7 +10,7 @@ export default function BorrowerLoginPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { login, loadMe } = useBorrowerAuth()
-  const [phone, setPhone] = useState('')
+  const [loginIdentifier, setLoginIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(true)
   const [loading, setLoading] = useState(false)
@@ -38,17 +39,13 @@ export default function BorrowerLoginPage() {
     setLoading(true)
     setErrorMsg('')
     try {
-      await login(phone.trim(), password, rememberMe)
+      await login(loginIdentifier.trim(), password, rememberMe)
       const redirect = searchParams.get('redirect')
       const target =
         redirect && redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/borrower/dashboard'
       navigate(target, { replace: true })
     } catch (err) {
-      if (err?.body?.verification_required && err?.body?.phone) {
-        navigate(`/borrower/verify-otp?phone=${encodeURIComponent(err.body.phone)}`, { replace: true })
-        return
-      }
-      setErrorMsg(err.message || 'Borrower login failed.')
+      setErrorMsg(err.message || 'Invalid email/mobile number or password.')
     } finally {
       setLoading(false)
     }
@@ -61,7 +58,7 @@ export default function BorrowerLoginPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-primary">Borrower Portal</p>
           <h1 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">Borrower sign in</h1>
           <p className="mt-2 text-sm text-gray-500 transition-colors duration-300 dark:text-gray-400">
-            Use your borrower account credentials.
+            Sign in using your registered email address or phone number.
           </p>
           {verifiedFlag || verifyStatus ? (
             <div
@@ -93,15 +90,31 @@ export default function BorrowerLoginPage() {
             </p>
           </div>
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
-            <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              required
-              placeholder="Phone number (09XXXXXXXXX)"
-              inputMode="tel"
-              autoComplete="tel"
-              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition-colors duration-300 placeholder:text-gray-500 focus:border-[#DC2626]/50 focus:ring-2 focus:ring-[#DC2626]/20 dark:border-[#1F2937] dark:bg-[#0F172A] dark:text-gray-100 dark:placeholder:text-gray-400"
-            />
+            <div>
+              <label htmlFor="login_identifier" className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                Email Address or Mobile Number
+              </label>
+              <div className="mt-2 flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-gray-500 transition-colors duration-300 focus-within:border-[#DC2626]/50 focus-within:ring-2 focus-within:ring-[#DC2626]/20 dark:border-[#1F2937] dark:bg-[#0F172A] dark:text-gray-400">
+                <span className="flex items-center -space-x-1 text-brand-primary dark:text-red-300" aria-hidden="true">
+                  <Mail className="size-4" />
+                  <Smartphone className="size-4" />
+                </span>
+                <input
+                  id="login_identifier"
+                  name="login_identifier"
+                  value={loginIdentifier}
+                  onChange={(e) => setLoginIdentifier(e.target.value)}
+                  required
+                  placeholder="Enter your email address or mobile number"
+                  inputMode="email"
+                  autoComplete="username"
+                  className="min-w-0 flex-1 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-500 dark:text-gray-100 dark:placeholder:text-gray-400"
+                />
+              </div>
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Examples: juan@gmail.com, 09171234567, +639171234567
+              </p>
+            </div>
             <PasswordInput
               value={password}
               onChange={(e) => setPassword(e.target.value)}

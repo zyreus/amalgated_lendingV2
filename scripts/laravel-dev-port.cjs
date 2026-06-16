@@ -28,4 +28,14 @@ function getLaravelPort() {
   return '8000'
 }
 
-module.exports = { getLaravelPort }
+function getOctanePort() {
+  const fromProc = process.env.OCTANE_PORT
+  if (fromProc && /^\d+$/.test(String(fromProc).trim())) {
+    return String(fromProc).trim()
+  }
+  const fromFile = readFromDotEnv('OCTANE_PORT')
+  if (fromFile && /^\d+$/.test(fromFile)) return fromFile
+  return '8000'
+}
+
+module.exports = { getLaravelPort, getOctanePort }

@@ -19,6 +19,8 @@ use Illuminate\Validation\Rules\Password;
 
 class BorrowerAuthController extends Controller
 {
+    private const GENERIC_LOGIN_MESSAGE = 'Invalid email/mobile number or password.';
+
     public function register(Request $request, ActivityLogger $logger, BorrowerOtpService $otp): JsonResponse
     {
         $request->merge([
@@ -126,41 +128,43 @@ class BorrowerAuthController extends Controller
     public function login(Request $request, ActivityLogger $logger, AuthSecurityRecorder $security): JsonResponse
     {
         $data = $request->validate([
-            'username' => 'required|string',
+            'identifier' => 'nullable|string|max:255',
+            'username' => 'nullable|string|max:255',
             'password' => 'required|string',
         ]);
 
-        $login = trim($data['username']);
+        $login = $this->requestIdentifier($request);
+        if ($login === '' || ! $this->isValidLoginIdentifier($login)) {
+            $security->recordFailure('borrower_api', $login, ['reason' => 'invalid_identifier']);
+
+            return $this->genericLoginFailure();
+        }
+
         $user = $this->resolveUser($login);
         if (! $user || ! Hash::check($data['password'], (string) $user->password)) {
             $security->recordFailure('borrower_api', $login);
 
-            return response()->json(['ok' => false, 'message' => 'Invalid username or password.'], 401);
+            return $this->genericLoginFailure();
         }
         if (! $user->is_active) {
             $security->recordFailure('borrower_api', $login, ['reason' => 'inactive']);
 
-            return response()->json(['ok' => false, 'message' => 'Account is deactivated.'], 403);
+            return $this->genericLoginFailure();
         }
         if (! $user->canUseBorrowerPortal()) {
             $security->recordFailure('borrower_api', $login, ['reason' => 'not_borrower']);
 
-            return response()->json(['ok' => false, 'message' => 'Only borrower accounts can use borrower login.'], 403);
+            return $this->genericLoginFailure();
         }
         if (($user->borrower_status ?? 'verified') === 'pending_verification' && ! $user->phone_verified_at) {
             $security->recordFailure('borrower_api', $login, ['reason' => 'phone_unverified']);
 
-            return response()->json([
-                'ok' => false,
-                'message' => 'Please verify your phone number before signing in.',
-                'verification_required' => true,
-                'phone' => $user->phone,
-            ], 423);
+            return $this->genericLoginFailure();
         }
         if (in_array((string) ($user->borrower_status ?? ''), ['blocked', 'suspended'], true)) {
             $security->recordFailure('borrower_api', $login, ['reason' => $user->borrower_status]);
 
-            return response()->json(['ok' => false, 'message' => 'This borrower account is '.$user->borrower_status.'.'], 403);
+            return $this->genericLoginFailure();
         }
 
         $token = auth('api')->login($user);
@@ -271,15 +275,16 @@ class BorrowerAuthController extends Controller
 
     public function requestPasswordOtp(Request $request, BorrowerOtpService $otp): JsonResponse
     {
-        $request->merge([
-            'phone' => BorrowerOtpService::normalizePhone((string) $request->input('phone')),
-        ]);
+        $identifier = $this->requestIdentifier($request, ['identifier', 'phone', 'username']);
+        if ($identifier === '' || ! $this->isValidLoginIdentifier($identifier)) {
+            return response()->json([
+                'ok' => true,
+                'message' => 'If a borrower account exists, a reset OTP was sent.',
+                'identifier' => $identifier,
+            ]);
+        }
 
-        $data = $request->validate([
-            'phone' => ['required', 'string', 'regex:/^09\d{9}$/'],
-        ]);
-
-        $user = $otp->resolveUserByLogin($data['phone']);
+        $user = $this->resolveUser($identifier);
         if ($user && $user->is_active && $user->canUseBorrowerPortal()) {
             $result = $otp->requestCode($user);
             if (! ($result['ok'] ?? false)) {
@@ -296,23 +301,25 @@ class BorrowerAuthController extends Controller
         return response()->json([
             'ok' => true,
             'message' => 'If a borrower account exists, a reset OTP was sent.',
-            'phone' => $data['phone'],
+            'identifier' => $this->normalizedIdentifierForResponse($identifier),
         ]);
     }
 
     public function resetPasswordWithOtp(Request $request, BorrowerOtpService $otp, ActivityLogger $logger): JsonResponse
     {
-        $request->merge([
-            'phone' => BorrowerOtpService::normalizePhone((string) $request->input('phone')),
-        ]);
-
         $data = $request->validate([
-            'phone' => ['required', 'string', 'regex:/^09\d{9}$/'],
+            'identifier' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:255',
             'code' => 'required|string|min:4|max:12',
             'password' => ['required', 'string', 'max:72', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
         ]);
 
-        $user = $otp->resolveUserByLogin($data['phone']);
+        $identifier = $this->requestIdentifier($request, ['identifier', 'phone']);
+        if ($identifier === '' || ! $this->isValidLoginIdentifier($identifier)) {
+            return response()->json(['ok' => false, 'message' => 'Invalid code or account.'], 401);
+        }
+
+        $user = $this->resolveUser($identifier);
         if (! $user || ! $user->is_active || ! $user->canUseBorrowerPortal()) {
             return response()->json(['ok' => false, 'message' => 'Invalid code or account.'], 401);
         }
@@ -382,15 +389,72 @@ class BorrowerAuthController extends Controller
         $lower = mb_strtolower(trim($login));
         $phone = BorrowerOtpService::normalizePhone($login);
 
-        return User::query()
-            ->where(function ($q) use ($lower, $phone) {
-                $q->whereRaw('LOWER(username) = ?', [$lower])
-                    ->orWhereRaw('LOWER(email) = ?', [$lower]);
-                if ($phone !== '') {
-                    $q->orWhere('phone', $phone);
-                }
-            })
-            ->first();
+        if (str_contains($lower, '@')) {
+            $user = User::query()
+                ->whereRaw('LOWER(email) = ?', [$lower])
+                ->first();
+            if ($user) {
+                return $user;
+            }
+        }
+
+        if ($phone !== '' && preg_match('/^09\d{9}$/', $phone) === 1) {
+            $user = User::query()
+                ->where('phone', $phone)
+                ->first();
+            if ($user) {
+                return $user;
+            }
+
+            return User::query()
+                ->whereHas('borrowerProfile', fn ($q) => $q->where('phone_number', $phone))
+                ->first();
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private function requestIdentifier(Request $request, array $keys = ['identifier', 'username']): string
+    {
+        foreach ($keys as $key) {
+            $value = trim((string) $request->input($key, ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    private function isValidLoginIdentifier(string $identifier): bool
+    {
+        $trimmed = trim($identifier);
+        if ($trimmed === '') {
+            return false;
+        }
+
+        if (str_contains($trimmed, '@')) {
+            return filter_var($trimmed, FILTER_VALIDATE_EMAIL) !== false;
+        }
+
+        return preg_match('/^09\d{9}$/', BorrowerOtpService::normalizePhone($trimmed)) === 1;
+    }
+
+    private function normalizedIdentifierForResponse(string $identifier): string
+    {
+        if (str_contains($identifier, '@')) {
+            return mb_strtolower(trim($identifier));
+        }
+
+        return BorrowerOtpService::normalizePhone($identifier);
+    }
+
+    private function genericLoginFailure(): JsonResponse
+    {
+        return response()->json(['ok' => false, 'message' => self::GENERIC_LOGIN_MESSAGE], 401);
     }
 
     /**

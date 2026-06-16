@@ -88,7 +88,7 @@ export default function HomeModernHero() {
     <motion.section
       id="hero"
       aria-labelledby="hero-heading"
-      className="relative scroll-mt-28 overflow-hidden bg-transparent text-brand-text landing-hero-section"
+      className="relative scroll-mt-28 bg-transparent text-brand-text landing-hero-section"
       initial="hidden"
       animate="visible"
       variants={{
@@ -114,7 +114,7 @@ export default function HomeModernHero() {
         <motion.div
           className="grid items-center gap-10 sm:gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-14 xl:gap-16"
         >
-          <div className="max-w-2xl lg:max-w-none">
+          <div className="min-w-0 max-w-2xl lg:max-w-none">
             <motion.p
               variants={sectionVariants}
               custom={0}
@@ -127,7 +127,7 @@ export default function HomeModernHero() {
               id="hero-heading"
               variants={sectionVariants}
               custom={1}
-              className="heading-display mt-4 text-4xl font-semibold leading-[1.12] tracking-tight text-slate-900 sm:mt-5 sm:text-5xl lg:text-[3.25rem] xl:text-6xl"
+              className="heading-display mt-4 break-words text-[2.35rem] font-semibold leading-[1.12] tracking-tight text-balance text-slate-900 sm:mt-5 sm:text-5xl lg:text-[3.25rem] xl:text-6xl"
             >
               Personal Loans &amp; Lending Solutions,{' '}
               <span className="bg-gradient-to-r from-brand-primary via-brand-accent to-brand-premium bg-clip-text text-transparent">
@@ -155,7 +155,7 @@ export default function HomeModernHero() {
             <motion.div
               variants={sectionVariants}
               custom={3}
-              className="mt-8 flex flex-col gap-4 sm:mt-10 sm:flex-row sm:flex-wrap sm:items-center"
+              className="mt-8 flex flex-col gap-3 sm:mt-10 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4"
             >
               {/*
                 INTEGRATION: Borrower apply / registration — same SPA entry as legacy hero.
@@ -163,7 +163,7 @@ export default function HomeModernHero() {
               */}
               <Link
                 to="/borrower/login"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-brand-primary px-8 py-4 text-sm font-semibold text-white shadow-brand-primary transition hover:bg-brand-primary-hover hover:shadow-[0_14px_40px_rgba(217,34,67,0.35)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary active:scale-[0.99]"
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-brand-primary px-6 py-4 text-sm font-semibold text-white shadow-brand-primary transition hover:bg-brand-primary-hover hover:shadow-[0_14px_40px_rgba(217,34,67,0.35)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary active:scale-[0.99] sm:w-auto sm:px-8"
               >
                 Apply Now
                 <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
@@ -175,7 +175,7 @@ export default function HomeModernHero() {
               */}
               <a
                 href="#calculator"
-                className="inline-flex min-h-11 items-center justify-center rounded-full border-2 border-brand-primary bg-white px-8 py-4 text-sm font-semibold text-brand-primary shadow-sm transition hover:bg-brand-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+                className="inline-flex min-h-11 w-full items-center justify-center rounded-full border-2 border-brand-primary bg-white px-6 py-4 text-sm font-semibold text-brand-primary shadow-sm transition hover:bg-brand-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary sm:w-auto sm:px-8"
               >
                 Calculate Your Loan
               </a>
@@ -221,7 +221,7 @@ export default function HomeModernHero() {
             </motion.dl>
           </div>
 
-          <motion.div variants={sectionVariants} custom={0.5} className="relative mx-auto w-full max-w-lg lg:mx-0 lg:max-w-none">
+          <motion.div variants={sectionVariants} custom={0.5} className="relative mx-auto w-full min-w-0 max-w-lg lg:mx-0 lg:max-w-none">
             <div
               aria-hidden
               className="absolute -right-6 -top-8 h-48 w-48 rounded-full bg-brand-primary/15 blur-3xl sm:h-64 sm:w-64 lg:-right-10"
@@ -231,8 +231,8 @@ export default function HomeModernHero() {
               className="absolute -bottom-10 -left-4 h-40 w-40 rounded-full bg-brand-primary/10 blur-3xl sm:h-52 sm:w-52"
             />
 
-            <div className="relative overflow-hidden rounded-[2rem] border border-slate-200/90 bg-white shadow-[0_24px_70px_rgba(217,34,67,0.1)] ring-1 ring-slate-200/70">
-              <div className="absolute right-5 top-5 z-10 flex items-center gap-2 rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-md backdrop-blur-sm ring-1 ring-slate-200/80">
+            <div className="relative overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-[0_24px_70px_rgba(217,34,67,0.1)] ring-1 ring-slate-200/70 sm:rounded-[2rem]">
+              <div className="absolute right-3 top-3 z-10 flex items-center gap-2 rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-slate-800 shadow-md backdrop-blur-sm ring-1 ring-slate-200/80 sm:right-5 sm:top-5 sm:text-xs">
                 <span className="h-2 w-2 rounded-full bg-brand-primary" aria-hidden />
                 Secure online apply
               </div>

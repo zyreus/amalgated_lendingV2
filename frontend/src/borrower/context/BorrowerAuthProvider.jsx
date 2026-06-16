@@ -46,10 +46,10 @@ export function BorrowerAuthProvider({ children }) {
     return () => window.removeEventListener('lending-borrower-email-verified', onVerified)
   }, [loadMe])
 
-  const login = useCallback(async (username, password) => {
+  const login = useCallback(async (identifier, password) => {
     const res = await borrowerApi('/borrower/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ identifier, password }),
     })
     setBorrowerToken(res.token || res.access_token)
     setBorrowerUser(res.user)
@@ -92,17 +92,17 @@ export function BorrowerAuthProvider({ children }) {
     })
   }, [])
 
-  const requestPasswordOtp = useCallback(async (phone) => {
+  const requestPasswordOtp = useCallback(async (identifier) => {
     return borrowerApi('/borrower/password/forgot-otp', {
       method: 'POST',
-      body: JSON.stringify({ phone }),
+      body: JSON.stringify({ identifier }),
     })
   }, [])
 
-  const resetPasswordWithOtp = useCallback(async ({ phone, code, password, password_confirmation }) => {
+  const resetPasswordWithOtp = useCallback(async ({ identifier, code, password, password_confirmation }) => {
     const res = await borrowerApi('/borrower/reset-password', {
       method: 'POST',
-      body: JSON.stringify({ phone, code, password, password_confirmation }),
+      body: JSON.stringify({ identifier, code, password, password_confirmation }),
     })
     setBorrowerToken(res.token || res.access_token)
     setBorrowerUser(res.user)

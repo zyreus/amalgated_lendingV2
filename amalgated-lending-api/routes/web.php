@@ -53,6 +53,13 @@ Route::get('/print/general-loan/{loanApplication}', [LoanPrintController::class,
 Route::get('/print/travel-loan/{travelApplication}', [LoanPrintController::class, 'travelLoan'])->name('print.travel-loan');
 Route::get('/print/loan-soa/{loan}', [LoanPrintController::class, 'loanSoa'])->name('print.loan-soa');
 
+Route::get('/test', function () {
+    return response()->json([
+        'time' => now(),
+        'memory' => memory_get_usage(true),
+    ]);
+});
+
 /*
 |--------------------------------------------------------------------------
 | Vite React SPA (admin + borrower + marketing)

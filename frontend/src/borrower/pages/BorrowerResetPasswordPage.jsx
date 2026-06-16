@@ -8,9 +8,9 @@ import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 export default function BorrowerResetPasswordPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const phoneParam = useMemo(() => searchParams.get('phone') || '', [searchParams])
+  const identifierParam = useMemo(() => searchParams.get('identifier') || searchParams.get('phone') || '', [searchParams])
   const { resetPasswordWithOtp } = useBorrowerAuth()
-  const [phone, setPhone] = useState(phoneParam)
+  const [identifier, setIdentifier] = useState(identifierParam)
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
   const [passwordConfirmation, setPasswordConfirmation] = useState('')
@@ -27,7 +27,7 @@ export default function BorrowerResetPasswordPage() {
     setErrorMsg('')
     try {
       await resetPasswordWithOtp({
-        phone: phone.trim(),
+        identifier: identifier.trim(),
         code: code.trim(),
         password,
         password_confirmation: passwordConfirmation,
@@ -57,14 +57,22 @@ export default function BorrowerResetPasswordPage() {
             Verify the reset OTP and choose a stronger password. You will be signed in automatically.
           </p>
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
-            <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              required
-              inputMode="tel"
-              placeholder="09XXXXXXXXX"
-              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-brand-primary/60 focus:ring-2 focus:ring-brand-primary/20 dark:border-[#1F2937] dark:bg-[#0F172A] dark:text-gray-100"
-            />
+            <div>
+              <label htmlFor="reset_password_identifier" className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                Email Address or Mobile Number
+              </label>
+              <input
+                id="reset_password_identifier"
+                name="login_identifier"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                required
+                inputMode="email"
+                autoComplete="username"
+                placeholder="Enter your email address or mobile number"
+                className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-brand-primary/60 focus:ring-2 focus:ring-brand-primary/20 dark:border-[#1F2937] dark:bg-[#0F172A] dark:text-gray-100"
+              />
+            </div>
             <input
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}

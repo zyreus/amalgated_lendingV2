@@ -1,0 +1,1 @@
+import{j as r}from"./vendor-Cxq4L14V.js";import{P as a}from"./PublicLoanProductPage-D0NVGF-b.js";import{g as t}from"./publicLoanProductConfig-CPQZrMTM.js";import"./index-DFo1mAD-.js";function e(){const o=t("salary-loan");return o?r.jsx(a,{config:o}):null}export{e as default};
