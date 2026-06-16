@@ -66,6 +66,7 @@ class NotificationController extends Controller
 
         $q = AdminNotification::query()
             ->whereNull('dismissed_globally_at')
+            ->with(['userReads' => fn ($w) => $w->where('user_id', $userId)])
             ->withExists(['userReads as is_read' => fn ($w) => $w->where('user_id', $userId)])
             ->orderByDesc('priority')
             ->orderByDesc('created_at');
@@ -84,6 +85,10 @@ class NotificationController extends Controller
         }
 
         $items = $q->paginate($perPage);
+        $items->setCollection(
+            $items->getCollection()
+                ->map(fn (AdminNotification $notification) => $this->notifications->adminNotificationPayload($notification, $userId))
+        );
 
         return response()->json(['ok' => true, 'data' => $items]);
     }
@@ -137,5 +142,27 @@ class NotificationController extends Controller
             'ok' => true,
             'deleted' => $deleted,
         ]);
+    }
+
+    public function clearAll(Request $request): JsonResponse
+    {
+        $userId = (int) $request->user()->id;
+        $q = AdminNotification::query()->whereNull('dismissed_globally_at');
+
+        $category = trim((string) $request->query('category', ''));
+        if ($category !== '') {
+            $q->where('category', $category);
+        }
+        $module = trim((string) $request->query('module', ''));
+        if ($module !== '') {
+            $q->where('module', $module);
+        }
+        if ($request->boolean('unread_only')) {
+            $q->whereDoesntHave('userReads', fn ($w) => $w->where('user_id', $userId));
+        }
+
+        $deleted = $q->delete();
+
+        return response()->json(['ok' => true, 'deleted' => $deleted]);
     }
 }

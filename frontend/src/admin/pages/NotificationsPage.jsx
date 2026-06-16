@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client.js'
 import { useToast } from '../context/ToastContext.jsx'
 import { admin } from '../components/AdminUi.jsx'
 import ConfirmModal from '../components/ConfirmModal.jsx'
-import { getAdminNotificationHref } from '../utils/notificationRoutes.js'
+import { getAdminNotificationHref, handleNotificationClick } from '../utils/notificationRoutes.js'
 
 const CATEGORY_LABELS = {
   loan_application_submitted: 'New application',
@@ -30,6 +30,7 @@ function formatTime(iso) {
 }
 
 export default function NotificationsPage({ embedded = false, onNavigate = null }) {
+  const navigate = useNavigate()
   const { showToast } = useToast()
   const [data, setData] = useState(null)
   const [selectedIds, setSelectedIds] = useState([])
@@ -64,7 +65,7 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
 
   const markAll = async () => {
     try {
-      await api('/notifications/read-all', { method: 'POST', body: '{}' })
+      await api('/notifications/mark-all-read', { method: 'POST', body: '{}' })
       load()
       window.dispatchEvent(new CustomEvent('admin-notifications-changed'))
     } catch (e) {
@@ -74,6 +75,10 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
 
   const markOne = async (id) => {
     try {
+      setData((prev) => prev ? {
+        ...prev,
+        data: (prev.data || []).map((n) => (Number(n.id) === Number(id) ? { ...n, is_read: true, read_at: n.read_at || new Date().toISOString() } : n)),
+      } : prev)
       await api(`/notifications/${id}/read`, { method: 'POST', body: '{}' })
       load()
       window.dispatchEvent(new CustomEvent('admin-notifications-changed'))
@@ -84,6 +89,10 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
 
   const markUnread = async (id) => {
     try {
+      setData((prev) => prev ? {
+        ...prev,
+        data: (prev.data || []).map((n) => (Number(n.id) === Number(id) ? { ...n, is_read: false, read_at: null } : n)),
+      } : prev)
       await api(`/notifications/${id}/unread`, { method: 'POST', body: '{}' })
       load()
       window.dispatchEvent(new CustomEvent('admin-notifications-changed'))
@@ -123,13 +132,11 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
 
   const runClearAllOnScreen = async () => {
     if (!rows.length) return
-    const ids = rows.map((r) => Number(r.id)).filter((v) => Number.isFinite(v))
-    if (!ids.length) return
+    const qs = new URLSearchParams()
+    if (category) qs.set('category', category)
+    if (unreadOnly) qs.set('unread_only', '1')
     try {
-      await api('/notifications/bulk-delete', {
-        method: 'POST',
-        body: JSON.stringify({ ids }),
-      })
+      await api(`/notifications/clear-all?${qs.toString()}`, { method: 'DELETE' })
       setSelectedIds([])
       await load()
       window.dispatchEvent(new CustomEvent('admin-notifications-changed'))
@@ -153,7 +160,7 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
         }
         description={
           confirmDialog?.type === 'clearAll'
-            ? `This will remove all ${rows.length} notification(s) in the current list (including any filters you applied). This cannot be undone.`
+            ? 'Are you sure you want to clear all notifications?'
             : `This will permanently delete ${selectedCount} selected notification(s). This cannot be undone.`
         }
         confirmLabel={confirmDialog?.type === 'clearAll' ? 'Clear all' : 'Delete'}
@@ -240,7 +247,8 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
       <ul className="space-y-3">
         {rows.map((n) => {
           const href = getAdminNotificationHref(n)
-          const cardTone = n.read_at
+          const isRead = Boolean(n.is_read || n.read_at)
+          const cardTone = isRead
             ? 'border-gray-200 bg-gray-50 text-gray-600 dark:border-white/5 dark:bg-black/30 dark:text-gray-400'
             : 'border-red-300 bg-red-50 text-gray-900 dark:border-red-500/30 dark:bg-red-950/20 dark:text-gray-100'
           const body = (
@@ -268,32 +276,35 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
                   />
                 </label>
                 {href ? (
-                  <Link
-                    to={href}
-                    onClick={() => {
-                      if (typeof onNavigate === 'function') onNavigate()
-                      if (!n.read_at) void markOne(n.id)
-                    }}
-                    className={`min-w-0 flex-1 rounded-lg outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-red-500 ${
-                      n.read_at ? '' : 'hover:underline'
+                  <button
+                    type="button"
+                    onClick={(event) => handleNotificationClick(n, {
+                      audience: 'admin',
+                      event,
+                      markRead: markOne,
+                      navigate,
+                      onNavigate,
+                    })}
+                    className={`min-w-0 flex-1 rounded-lg text-left outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-red-500 ${
+                      isRead ? '' : 'hover:underline'
                     }`}
                   >
                     {body}
-                  </Link>
+                  </button>
                 ) : (
                   <button
                     type="button"
                     onClick={() => {
-                      if (!n.read_at) void markOne(n.id)
+                      if (!isRead) void markOne(n.id)
                     }}
                     className={`min-w-0 flex-1 rounded-lg text-left outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-red-500 ${
-                      n.read_at ? 'cursor-default' : 'cursor-pointer hover:underline'
+                      isRead ? 'cursor-default' : 'cursor-pointer hover:underline'
                     }`}
                   >
                     {body}
                   </button>
                 )}
-                {!n.read_at ? (
+                {!isRead ? (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -318,6 +329,18 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
                     Mark unread
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setConfirmDialog({ type: 'deleteSelected', ids: [Number(n.id)] })
+                    setSelectedIds([Number(n.id)])
+                  }}
+                  className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-500/30 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-900/20"
+                >
+                  Delete
+                </button>
               </div>
             </li>
           )

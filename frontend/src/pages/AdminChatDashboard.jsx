@@ -1222,8 +1222,22 @@ export default function AdminChatDashboard({
     const v = searchParams.get('view')
     if (v !== 'chats') return
     const inbox = searchParams.get('inbox')
-    setChatInboxTab(inbox === 'borrower' ? 'borrower' : 'visitor')
-  }, [searchParams])
+    const isBorrowerInbox = inbox === 'borrower'
+    setChatInboxTab(isBorrowerInbox ? 'borrower' : 'visitor')
+    if (!isBorrowerInbox) return
+
+    const type = searchParams.get('type')
+    const nextBorrowerType = type === 'tickets' ? 'tickets' : 'portal'
+    setBorrowerInboxType(nextBorrowerType)
+
+    const targetId = (nextBorrowerType === 'tickets'
+      ? searchParams.get('ticket')
+      : searchParams.get('portal_conversation'))?.trim()
+    if (targetId) {
+      setActiveBorrowerLeadId(Number.isNaN(Number(targetId)) ? targetId : Number(targetId))
+      fetchBorrowerMessages(targetId)
+    }
+  }, [searchParams, fetchBorrowerMessages])
 
   const handleSend = () => {
     const text = input.trim()

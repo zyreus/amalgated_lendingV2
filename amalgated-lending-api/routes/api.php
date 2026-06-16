@@ -342,6 +342,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
             Route::get('/notifications', [NotificationController::class, 'index']);
             Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+            Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead']);
+            Route::delete('/notifications/clear-all', [NotificationController::class, 'clearAll']);
             Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
             Route::post('/notifications/{notification}/unread', [NotificationController::class, 'markUnread']);
             Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
@@ -490,8 +492,10 @@ Route::prefix('v1')->group(function () {
         Route::get('/notifications/unread-count', [BorrowerNotificationController::class, 'unreadCount']);
         Route::get('/notifications', [BorrowerNotificationController::class, 'index']);
         Route::post('/notifications/read-all', [BorrowerNotificationController::class, 'markAllRead']);
+        Route::post('/notifications/mark-all-read', [BorrowerNotificationController::class, 'markAllRead']);
         Route::post('/notifications/bulk-delete', [BorrowerNotificationController::class, 'bulkDestroy']);
         Route::post('/notifications/clear-all', [BorrowerNotificationController::class, 'clearAll']);
+        Route::delete('/notifications/clear-all', [BorrowerNotificationController::class, 'clearAll']);
         Route::delete('/notifications/{borrowerNotification}', [BorrowerNotificationController::class, 'destroy']);
         Route::post('/notifications/{borrowerNotification}/read', [BorrowerNotificationController::class, 'markRead']);
         Route::post('/notifications/{borrowerNotification}/unread', [BorrowerNotificationController::class, 'markUnread']);

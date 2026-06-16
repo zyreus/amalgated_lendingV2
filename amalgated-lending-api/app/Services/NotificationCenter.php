@@ -113,6 +113,7 @@ class NotificationCenter
         $priority = (int) ($options['priority'] ?? $this->defaultPriorityForCategory($category));
         $module = isset($options['module']) ? trim((string) $options['module']) : null;
         $channels = $options['delivery_channels'] ?? ['in_app'];
+        $redirect = $this->redirectMetadata('borrower', $type, $category, $data, $options);
         if ($dedupeKey !== '') {
             $existing = BorrowerNotification::query()
                 ->where('user_id', $borrower->id)
@@ -121,11 +122,16 @@ class NotificationCenter
             if ($existing) {
                 $existing->fill([
                     'type' => $type,
+                    'notification_type' => $redirect['notification_type'],
                     'category' => $category,
                     'priority' => $priority,
                     'module' => $module,
                     'title' => $title,
                     'body' => $body,
+                    'resource_type' => $redirect['resource_type'],
+                    'resource_id' => $redirect['resource_id'],
+                    'route_name' => $redirect['route_name'],
+                    'route_params' => $redirect['route_params'],
                     'data' => $data,
                     'delivery_channels' => $channels,
                 ]);
@@ -139,11 +145,16 @@ class NotificationCenter
         $row = BorrowerNotification::create([
             'user_id' => $borrower->id,
             'type' => $type,
+            'notification_type' => $redirect['notification_type'],
             'category' => $category,
             'priority' => $priority,
             'module' => $module,
             'title' => $title,
             'body' => $body,
+            'resource_type' => $redirect['resource_type'],
+            'resource_id' => $redirect['resource_id'],
+            'route_name' => $redirect['route_name'],
+            'route_params' => $redirect['route_params'],
             'dedupe_key' => $dedupeKey !== '' ? $dedupeKey : null,
             'data' => $data,
             'delivery_channels' => $channels,
@@ -182,6 +193,7 @@ class NotificationCenter
         $module = isset($options['module']) ? trim((string) $options['module']) : null;
         $channels = $options['delivery_channels'] ?? ['in_app'];
         $dedupeKey = isset($options['dedupe_key']) ? trim((string) $options['dedupe_key']) : '';
+        $redirect = $this->redirectMetadata('admin', $type, $category, $data, $options);
 
         if ($dedupeKey !== '') {
             $existing = AdminNotification::query()
@@ -195,10 +207,15 @@ class NotificationCenter
             if ($existing) {
                 $payload = is_array($existing->data) ? $existing->data : [];
                 $existing->fill([
+                    'notification_type' => $redirect['notification_type'],
                     'priority' => $priority,
                     'module' => $module,
                     'title' => $title,
                     'body' => $body,
+                    'resource_type' => $redirect['resource_type'],
+                    'resource_id' => $redirect['resource_id'],
+                    'route_name' => $redirect['route_name'],
+                    'route_params' => $redirect['route_params'],
                     'data' => array_merge($payload, $data, ['dedupe_key' => $dedupeKey]),
                     'delivery_channels' => $channels,
                 ]);
@@ -213,11 +230,16 @@ class NotificationCenter
         $row = AdminNotification::create([
             'user_id' => $actorUserId,
             'type' => $type,
+            'notification_type' => $redirect['notification_type'],
             'category' => $category,
             'priority' => $priority,
             'module' => $module,
             'title' => $title,
             'body' => $body,
+            'resource_type' => $redirect['resource_type'],
+            'resource_id' => $redirect['resource_id'],
+            'route_name' => $redirect['route_name'],
+            'route_params' => $redirect['route_params'],
             'data' => $data,
             'delivery_channels' => $channels,
             'read_at' => null,
@@ -305,6 +327,37 @@ class NotificationCenter
         return count($rows);
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    public function adminNotificationPayload(AdminNotification $notification, int $userId): array
+    {
+        $readAt = $notification->relationLoaded('userReads')
+            ? optional($notification->userReads->firstWhere('user_id', $userId)?->read_at)?->toIso8601String()
+            : null;
+        $isRead = (bool) ($notification->is_read ?? $readAt);
+
+        $row = $notification->toArray();
+        $row['notification_type'] = $notification->notification_type ?: $notification->type;
+        $row['is_read'] = $isRead;
+        $row['read_at'] = $readAt;
+
+        return array_merge($row, $this->decoratedRedirect($notification, 'admin'));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function borrowerNotificationPayload(BorrowerNotification $notification): array
+    {
+        $row = $notification->toArray();
+        $row['notification_type'] = $notification->notification_type ?: $notification->type;
+        $row['is_read'] = $notification->read_at !== null;
+        $row['read_at'] = optional($notification->read_at)?->toIso8601String();
+
+        return array_merge($row, $this->decoratedRedirect($notification, 'borrower'));
+    }
+
     private function writeLog(string $audience, int $notificationId, string $channel, string $status, ?string $detail, ?array $meta): void
     {
         try {
@@ -329,5 +382,204 @@ class NotificationCenter
             self::CATEGORY_PAYMENT_DUE, self::CATEGORY_VERIFICATION_REQUIRED, self::CATEGORY_MISSING_DOCUMENTS => 3,
             default => 2,
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $options
+     * @return array{notification_type: string, resource_type: ?string, resource_id: ?string, route_name: string, route_params: array<string, mixed>}
+     */
+    private function redirectMetadata(string $audience, string $type, string $category, array $data, array $options = []): array
+    {
+        $notificationType = $this->stringOrNull($options['notification_type'] ?? $data['notification_type'] ?? null) ?: $type;
+        $resourceType = $this->stringOrNull($options['resource_type'] ?? $data['resource_type'] ?? null);
+        $resourceId = $this->stringOrNull($options['resource_id'] ?? $data['resource_id'] ?? null);
+        $routeName = $this->stringOrNull($options['route_name'] ?? $data['route_name'] ?? null);
+        $routeParams = $this->arrayOrEmpty($options['route_params'] ?? $data['route_params'] ?? null);
+
+        if ($routeName) {
+            return [
+                'notification_type' => $notificationType,
+                'resource_type' => $resourceType,
+                'resource_id' => $resourceId,
+                'route_name' => $routeName,
+                'route_params' => $routeParams,
+            ];
+        }
+
+        $loanId = $this->firstDataValue($data, ['loan_id', 'loanId']);
+        $applicationId = $this->firstDataValue($data, ['loan_application_id', 'application_id', 'loanApplicationId']);
+        $borrowerId = $this->firstDataValue($data, ['borrower_id', 'borrowerId', 'user_id', 'userId']);
+        $paymentId = $this->firstDataValue($data, ['payment_id', 'paymentId']);
+        $leadId = $this->firstDataValue($data, ['lead_id', 'leadId']);
+        $ticketId = $this->firstDataValue($data, ['ticket_id', 'ticketId']);
+        $conversationId = $this->firstDataValue($data, ['conversation_id', 'conversationId', 'session_id', 'sessionId']);
+        $portalConversationId = $this->firstDataValue($data, ['portal_conversation_id', 'portalConversationId']);
+        $documentId = $this->firstDataValue($data, ['document_id', 'uploaded_document_id', 'document_upload_id', 'documentId']);
+
+        if (! $resourceType || ! $resourceId) {
+            [$resourceType, $resourceId] = $this->inferResource($type, $category, [
+                'loan' => $loanId,
+                'loan_application' => $applicationId,
+                'borrower' => $borrowerId,
+                'payment' => $paymentId,
+                'lead' => $leadId,
+                'support_ticket' => $ticketId ?: $leadId,
+                'crm_conversation' => $conversationId,
+                'portal_conversation' => $portalConversationId,
+                'document_upload' => $documentId,
+            ]);
+        }
+
+        if (! $routeName) {
+            $routeName = $this->inferRouteName($audience, $type, $category, (string) ($resourceType ?? ''));
+        }
+
+        $routeParams = array_filter(array_merge([
+            'id' => $resourceId,
+            'loan_id' => $loanId,
+            'loan_application_id' => $applicationId,
+            'borrower_id' => $borrowerId,
+            'payment_id' => $paymentId,
+            'lead_id' => $leadId,
+            'ticket_id' => $ticketId ?: $leadId,
+            'conversation_id' => $conversationId,
+            'portal_conversation_id' => $portalConversationId,
+            'document_id' => $documentId,
+        ], $routeParams), fn ($value) => $value !== null && $value !== '');
+
+        return [
+            'notification_type' => $notificationType,
+            'resource_type' => $resourceType,
+            'resource_id' => $resourceId,
+            'route_name' => $routeName,
+            'route_params' => $routeParams,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function decoratedRedirect(AdminNotification|BorrowerNotification $notification, string $audience): array
+    {
+        $data = is_array($notification->data) ? $notification->data : [];
+        $meta = $this->redirectMetadata($audience, (string) $notification->type, (string) $notification->category, $data, [
+            'notification_type' => $notification->notification_type,
+            'resource_type' => $notification->resource_type,
+            'resource_id' => $notification->resource_id,
+            'route_name' => $notification->route_name,
+            'route_params' => $notification->route_params,
+        ]);
+
+        return [
+            'notification_type' => $meta['notification_type'],
+            'resource_type' => $meta['resource_type'],
+            'resource_id' => $meta['resource_id'],
+            'route_name' => $meta['route_name'],
+            'route_params' => $meta['route_params'],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     * @return array{?string, ?string}
+     */
+    private function inferResource(string $type, string $category, array $values): array
+    {
+        $haystack = strtolower($type.' '.$category);
+        $ordered = str_contains($haystack, 'ticket')
+            ? ['support_ticket', 'portal_conversation', 'crm_conversation', 'borrower', 'loan_application', 'loan', 'payment', 'document_upload', 'lead']
+            : ['crm_conversation', 'portal_conversation', 'support_ticket', 'loan_application', 'loan', 'borrower', 'document_upload', 'payment', 'lead'];
+
+        foreach ($ordered as $resourceType) {
+            if (($values[$resourceType] ?? null) !== null && $values[$resourceType] !== '') {
+                return [$resourceType, (string) $values[$resourceType]];
+            }
+        }
+
+        return [null, null];
+    }
+
+    private function inferRouteName(string $audience, string $type, string $category, string $resourceType): string
+    {
+        $haystack = strtolower($type.' '.$category.' '.$resourceType);
+
+        if ($audience === 'borrower') {
+            if (str_contains($haystack, 'ticket')) {
+                return 'borrower.support.ticket';
+            }
+            if (str_contains($haystack, 'portal') || str_contains($haystack, 'chat') || str_contains($haystack, 'message')) {
+                return 'borrower.portal.conversation';
+            }
+            if (str_contains($haystack, 'document')) {
+                return 'borrower.document.viewer';
+            }
+            if (str_contains($haystack, 'payment') || str_contains($haystack, 'receipt') || str_contains($haystack, 'installment')) {
+                return 'borrower.payments';
+            }
+            if (str_contains($haystack, 'application') || str_contains($haystack, 'loan')) {
+                return 'borrower.loan_application.details';
+            }
+            if (str_contains($haystack, 'verification') || str_contains($haystack, 'account')) {
+                return 'borrower.profile.activity';
+            }
+
+            return 'borrower.notification.details';
+        }
+
+        if (str_contains($haystack, 'ticket')) {
+            return 'admin.support.ticket';
+        }
+        if (str_contains($haystack, 'portal')) {
+            return 'admin.portal.conversation';
+        }
+        if (str_contains($haystack, 'crm') || str_contains($haystack, 'chat') || str_contains($haystack, 'lead') || str_contains($haystack, 'inquiry')) {
+            return 'admin.crm.thread';
+        }
+        if (str_contains($haystack, 'document')) {
+            return 'admin.document.viewer';
+        }
+        if (str_contains($haystack, 'borrower') || str_contains($haystack, 'verification') || str_contains($haystack, 'account')) {
+            return 'admin.borrower.profile';
+        }
+        if (str_contains($haystack, 'application') || str_contains($haystack, 'loan')) {
+            return 'admin.loan_application.details';
+        }
+        if (str_contains($haystack, 'payment') || str_contains($haystack, 'receipt') || str_contains($haystack, 'installment')) {
+            return 'admin.payments';
+        }
+
+        return 'admin.notification.details';
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<int, string>  $keys
+     */
+    private function firstDataValue(array $data, array $keys): ?string
+    {
+        foreach ($keys as $key) {
+            $value = $data[$key] ?? null;
+            if ($value !== null && $value !== '') {
+                return (string) $value;
+            }
+        }
+
+        return null;
+    }
+
+    private function stringOrNull(mixed $value): ?string
+    {
+        $value = trim((string) ($value ?? ''));
+
+        return $value !== '' ? $value : null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function arrayOrEmpty(mixed $value): array
+    {
+        return is_array($value) ? $value : [];
     }
 }

@@ -217,12 +217,15 @@ export default function BorrowerLayout() {
     const onVisible = () => {
       if (document.visibilityState === 'visible') fetchCount()
     }
+    const onNotificationNavigate = () => setNotifModalOpen(false)
     window.addEventListener('borrower-notifications-changed', onChange)
+    window.addEventListener('borrower-notification-navigate', onNotificationNavigate)
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       cancelled = true
       clearInterval(id)
       window.removeEventListener('borrower-notifications-changed', onChange)
+      window.removeEventListener('borrower-notification-navigate', onNotificationNavigate)
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [user])

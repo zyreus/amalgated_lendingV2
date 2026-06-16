@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../admin/api/client.js'
+import { handleNotificationClick } from '../admin/utils/notificationRoutes.js'
 
 const PRIORITY_DOT = {
   5: 'bg-rose-500',
@@ -14,6 +16,7 @@ const PRIORITY_DOT = {
  * marks read via `/notifications/{id}/read`. Requires JWT + `notifications.view`.
  */
 export function AdminLaravelNotificationBell({ pollMs = 12000 }) {
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [count, setCount] = useState(0)
   const [items, setItems] = useState([])
@@ -80,9 +83,34 @@ export function AdminLaravelNotificationBell({ pollMs = 12000 }) {
     try {
       await api(`/notifications/${id}/read`, { method: 'POST', body: '{}' })
       setItems((prev) =>
-        prev.map((n) => (Number(n.id) === Number(id) ? { ...n, is_read: true } : n)),
+        prev.map((n) => (Number(n.id) === Number(id) ? { ...n, is_read: true, read_at: n.read_at || new Date().toISOString() } : n)),
       )
       setCount((c) => Math.max(0, c - 1))
+      window.dispatchEvent(new CustomEvent('admin-notifications-changed'))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const markUnread = async (id) => {
+    try {
+      await api(`/notifications/${id}/unread`, { method: 'POST', body: '{}' })
+      setItems((prev) =>
+        prev.map((n) => (Number(n.id) === Number(id) ? { ...n, is_read: false, read_at: null } : n)),
+      )
+      await refreshCount()
+      window.dispatchEvent(new CustomEvent('admin-notifications-changed'))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const deleteOne = async (id) => {
+    try {
+      await api(`/notifications/${id}`, { method: 'DELETE' })
+      setItems((prev) => prev.filter((n) => Number(n.id) !== Number(id)))
+      await refreshCount()
+      window.dispatchEvent(new CustomEvent('admin-notifications-changed'))
     } catch {
       /* ignore */
     }
@@ -91,8 +119,9 @@ export function AdminLaravelNotificationBell({ pollMs = 12000 }) {
   const markAll = async () => {
     try {
       await api('/notifications/read-all', { method: 'POST', body: '{}' })
-      setItems((prev) => prev.map((n) => ({ ...n, is_read: true })))
+      setItems((prev) => prev.map((n) => ({ ...n, is_read: true, read_at: n.read_at || new Date().toISOString() })))
       setCount(0)
+      window.dispatchEvent(new CustomEvent('admin-notifications-changed'))
     } catch {
       /* ignore */
     }
@@ -160,23 +189,52 @@ export function AdminLaravelNotificationBell({ pollMs = 12000 }) {
                         <div className="flex gap-2">
                           <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot}`} title={`Priority ${pr}`} />
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold text-[var(--admin-text)]">{n.title}</p>
-                            {n.body ? (
-                              <p className="mt-0.5 line-clamp-3 text-[11px] text-[color:var(--admin-muted)]">{n.body}</p>
-                            ) : null}
+                            <button
+                              type="button"
+                              onClick={(event) => handleNotificationClick(n, {
+                                audience: 'admin',
+                                event,
+                                markRead,
+                                navigate,
+                                onNavigate: () => setOpen(false),
+                              })}
+                              className="block w-full rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--admin-accent)]/35"
+                            >
+                              <p className="text-xs font-semibold text-[var(--admin-text)]">{n.title}</p>
+                              {n.body ? (
+                                <p className="mt-0.5 line-clamp-3 text-[11px] text-[color:var(--admin-muted)]">{n.body}</p>
+                              ) : null}
+                            </button>
                             <p className="mt-1 text-[10px] text-[color:var(--admin-muted-2)]">
                               {n.category || n.type}
                               {n.created_at ? ` · ${new Date(n.created_at).toLocaleString()}` : ''}
                             </p>
-                            {!read ? (
+                            <div className="mt-1.5 flex flex-wrap gap-2">
+                              {!read ? (
+                                <button
+                                  type="button"
+                                  onClick={() => markRead(n.id)}
+                                  className="text-[10px] font-semibold text-[color:var(--admin-accent)] hover:underline"
+                                >
+                                  Mark read
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => markUnread(n.id)}
+                                  className="text-[10px] font-semibold text-[color:var(--admin-accent)] hover:underline"
+                                >
+                                  Mark unread
+                                </button>
+                              )}
                               <button
                                 type="button"
-                                onClick={() => markRead(n.id)}
-                                className="mt-1.5 text-[10px] font-semibold text-[color:var(--admin-accent)] hover:underline"
+                                onClick={() => deleteOne(n.id)}
+                                className="text-[10px] font-semibold text-rose-600 hover:underline"
                               >
-                                Mark read
+                                Delete
                               </button>
-                            ) : null}
+                            </div>
                           </div>
                         </div>
                       </li>

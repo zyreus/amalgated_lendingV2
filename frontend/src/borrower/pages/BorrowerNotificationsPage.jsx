@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { borrowerApi } from '../api/client.js'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 import { formatCrmInboxDate, getResolvedDisplayTimeZone } from '../../utils/timestamps.js'
 import ConfirmDialog from '../../components/ConfirmDialog.jsx'
+import { handleNotificationClick } from '../../admin/utils/notificationRoutes.js'
 
 function categoryLabel(n) {
   const raw = (n.category || n.type || 'notice').toString()
@@ -22,6 +24,7 @@ function TrashIcon({ className = 'h-4 w-4' }) {
 }
 
 export default function BorrowerNotificationsPage({ embedded = false }) {
+  const navigate = useNavigate()
   const { user } = useBorrowerAuth()
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
@@ -77,7 +80,7 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
   const markAll = async () => {
     try {
       setBusy(true)
-      await borrowerApi('/borrower/notifications/read-all', { method: 'POST', body: '{}' })
+      await borrowerApi('/borrower/notifications/mark-all-read', { method: 'POST', body: '{}' })
       await load()
       notifyChanged()
     } catch (e) {
@@ -89,6 +92,10 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
 
   const markOne = async (id) => {
     try {
+      setData((prev) => prev ? {
+        ...prev,
+        data: (prev.data || []).map((n) => (Number(n.id) === Number(id) ? { ...n, is_read: true, read_at: n.read_at || new Date().toISOString() } : n)),
+      } : prev)
       await borrowerApi(`/borrower/notifications/${id}/read`, { method: 'POST', body: '{}' })
       await load()
       notifyChanged()
@@ -99,6 +106,10 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
 
   const markUnread = async (id) => {
     try {
+      setData((prev) => prev ? {
+        ...prev,
+        data: (prev.data || []).map((n) => (Number(n.id) === Number(id) ? { ...n, is_read: false, read_at: null } : n)),
+      } : prev)
       await borrowerApi(`/borrower/notifications/${id}/unread`, { method: 'POST', body: '{}' })
       await load()
       notifyChanged()
@@ -110,7 +121,10 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
   const runClearAll = async () => {
     try {
       setBusy(true)
-      await borrowerApi('/borrower/notifications/clear-all', { method: 'POST', body: '{}' })
+      const qs = new URLSearchParams()
+      if (category) qs.set('category', category)
+      if (unreadOnly) qs.set('unread_only', '1')
+      await borrowerApi(`/borrower/notifications/clear-all?${qs.toString()}`, { method: 'DELETE' })
       setSelectedIds([])
       await load()
       notifyChanged()
@@ -250,7 +264,7 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
           <li
             key={n.id}
             className={`rounded-2xl border px-4 py-3 transition-colors sm:px-5 sm:py-4 ${
-              n.read_at
+              n.is_read || n.read_at
                 ? 'border-gray-200 bg-white text-gray-600 dark:border-[#1F2937] dark:bg-[#0c1220] dark:text-gray-400'
                 : 'border-red-200 bg-red-50/90 text-gray-900 dark:border-red-900/40 dark:bg-red-950/20 dark:text-gray-100'
             }`}
@@ -261,6 +275,7 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
                   type="checkbox"
                   checked={selectedSet.has(n.id)}
                   onChange={() => toggleRow(n.id)}
+                  onClick={(e) => e.stopPropagation()}
                   disabled={busy}
                   aria-label={`Select notification ${n.title || n.id}`}
                   className="h-4 w-4 rounded border-gray-300 text-[#1B4332] focus:ring-[#1B4332] dark:border-gray-600 dark:bg-[#0F172A]"
@@ -268,17 +283,31 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={(event) => handleNotificationClick(n, {
+                      audience: 'borrower',
+                      event,
+                      markRead: markOne,
+                      navigate,
+                      onNavigate: embedded ? () => window.dispatchEvent(new CustomEvent('borrower-notification-navigate')) : null,
+                    })}
+                    className="min-w-0 rounded-lg text-left outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-red-500"
+                  >
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-500">
                       {categoryLabel(n)}
                     </p>
                     <p className="mt-0.5 font-semibold text-gray-900 dark:text-gray-100">{n.title}</p>
-                  </div>
+                  </button>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
-                    {!n.read_at ? (
+                    {!(n.is_read || n.read_at) ? (
                       <button
                         type="button"
-                        onClick={() => markOne(n.id)}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          markOne(n.id)
+                        }}
                         disabled={busy}
                         className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50 dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-100 dark:hover:bg-white/10"
                       >
@@ -287,7 +316,11 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => markUnread(n.id)}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          markUnread(n.id)
+                        }}
                         disabled={busy}
                         className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50 dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-100 dark:hover:bg-white/10"
                       >
@@ -297,7 +330,11 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => setConfirm({ kind: 'delete', ids: [n.id] })}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setConfirm({ kind: 'delete', ids: [n.id] })
+                      }}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-200 text-red-600 transition hover:bg-red-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/40"
                       aria-label="Delete notification"
                       title="Delete"
@@ -306,7 +343,19 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
                     </button>
                   </div>
                 </div>
-                {n.body ? <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{n.body}</p> : null}
+                <button
+                  type="button"
+                  onClick={(event) => handleNotificationClick(n, {
+                    audience: 'borrower',
+                    event,
+                    markRead: markOne,
+                    navigate,
+                    onNavigate: embedded ? () => window.dispatchEvent(new CustomEvent('borrower-notification-navigate')) : null,
+                  })}
+                  className="block w-full rounded-lg text-left outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-red-500"
+                >
+                  {n.body ? <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{n.body}</p> : null}
+                </button>
                 {['receipt_generated', 'payment_received'].includes(String(n.type || '')) ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     <a
@@ -351,7 +400,7 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
       <ConfirmDialog
         open={confirm?.kind === 'clearAll'}
         title="Clear all notifications"
-        message="This hides every notification from your inbox (you can still receive new ones). Continue?"
+        message="Are you sure you want to clear all notifications?"
         confirmLabel="Clear all"
         cancelLabel="Cancel"
         busy={busy}

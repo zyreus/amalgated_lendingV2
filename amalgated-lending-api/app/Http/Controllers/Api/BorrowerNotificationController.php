@@ -16,6 +16,10 @@ use Illuminate\Support\Facades\DB;
 
 class BorrowerNotificationController extends Controller
 {
+    public function __construct(
+        private NotificationCenter $notifications,
+    ) {}
+
     /**
      * How often the per-borrower reminder sync may run. Polling endpoints typically fire every
      * 30–60 s — running this expensive job every poll thrashes the DB.
@@ -261,6 +265,10 @@ class BorrowerNotificationController extends Controller
         }
 
         $items = $q->paginate($perPage);
+        $items->setCollection(
+            $items->getCollection()
+                ->map(fn (BorrowerNotification $notification) => $this->notifications->borrowerNotificationPayload($notification))
+        );
 
         return response()->json(['ok' => true, 'data' => $items]);
     }
@@ -348,12 +356,21 @@ class BorrowerNotificationController extends Controller
     public function clearAll(Request $request): JsonResponse
     {
         $user = $request->user();
-        $archived = BorrowerNotification::query()
+        $q = BorrowerNotification::query()
             ->where('user_id', $user->id)
-            ->whereNull('archived_at')
-            ->update(['archived_at' => now(), 'updated_at' => now()]);
+            ->whereNull('archived_at');
 
-        return response()->json(['ok' => true, 'archived' => $archived]);
+        $category = trim((string) $request->query('category', ''));
+        if ($category !== '') {
+            $q->where('category', $category);
+        }
+        if ($request->boolean('unread_only')) {
+            $q->whereNull('read_at');
+        }
+
+        $deleted = $q->delete();
+
+        return response()->json(['ok' => true, 'deleted' => $deleted]);
     }
 
     /**

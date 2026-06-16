@@ -59,6 +59,7 @@ const ReportsPage = lazy(() => import('./admin/pages/ReportsPage.jsx'))
 const AdminChatCRM = lazy(() => import('./admin/pages/AdminChatCRM.jsx'))
 const NewsletterPage = lazy(() => import('./admin/pages/NewsletterPage.jsx'))
 const AdminFeedbackPage = lazy(() => import('./admin/pages/AdminFeedbackPage.jsx'))
+const NotificationsPage = lazy(() => import('./admin/pages/NotificationsPage.jsx'))
 const BorrowerLayout = lazy(() => import('./borrower/BorrowerLayout.jsx'))
 const BorrowerDashboardPage = lazy(() => import('./borrower/pages/BorrowerDashboardPage.jsx'))
 const BorrowerPaymentsPage = lazy(() => import('./borrower/pages/BorrowerPaymentsPage.jsx'))
@@ -83,6 +84,7 @@ const BorrowerHelpCenterPage = lazy(() => import('./borrower/pages/BorrowerHelpC
 const BorrowerTicketsPage = lazy(() => import('./borrower/pages/BorrowerTicketsPage.jsx'))
 const BorrowerStatementsPage = lazy(() => import('./borrower/pages/BorrowerStatementsPage.jsx'))
 const BorrowerPrivacyPrefsPage = lazy(() => import('./borrower/pages/BorrowerPrivacyPrefsPage.jsx'))
+const BorrowerNotificationsPage = lazy(() => import('./borrower/pages/BorrowerNotificationsPage.jsx'))
 
 /** Lazy on public pages only — chat UI is not needed for admin/borrower shells. */
 const LendingChatWidget = lazy(() => import('./components/LendingChatWidget.jsx'))
@@ -215,7 +217,7 @@ export default function Root() {
                     <Route path="cms" element={<Navigate to="/admin/dashboard" replace />} />
                     <Route path="settings" element={<SettingsPage />} />
                     <Route path="activity" element={<ActivityPage />} />
-                    <Route path="notifications" element={<Navigate to="/admin/dashboard" replace />} />
+                    <Route path="notifications" element={<NotificationsPage />} />
                     <Route path="chat-crm" element={<AdminChatCRM />} />
                     <Route path="feedback" element={<AdminFeedbackPage />} />
                     <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
@@ -243,7 +245,7 @@ export default function Root() {
                   <Route path="banking" element={<Navigate to="/borrower/profile" replace />} />
                   <Route path="settings/privacy" element={<BorrowerPrivacyPrefsPage />} />
                   <Route path="applications" element={<BorrowerApplicationsPage />} />
-                  <Route path="notifications" element={<Navigate to="/borrower/dashboard" replace />} />
+                  <Route path="notifications" element={<BorrowerNotificationsPage />} />
                   <Route path="payments" element={<BorrowerPaymentsPage />} />
                   <Route path="chat" element={<BorrowerChatPage />} />
                   <Route path="profile" element={<BorrowerProfilePage />} />
