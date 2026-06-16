@@ -409,6 +409,11 @@ Route::prefix('v1')->group(function () {
         Route::post('/borrower-communications/conversations/{conversation}/archive', [AdminBorrowerCommunicationController::class, 'archivePortalConversation']);
         Route::post('/borrower-communications/conversations/{conversation}/unarchive', [AdminBorrowerCommunicationController::class, 'unarchivePortalConversation']);
         Route::delete('/borrower-communications/conversations/{conversation}', [AdminBorrowerCommunicationController::class, 'deletePortalConversation']);
+        Route::post('/conversations/{conversation}/read', [AdminBorrowerCommunicationController::class, 'markPortalRead']);
+        Route::post('/conversations/{conversation}/unread', [AdminBorrowerCommunicationController::class, 'markPortalUnread']);
+        Route::post('/conversations/{conversation}/archive', [AdminBorrowerCommunicationController::class, 'archivePortalConversation']);
+        Route::post('/conversations/{conversation}/unarchive', [AdminBorrowerCommunicationController::class, 'unarchivePortalConversation']);
+        Route::delete('/conversations/{conversation}', [AdminBorrowerCommunicationController::class, 'deletePortalConversation']);
         Route::get('/borrower-communications/support-tickets', [AdminBorrowerCommunicationController::class, 'tickets']);
         Route::get('/borrower-communications/support-tickets/{ticket}', [AdminBorrowerCommunicationController::class, 'ticketMessages']);
         Route::patch('/borrower-communications/support-tickets/{ticket}', [AdminBorrowerCommunicationController::class, 'updateTicket']);

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Lead;
 use App\Models\LeadMessage;
 use App\Models\Permission;
+use App\Models\PortalConversation;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\PublicStorageUrl;
@@ -153,5 +154,50 @@ class LeadChatPublicFileTest extends TestCase
             ->assertJsonPath('ok', true);
 
         $this->assertSoftDeleted('leads', ['id' => $lead->id]);
+    }
+
+    public function test_portal_conversation_management_alias_endpoints_work(): void
+    {
+        $borrower = User::factory()->create(['role' => 'borrower']);
+        $admin = User::factory()->create(['role' => 'admin', 'is_active' => true]);
+        $conversation = PortalConversation::create([
+            'borrower_id' => $borrower->id,
+            'subject' => 'Portal support',
+            'status' => 'active',
+            'last_message_at' => now(),
+            'unread_count' => 2,
+        ]);
+        $token = auth('api')->login($admin);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson("/api/v1/admin/conversations/{$conversation->id}/read")
+            ->assertOk()
+            ->assertJsonPath('message', 'Conversation marked as read');
+
+        $this->assertSame(0, (int) $conversation->fresh()->unread_count);
+        $this->assertNotNull($conversation->fresh()->last_read_at);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson("/api/v1/admin/conversations/{$conversation->id}/unread")
+            ->assertOk()
+            ->assertJsonPath('message', 'Conversation marked as unread');
+
+        $this->assertSame(1, (int) $conversation->fresh()->unread_count);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson("/api/v1/admin/conversations/{$conversation->id}/archive")
+            ->assertOk()
+            ->assertJsonPath('message', 'Conversation archived');
+
+        $this->assertSame('archived', $conversation->fresh()->status);
+        $this->assertTrue((bool) $conversation->fresh()->is_archived);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson("/api/v1/admin/conversations/{$conversation->id}/unarchive")
+            ->assertOk()
+            ->assertJsonPath('message', 'Conversation unarchived');
+
+        $this->assertSame('active', $conversation->fresh()->status);
+        $this->assertFalse((bool) $conversation->fresh()->is_archived);
     }
 }
