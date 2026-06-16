@@ -1,12 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { getLaravelPublicOrigin } from '../../utils/lendingLaravelApi.js'
 
-/** Laravel origin for signed verify links (matches amalgated-lending-api BORROWER_VERIFY_URL_BASE). */
+/** Laravel origin for signed verify web routes (not /api/v1 — signature is route-specific). */
 function borrowerVerifyApiBase() {
-  const explicit = (import.meta.env.VITE_BORROWER_VERIFY_URL_BASE || import.meta.env.VITE_API_PROXY_TARGET || '')
-    .trim()
-    .replace(/\/$/, '')
+  const explicit = (import.meta.env.VITE_BORROWER_VERIFY_URL_BASE || '').trim().replace(/\/$/, '')
   if (explicit) return explicit
+
+  const publicOrigin = getLaravelPublicOrigin()
+  if (publicOrigin) return publicOrigin
+
+  if (import.meta.env.PROD && typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin
+  }
+
   const port = import.meta.env.VITE_BACKEND_PORT || '8000'
   return `http://127.0.0.1:${port}`
 }
@@ -26,18 +33,19 @@ function resolveVerifyTarget() {
 }
 
 /**
- * SPA fallback when /borrower/email/verify is served by Vite — completes verification via Laravel JSON.
+ * SPA landing when /borrower/email/verify is served by the React app (e.g. amalgatedlending.com).
+ * Completes verification via Laravel JSON on the API/public host, then redirects to /login?verified=1.
  */
 export default function BorrowerEmailVerifyPage() {
   const [state, setState] = useState({
     phase: 'loading',
     title: 'Verifying your email',
     message: 'Please wait while we confirm your link…',
-    loginUrl: '/borrower/login',
+    loginUrl: '/login?verified=1',
   })
 
   useEffect(() => {
-    const loginFallback = '/borrower/login'
+    const loginFallback = '/login?verified=1'
     const verifyUrl = resolveVerifyTarget()
 
     if (!verifyUrl) {
@@ -45,7 +53,7 @@ export default function BorrowerEmailVerifyPage() {
         phase: 'error',
         title: 'Invalid link',
         message: 'This verification link is incomplete. Sign in and request a new verification email.',
-        loginUrl: loginFallback,
+        loginUrl: '/login',
       })
       return
     }
@@ -70,8 +78,12 @@ export default function BorrowerEmailVerifyPage() {
           credentials: 'omit',
         })
         const data = await res.json().catch(() => ({}))
-        const loginUrl =
+        let loginUrl =
           typeof data.login_url === 'string' && data.login_url !== '' ? data.login_url : loginFallback
+        // Normalize API-relative login paths to SPA /login
+        if (loginUrl.includes('/borrower/login')) {
+          loginUrl = loginUrl.replace('/borrower/login', '/login')
+        }
         const message =
           typeof data.message === 'string' && data.message !== ''
             ? data.message
@@ -94,9 +106,10 @@ export default function BorrowerEmailVerifyPage() {
           phase: 'error',
           title: res.status === 403 ? 'Link invalid or expired' : 'Verification failed',
           message,
-          loginUrl,
+          loginUrl: loginUrl.includes('verified=1') ? '/login' : loginUrl,
         })
       } catch {
+        // Network/CORS: fall back to full-page navigation (Laravel HTML verify page).
         window.location.replace(verifyUrl)
       }
     }

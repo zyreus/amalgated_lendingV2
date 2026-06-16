@@ -23,10 +23,16 @@ class AdminBorrowerCommunicationController extends Controller
 
         return response()->json([
             'open_tickets' => SupportTicket::query()->whereIn('status', ['open', 'in_progress', 'waiting_for_borrower'])->count(),
-            'unread_messages' => PortalConversation::query()->whereColumn('admin_last_seen_at', '<', 'last_message_at')->orWhereNull('admin_last_seen_at')->count(),
+            'unread_messages' => PortalConversation::query()->where('unread_count', '>', 0)->count(),
             'average_response_time' => '4m 20s',
             'resolved_today' => SupportTicket::query()->where('resolved_at', '>=', $today)->count(),
-            'active_borrowers_online' => PortalConversation::query()->where('status', 'active')->where('last_message_at', '>=', now()->subMinutes(10))->count(),
+            'active_borrowers_online' => PortalConversation::query()
+                ->where('status', 'active')
+                ->where(function ($q) {
+                    $q->where('is_archived', false)->orWhereNull('is_archived');
+                })
+                ->where('last_message_at', '>=', now()->subMinutes(10))
+                ->count(),
             'staff_performance' => [],
         ]);
     }
@@ -34,8 +40,7 @@ class AdminBorrowerCommunicationController extends Controller
     public function portalConversations(Request $request): JsonResponse
     {
         $query = PortalConversation::query()
-            ->with(['borrower:id,name,email,phone,risk_level', 'loan:id,borrower_id,status,outstanding_balance'])
-            ->withCount(['messages as unread_count' => fn ($q) => $q->where('sender_type', 'borrower')->whereNull('seen_at')]);
+            ->with(['borrower:id,name,email,phone,risk_level', 'loan:id,borrower_id,status,outstanding_balance']);
 
         if ($search = trim((string) $request->query('search', ''))) {
             $query->where(function ($q) use ($search) {
@@ -46,9 +51,17 @@ class AdminBorrowerCommunicationController extends Controller
         }
 
         if ($status = $request->query('status')) {
-            $status === 'archived'
-                ? $query->whereNotNull('archived_at')
-                : $query->where('status', $status);
+            if ($status === 'archived') {
+                $query->where('is_archived', true);
+            } elseif ($status === 'unread') {
+                $query->where('unread_count', '>', 0)->where(function ($q) {
+                    $q->where('is_archived', false)->orWhereNull('is_archived');
+                });
+            } else {
+                $query->where('status', $status)->where(function ($q) {
+                    $q->where('is_archived', false)->orWhereNull('is_archived');
+                });
+            }
         }
 
         $rows = $query->orderByDesc('is_pinned')->orderByDesc('last_message_at')->paginate((int) $request->query('per_page', 30));
@@ -59,7 +72,11 @@ class AdminBorrowerCommunicationController extends Controller
     public function portalMessages(Request $request, PortalConversation $conversation): JsonResponse
     {
         $perPage = max(10, min(100, (int) $request->query('per_page', 50)));
-        $conversation->forceFill(['admin_last_seen_at' => now()])->save();
+        $conversation->forceFill([
+            'admin_last_seen_at' => now(),
+            'last_read_at' => now(),
+            'unread_count' => 0,
+        ])->save();
 
         $messages = $conversation->messages()
             ->select(['id', 'portal_conversation_id', 'sender_type', 'sender_id', 'body', 'attachments', 'sent_at', 'seen_at'])
@@ -115,10 +132,69 @@ class AdminBorrowerCommunicationController extends Controller
             'attachments' => $attachments,
         ]);
 
-        $conversation->forceFill(['status' => 'active', 'last_message_at' => now(), 'admin_last_seen_at' => now()])->save();
+        $conversation->forceFill([
+            'status' => 'active',
+            'is_archived' => false,
+            'archived_at' => null,
+            'last_message_at' => now(),
+            'admin_last_seen_at' => now(),
+            'last_read_at' => now(),
+            'unread_count' => 0,
+        ])->save();
         PortalMessageSent::dispatch($message);
 
         return response()->json(['ok' => true, 'message' => $message], 201);
+    }
+
+    public function markPortalRead(Request $request, PortalConversation $conversation): JsonResponse
+    {
+        $conversation->forceFill([
+            'unread_count' => 0,
+            'admin_last_seen_at' => now(),
+            'last_read_at' => now(),
+        ])->save();
+
+        return response()->json(['ok' => true, 'message' => 'Conversation marked as read', 'conversation' => $conversation->fresh()]);
+    }
+
+    public function markPortalUnread(Request $request, PortalConversation $conversation): JsonResponse
+    {
+        $conversation->forceFill([
+            'unread_count' => max(1, (int) ($conversation->unread_count ?? 0)),
+            'last_read_at' => null,
+        ])->save();
+
+        return response()->json(['ok' => true, 'message' => 'Conversation marked as unread', 'conversation' => $conversation->fresh()]);
+    }
+
+    public function archivePortalConversation(Request $request, PortalConversation $conversation): JsonResponse
+    {
+        $conversation->forceFill([
+            'status' => 'archived',
+            'is_archived' => true,
+            'archived_at' => now(),
+        ])->save();
+
+        return response()->json(['ok' => true, 'message' => 'Conversation archived', 'conversation' => $conversation->fresh()]);
+    }
+
+    public function unarchivePortalConversation(Request $request, PortalConversation $conversation): JsonResponse
+    {
+        $conversation->forceFill([
+            'status' => 'active',
+            'is_archived' => false,
+            'archived_at' => null,
+        ])->save();
+
+        return response()->json(['ok' => true, 'message' => 'Conversation unarchived', 'conversation' => $conversation->fresh()]);
+    }
+
+    public function deletePortalConversation(Request $request, PortalConversation $conversation): JsonResponse
+    {
+        $this->authorizeThreadDelete($request);
+        $conversation->delete();
+
+        return response()->json(['ok' => true, 'message' => 'Conversation deleted']);
     }
 
     public function tickets(Request $request): JsonResponse
@@ -235,5 +311,22 @@ class AdminBorrowerCommunicationController extends Controller
         ]);
 
         return response()->json(['ok' => true, 'note' => $note], 201);
+    }
+
+    private function authorizeThreadDelete(Request $request): void
+    {
+        $user = $request->user();
+        if (
+            $user
+            && (
+                $user->hasPermission('users.manage')
+                || $user->hasPermission('roles.manage')
+                || $user->hasPermission('borrowers.delete')
+            )
+        ) {
+            return;
+        }
+
+        abort(403, 'Only system administrators may delete conversations.');
     }
 }

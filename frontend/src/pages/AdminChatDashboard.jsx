@@ -332,6 +332,7 @@ export default function AdminChatDashboard({
   canManageLoans = false,
   canViewBorrowers = false,
   canAssignStaff = false,
+  canDeleteConversations = false,
 }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const [conversations, setConversations] = useState([])
@@ -392,6 +393,9 @@ export default function AdminChatDashboard({
   const [borrowerInboxSearch, setBorrowerInboxSearch] = useState('')
   const [borrowerInput, setBorrowerInput] = useState('')
   const [borrowerSending, setBorrowerSending] = useState(false)
+  const [borrowerSelected, setBorrowerSelected] = useState({})
+  const [borrowerThreadBusy, setBorrowerThreadBusy] = useState(false)
+  const [actionNotice, setActionNotice] = useState('')
   /** Laravel staff list for `/warehouse-assign` (requires `users.view`). */
   const [assignStaffRows, setAssignStaffRows] = useState([])
   const [warehouseActionError, setWarehouseActionError] = useState('')
@@ -686,11 +690,19 @@ export default function AdminChatDashboard({
   }, [chatInboxTab, view, fetchBorrowerLeads, fetchConversations])
 
   useEffect(() => {
+    if (view !== 'chats' || chatInboxTab !== 'borrower' || !activeBorrowerLeadId) {
+      if (!activeBorrowerLeadId) setBorrowerMessages([])
+      return
+    }
+    fetchBorrowerMessages(activeBorrowerLeadId)
+  }, [view, chatInboxTab, activeBorrowerLeadId, fetchBorrowerMessages])
+
+  useEffect(() => {
     if (view !== 'chats' || chatInboxTab !== 'borrower' || !activeBorrowerLeadId) return
-    if (socketConnected) return
     const tick = () => {
       if (typeof document !== 'undefined' && document.hidden) return
       fetchBorrowerMessages(activeBorrowerLeadId)
+      fetchBorrowerLeads()
     }
     tick()
     const iv = setInterval(tick, CHAT_POLL_MS)
@@ -702,7 +714,7 @@ export default function AdminChatDashboard({
       clearInterval(iv)
       if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVis)
     }
-  }, [view, chatInboxTab, activeBorrowerLeadId, fetchBorrowerMessages, socketConnected])
+  }, [view, chatInboxTab, activeBorrowerLeadId, fetchBorrowerMessages, fetchBorrowerLeads])
 
   useEffect(() => {
     if (view !== 'chats' || chatInboxTab !== 'visitor') return
@@ -891,7 +903,14 @@ export default function AdminChatDashboard({
       })
       socket.on('analytics:refresh', () => fetchAnalyticsRef.current())
       socket.on('feedback:refresh', () => fetchFeedbackRef.current())
-      socket.on('leads:refresh', () => fetchLeadsRef.current())
+      socket.on('leads:refresh', () => {
+        fetchLeadsRef.current()
+        fetchBorrowerLeadsRef.current?.().catch(() => {})
+        const bid = activeBorrowerLeadIdRef.current
+        if (viewRef.current === 'chats' && chatInboxTabRef.current === 'borrower' && bid) {
+          fetchBorrowerMessagesRef.current?.(bid)
+        }
+      })
       socket.on('admin:newLead', (lead) => {
         setNewLeadAlert(lead)
         fetchLeadsRef.current()
@@ -1381,6 +1400,16 @@ export default function AdminChatDashboard({
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return
+    if (typeof deleteTarget === 'object' && deleteTarget.type === 'borrower') {
+      await runBorrowerThreadAction(deleteTarget.id, 'delete')
+      setDeleteTarget(null)
+      return
+    }
+    if (typeof deleteTarget === 'object' && deleteTarget.type === 'borrower-bulk') {
+      await runBulkBorrowerThreadAction('delete', deleteTarget.ids || [])
+      setDeleteTarget(null)
+      return
+    }
     try {
       await adminApi(`/admin/chat/conversations/${encodeURIComponent(deleteTarget)}/warehouse`, {
         method: 'DELETE',
@@ -1456,6 +1485,81 @@ export default function AdminChatDashboard({
       fetchConversations()
     } catch (error) {
       console.error(error)
+    }
+  }
+
+  const showActionNotice = (message) => {
+    setActionNotice(message)
+    window.setTimeout(() => {
+      setActionNotice((current) => (current === message ? '' : current))
+    }, 2600)
+  }
+
+  const refreshBorrowerInbox = async () => {
+    await fetchBorrowerLeads()
+    if (activeBorrowerLeadId) await fetchBorrowerMessages(activeBorrowerLeadId)
+  }
+
+  const runBorrowerThreadAction = async (leadId, action) => {
+    if (!leadId || borrowerThreadBusy) return
+    const messagesByAction = {
+      read: 'Conversation marked as read',
+      unread: 'Conversation marked as unread',
+      archive: 'Conversation archived',
+      unarchive: 'Conversation unarchived',
+      delete: 'Conversation deleted',
+    }
+    setBorrowerThreadBusy(true)
+    try {
+      await adminApi(`/admin/leads/${leadId}${action === 'delete' ? '' : `/${action}`}`, {
+        method: action === 'delete' ? 'DELETE' : 'POST',
+      })
+      showActionNotice(messagesByAction[action] || 'Conversation updated')
+      setBorrowerSelected((prev) => {
+        const next = { ...prev }
+        delete next[String(leadId)]
+        return next
+      })
+      if (action === 'delete' && Number(leadId) === Number(activeBorrowerLeadId)) {
+        setActiveBorrowerLeadId(null)
+        setBorrowerMessages([])
+      }
+      await refreshBorrowerInbox()
+    } catch (error) {
+      setWarehouseActionError(error?.message || 'Could not update conversation.')
+    } finally {
+      setBorrowerThreadBusy(false)
+    }
+  }
+
+  const runBulkBorrowerThreadAction = async (action, ids) => {
+    const uniqueIds = Array.from(new Set((ids || []).map((id) => String(id)).filter(Boolean)))
+    if (!uniqueIds.length || borrowerThreadBusy) return
+    setBorrowerThreadBusy(true)
+    try {
+      for (const id of uniqueIds) {
+        await adminApi(`/admin/leads/${id}${action === 'delete' ? '' : `/${action}`}`, {
+          method: action === 'delete' ? 'DELETE' : 'POST',
+        })
+      }
+      const messagesByAction = {
+        read: 'Selected conversations marked as read',
+        unread: 'Selected conversations marked as unread',
+        archive: 'Selected conversations archived',
+        unarchive: 'Selected conversations unarchived',
+        delete: 'Selected conversations deleted',
+      }
+      showActionNotice(messagesByAction[action] || 'Selected conversations updated')
+      setBorrowerSelected({})
+      if (uniqueIds.some((id) => Number(id) === Number(activeBorrowerLeadId)) && action === 'delete') {
+        setActiveBorrowerLeadId(null)
+        setBorrowerMessages([])
+      }
+      await refreshBorrowerInbox()
+    } catch (error) {
+      setWarehouseActionError(error?.message || 'Could not update selected conversations.')
+    } finally {
+      setBorrowerThreadBusy(false)
     }
   }
 
@@ -1558,11 +1662,10 @@ Amalgated Lending Inc. Team`
         if (borrowerTicketFilter !== 'urgent' && borrowerTicketFilter !== statusKey) return false
       }
     } else {
-      const statusKey = borrowerLeadStatusKey(lead)
       const unread = Number(lead.unread_count || lead.admin_unread_count || 0) > 0
       if (borrowerPortalFilter === 'unread' && !unread) return false
-      if (borrowerPortalFilter === 'active' && statusKey === 'closed') return false
-      if (borrowerPortalFilter === 'archived' && statusKey !== 'closed') return false
+      if (borrowerPortalFilter === 'active' && lead.is_archived) return false
+      if (borrowerPortalFilter === 'archived' && !lead.is_archived) return false
       if (borrowerPortalFilter === 'online' && !lead.is_online) return false
     }
     if (!borrowerSq) return true
@@ -1591,6 +1694,7 @@ Amalgated Lending Inc. Team`
   }
 
   const selectedConversationIds = Object.keys(chatSelected).filter((key) => chatSelected[key])
+  const selectedBorrowerLeadIds = Object.keys(borrowerSelected).filter((key) => borrowerSelected[key])
   const selectedFeedbackIds = Object.keys(feedbackSelected).filter((key) => feedbackSelected[key])
   const hasConversationSelection = selectedConversationIds.length > 0
 
@@ -1600,6 +1704,14 @@ Amalgated Lending Inc. Team`
     <div
       className={`relative flex h-full min-h-0 flex-1 flex-row overflow-hidden rounded-2xl bg-[var(--admin-bg)] text-[var(--admin-text)] ${chatAuthMissing || crmDataHint ? 'pt-14' : ''}`}
     >
+      {actionNotice ? (
+        <div
+          className="absolute right-3 top-3 z-[90] max-w-xs rounded-xl border border-emerald-500/30 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 shadow-lg"
+          role="status"
+        >
+          {actionNotice}
+        </div>
+      ) : null}
       {crmDataHint ? (
         <div
           className="absolute inset-x-0 top-0 z-[65] border-b border-sky-500/35 bg-sky-500/10 px-3 py-2 text-left text-xs leading-snug text-sky-950 sm:px-4 sm:text-sm"
@@ -2073,6 +2185,47 @@ Amalgated Lending Inc. Team`
                   )
                 })}
               </div>
+              {borrowerInboxType === 'portal' ? (
+                <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+                  <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                    {selectedBorrowerLeadIds.length} selected
+                  </span>
+                  <button
+                    type="button"
+                    disabled={!selectedBorrowerLeadIds.length || borrowerThreadBusy}
+                    onClick={() => runBulkBorrowerThreadAction('read', selectedBorrowerLeadIds)}
+                    className="rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Mark Read
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!selectedBorrowerLeadIds.length || borrowerThreadBusy}
+                    onClick={() => runBulkBorrowerThreadAction('unread', selectedBorrowerLeadIds)}
+                    className="rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Mark Unread
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!selectedBorrowerLeadIds.length || borrowerThreadBusy}
+                    onClick={() => runBulkBorrowerThreadAction(borrowerPortalFilter === 'archived' ? 'unarchive' : 'archive', selectedBorrowerLeadIds)}
+                    className="rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {borrowerPortalFilter === 'archived' ? 'Unarchive Selected' : 'Archive Selected'}
+                  </button>
+                  {canDeleteConversations ? (
+                    <button
+                      type="button"
+                      disabled={!selectedBorrowerLeadIds.length || borrowerThreadBusy}
+                      onClick={() => setDeleteTarget({ type: 'borrower-bulk', ids: selectedBorrowerLeadIds })}
+                      className="rounded-lg px-2 py-1 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Delete Selected
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               <p className="text-[10px] text-[color:var(--admin-muted-2)]">
                 Showing {filteredBorrowerLeads.length} {borrowerInboxType === 'tickets' ? 'support ticket' : 'portal message'} thread
                 {filteredBorrowerLeads.length !== 1 ? 's' : ''}.
@@ -2282,6 +2435,21 @@ Amalgated Lending Inc. Team`
                         : 'border-[var(--admin-border)]'
                     }`}
                   >
+                    {!isTicket ? (
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${lead.name || 'conversation'}`}
+                        checked={!!borrowerSelected[String(lead.id)]}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) =>
+                          setBorrowerSelected((prev) => ({
+                            ...prev,
+                            [String(lead.id)]: e.target.checked,
+                          }))
+                        }
+                        className="mt-3 h-4 w-4 shrink-0 rounded border-slate-300 text-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]"
+                      />
+                    ) : null}
                     <div className="relative shrink-0">
                       <div className={`flex h-10 w-10 items-center justify-center rounded-2xl text-xs font-bold text-white ${color}`}>
                         {initials}
@@ -2745,6 +2913,44 @@ Amalgated Lending Inc. Team`
                   {activeBorrowerLead.is_online ? 'Online' : 'Portal'}
                 </span>
               )}
+              {borrowerInboxType === 'portal' ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={borrowerThreadBusy}
+                    onClick={() => runBorrowerThreadAction(activeBorrowerLead.id, 'read')}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Mark Read
+                  </button>
+                  <button
+                    type="button"
+                    disabled={borrowerThreadBusy}
+                    onClick={() => runBorrowerThreadAction(activeBorrowerLead.id, 'unread')}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Mark Unread
+                  </button>
+                  <button
+                    type="button"
+                    disabled={borrowerThreadBusy}
+                    onClick={() => runBorrowerThreadAction(activeBorrowerLead.id, activeBorrowerLead.is_archived ? 'unarchive' : 'archive')}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {activeBorrowerLead.is_archived ? 'Unarchive' : 'Archive'}
+                  </button>
+                  {canDeleteConversations ? (
+                    <button
+                      type="button"
+                      disabled={borrowerThreadBusy}
+                      onClick={() => setDeleteTarget({ type: 'borrower', id: activeBorrowerLead.id })}
+                      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setCrmProfileOpen((v) => !v)}
@@ -4064,8 +4270,7 @@ Amalgated Lending Inc. Team`
               Delete conversation
             </h3>
             <p className="mt-2 text-sm leading-relaxed text-[color:var(--admin-muted)]">
-              Permanently delete this conversation and all its messages? This cannot
-              be undone.
+              Delete this conversation permanently?
             </p>
             <div className="mt-6 flex gap-3">
               <button

@@ -39,6 +39,7 @@ export default function AdminChatCRM() {
           canViewAnalytics
           canManageLoans={can('loans.view')}
           canViewBorrowers={can('borrowers.view')}
+          canDeleteConversations={can('users.manage') || can('roles.manage') || can('borrowers.delete')}
           canAssignStaff={false}
         />
       </div>

@@ -23,7 +23,14 @@ class PublicFileController extends Controller
 
         if (PublicStorageUrl::isSensitivePath($normalized)) {
             $user = $this->optionalApiUser($request);
-            if (! $request->hasValidSignature() && ! SensitiveStorageAccess::canRead($user, $normalized)) {
+            $signatureOk = $request->hasValidSignature(false);
+            if (! $signatureOk && ! SensitiveStorageAccess::canRead($user, $normalized)) {
+                Log::info('Public storage access denied.', [
+                    'normalized_path' => $normalized,
+                    'user_id' => $user?->id,
+                    'has_bearer' => $request->bearerToken() !== null,
+                    'has_signature_param' => $request->has('signature'),
+                ]);
                 abort(404);
             }
         }
@@ -33,9 +40,16 @@ class PublicFileController extends Controller
             Log::warning('Public storage file missing.', [
                 'normalized_path' => $normalized,
                 'raw_route_param' => $path,
+                'disk_root' => $disk->path(''),
+                'resolved_full_path' => $disk->path($normalized),
             ]);
             abort(404);
         }
+
+        Log::debug('Public storage file served.', [
+            'normalized_path' => $normalized,
+            'resolved_full_path' => $disk->path($normalized),
+        ]);
 
         return $disk->response($normalized);
     }

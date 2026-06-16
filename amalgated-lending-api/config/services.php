@@ -91,7 +91,7 @@ return [
         // Public site origin for verification links (must match web route host, not api.*).
         'base_url' => env('BORROWER_VERIFY_URL_BASE', env('FRONTEND_URL', env('APP_URL'))),
         // Frontend login path where users land after verify/failure.
-        'login_path' => env('BORROWER_VERIFY_LOGIN_PATH', '/borrower/login'),
+        'login_path' => env('BORROWER_VERIFY_LOGIN_PATH', '/login'),
         // Optional absolute logo URL used by email templates.
         'logo_url' => env('MAIL_LOGO_URL'),
     ],

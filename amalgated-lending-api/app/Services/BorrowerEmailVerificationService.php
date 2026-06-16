@@ -21,7 +21,7 @@ final class BorrowerEmailVerificationService
      */
     public function verify(Request $request, int $id, string $hash): array
     {
-        if (! $request->hasValidSignature(false)) {
+        if (! $this->hasValidVerifySignature($request, $id, $hash)) {
             $isExpired = is_numeric($request->query('expires'))
                 && (int) $request->query('expires') < now()->getTimestamp();
 
@@ -134,5 +134,26 @@ final class BorrowerEmailVerificationService
                 'verification_status' => $status,
             ],
         ];
+    }
+
+    /**
+     * Accept signatures for canonical path links even when opened as legacy ?id=&hash= query URLs.
+     */
+    private function hasValidVerifySignature(Request $request, int $id, string $hash): bool
+    {
+        if ($request->hasValidSignature(false)) {
+            return true;
+        }
+
+        $canonical = Request::create(
+            "/borrower/email/verify/{$id}/{$hash}",
+            'GET',
+            array_filter([
+                'expires' => $request->query('expires'),
+                'signature' => $request->query('signature'),
+            ], static fn ($v) => $v !== null && $v !== '')
+        );
+
+        return $canonical->hasValidSignature(false);
     }
 }

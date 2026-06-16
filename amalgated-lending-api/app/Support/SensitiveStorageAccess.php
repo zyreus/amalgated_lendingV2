@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\DocumentLoanApplication;
+use App\Models\LeadMessage;
 use App\Models\LoanApplication;
 use App\Models\User;
 
@@ -58,6 +59,19 @@ final class SensitiveStorageAccess
 
         if (str_starts_with($normalizedPath, 'signatures/')) {
             return $user->canUseBorrowerPortal() || $user->canAccessAdminPortal();
+        }
+
+        if (str_starts_with($normalizedPath, 'lead-chat/')) {
+            if ($user->canAccessAdminPortal() && $user->hasPermission('borrowers.view')) {
+                return true;
+            }
+
+            if ($user->canUseBorrowerPortal()) {
+                return LeadMessage::query()
+                    ->where('attachment_path', $normalizedPath)
+                    ->whereHas('lead', fn ($q) => $q->where('user_id', $user->id))
+                    ->exists();
+            }
         }
 
         return false;

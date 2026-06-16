@@ -23,6 +23,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -791,6 +792,13 @@ class BorrowerPortalController extends Controller
             $file = $request->file('attachment');
             $path = $file->store('lead-chat', 'public');
             $name = $file->getClientOriginalName();
+            Log::info('Borrower chat attachment stored.', [
+                'user_id' => $user->id,
+                'lead_id' => $lead->id,
+                'attachment_path' => $path,
+                'disk' => 'public',
+                'full_path' => Storage::disk('public')->path($path),
+            ]);
         }
 
         $msg = LeadMessage::create([
@@ -801,6 +809,11 @@ class BorrowerPortalController extends Controller
             'attachment_name' => $name,
         ]);
         $lead->last_message_at = now();
+        $lead->forceFill([
+            'unread_count' => max(1, (int) ($lead->unread_count ?? 0) + 1),
+            'is_archived' => false,
+            'archived_at' => null,
+        ]);
         if ($lead->status === 'closed') {
             $lead->status = 'ongoing';
         }

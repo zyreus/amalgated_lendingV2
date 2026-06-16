@@ -12,7 +12,9 @@ use App\Support\PublicStorageUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 
 class AdminLeadController extends Controller
 {
@@ -20,7 +22,11 @@ class AdminLeadController extends Controller
     {
         $q = Lead::query();
         if ($status = $request->query('status')) {
-            $q->where('status', $status);
+            $status === 'archived'
+                ? $q->where('is_archived', true)
+                : $q->where('status', $status)->where(function ($w) {
+                    $w->where('is_archived', false)->orWhereNull('is_archived');
+                });
         }
         if ($search = $request->query('search')) {
             $q->where(function ($w) use ($search) {
@@ -86,11 +92,70 @@ class AdminLeadController extends Controller
         return response()->json(['ok' => true, 'lead' => $lead->fresh()]);
     }
 
-    public function destroy(Lead $lead): JsonResponse
+    public function destroy(Request $request, Lead $lead): JsonResponse
     {
+        $this->authorizeThreadDelete($request);
         $lead->delete();
 
         return response()->json(['ok' => true]);
+    }
+
+    public function markRead(Request $request, Lead $lead): JsonResponse
+    {
+        $lead->forceFill([
+            'unread_count' => 0,
+            'last_read_at' => now(),
+        ])->save();
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Conversation marked as read',
+            'lead' => $lead->fresh(),
+        ]);
+    }
+
+    public function markUnread(Request $request, Lead $lead): JsonResponse
+    {
+        $lead->forceFill([
+            'unread_count' => max(1, (int) ($lead->unread_count ?? 0)),
+            'last_read_at' => null,
+        ])->save();
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Conversation marked as unread',
+            'lead' => $lead->fresh(),
+        ]);
+    }
+
+    public function archive(Request $request, Lead $lead): JsonResponse
+    {
+        $lead->forceFill([
+            'is_archived' => true,
+            'archived_at' => now(),
+            'status' => 'closed',
+        ])->save();
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Conversation archived',
+            'lead' => $lead->fresh(),
+        ]);
+    }
+
+    public function unarchive(Request $request, Lead $lead): JsonResponse
+    {
+        $lead->forceFill([
+            'is_archived' => false,
+            'archived_at' => null,
+            'status' => 'ongoing',
+        ])->save();
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Conversation unarchived',
+            'lead' => $lead->fresh(),
+        ]);
     }
 
     /**
@@ -242,6 +307,13 @@ class AdminLeadController extends Controller
             $file = $request->file('attachment');
             $path = $file->store('lead-chat', 'public');
             $name = $file->getClientOriginalName();
+            Log::info('Admin lead chat attachment stored.', [
+                'lead_id' => $lead->id,
+                'admin_user_id' => $request->user()->id,
+                'attachment_path' => $path,
+                'disk' => 'public',
+                'full_path' => Storage::disk('public')->path($path),
+            ]);
         }
 
         $msg = LeadMessage::create([
@@ -253,6 +325,12 @@ class AdminLeadController extends Controller
             'attachment_name' => $name,
         ]);
         $lead->last_message_at = now();
+        $lead->forceFill([
+            'unread_count' => 0,
+            'last_read_at' => now(),
+            'is_archived' => false,
+            'archived_at' => null,
+        ]);
         if ($lead->status === 'new') {
             $lead->status = 'ongoing';
         }
@@ -273,5 +351,22 @@ class AdminLeadController extends Controller
                 'created_at' => optional($msg->created_at)?->toIso8601String(),
             ],
         ], 201);
+    }
+
+    private function authorizeThreadDelete(Request $request): void
+    {
+        $user = $request->user();
+        if (
+            $user
+            && (
+                $user->hasPermission('users.manage')
+                || $user->hasPermission('roles.manage')
+                || $user->hasPermission('borrowers.delete')
+            )
+        ) {
+            return;
+        }
+
+        abort(403, 'Only system administrators may delete conversations.');
     }
 }

@@ -8,36 +8,168 @@ use Illuminate\Support\Facades\URL;
 
 final class BorrowerVerificationUrl
 {
+    /** Production public site — fallback when env still points at loopback. */
+    private const PRODUCTION_PUBLIC_ORIGIN = 'https://amalgatedlending.com';
+
     /**
-     * Borrower login URL on the SPA, with the same host family as the verify request
-     * (127.0.0.1 vs localhost) so local redirects are not dropped by the browser.
+     * Borrower login URL on the SPA. Uses FRONTEND_URL in production; aligns localhost/127.0.0.1 only in local dev.
      */
     public static function borrowerLoginUrl(Request $request, array $params = []): string
     {
-        $base = rtrim((string) config('app.frontend_url', ''), '/');
-        if ($base === '') {
-            $base = rtrim((string) config('services.borrower_verify.base_url', ''), '/');
+        $base = self::frontendLoginBase();
+
+        if (self::allowLocalHostAlignment()) {
+            $verifyBase = rtrim((string) config('services.borrower_verify.base_url', ''), '/');
+            $requestOrigin = $request->getSchemeAndHttpHost();
+            if (
+                $verifyBase !== ''
+                && self::isLoopbackUrl($verifyBase)
+                && str_starts_with($verifyBase, $requestOrigin)
+                && self::originKey($base) !== self::originKey($verifyBase)
+                && self::originKey($requestOrigin) === self::originKey($verifyBase)
+            ) {
+                $base = $requestOrigin;
+            }
+
+            $base = self::alignHostWithRequest($request, $base);
         }
 
-        // Local split stack: verify links hit Laravel (e.g. :8000) while Vite runs elsewhere (e.g. :6174).
-        // When the user verified on the Laravel/public host, send them to login on that same origin so they
-        // are not bounced to a different port that may be down or unrelated to the link they clicked.
-        $verifyBase = rtrim((string) config('services.borrower_verify.base_url', ''), '/');
-        $requestOrigin = $request->getSchemeAndHttpHost();
-        if (
-            $verifyBase !== ''
-            && str_starts_with($verifyBase, $requestOrigin)
-            && self::originKey($base) !== self::originKey($verifyBase)
-            && self::originKey($requestOrigin) === self::originKey($verifyBase)
-        ) {
-            $base = $requestOrigin;
-        }
-
-        $base = self::alignHostWithRequest($request, $base);
-        $path = '/'.ltrim((string) config('services.borrower_verify.login_path', '/borrower/login'), '/');
+        $path = '/'.ltrim((string) config('services.borrower_verify.login_path', '/login'), '/');
         $query = http_build_query(array_filter($params, static fn ($v) => $v !== null && $v !== ''));
 
         return $query !== '' ? "{$base}{$path}?{$query}" : "{$base}{$path}";
+    }
+
+    public static function signedVerifyUrl(User $user): string
+    {
+        $hours = max(1, min(720, (int) config('services.borrower_verify.expires_hours', 168)));
+        $base = rtrim(self::publicBaseUrlForEmail(), '/');
+
+        $appUrl = rtrim((string) config('app.url'), '/');
+        URL::forceRootUrl($base);
+
+        try {
+            $relative = URL::temporarySignedRoute(
+                'borrower.email.verify',
+                now()->addHours($hours),
+                [
+                    'id' => $user->getKey(),
+                    'hash' => sha1((string) $user->getEmailForVerification()),
+                ],
+                false,
+            );
+        } finally {
+            if ($appUrl !== '') {
+                URL::forceRootUrl($appUrl);
+            }
+        }
+
+        return $base.$relative;
+    }
+
+    /**
+     * Canonical verify path on the public origin (for legacy redirects).
+     */
+    public static function canonicalVerifyUrl(int $id, string $hash, array $queryParams = []): string
+    {
+        $base = rtrim(self::publicBaseUrl(), '/');
+        $path = "/borrower/email/verify/{$id}/{$hash}";
+        $query = http_build_query(array_filter($queryParams, static fn ($v) => $v !== null && $v !== ''));
+
+        return $query !== '' ? "{$base}{$path}?{$query}" : "{$base}{$path}";
+    }
+
+    /**
+     * Origin borrowers click in email — public site (FRONTEND_URL / BORROWER_VERIFY_URL_BASE), never loopback in production.
+     */
+    public static function publicBaseUrl(): string
+    {
+        $candidates = [
+            trim((string) config('services.borrower_verify.base_url', '')),
+            trim((string) config('app.frontend_url', '')),
+            trim((string) config('app.url', '')),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if ($candidate === '') {
+                continue;
+            }
+            if (! self::allowLocalHostAlignment() && self::isLoopbackUrl($candidate)) {
+                continue;
+            }
+
+            return self::ensureHttps($candidate);
+        }
+
+        if (! self::allowLocalHostAlignment()) {
+            return self::PRODUCTION_PUBLIC_ORIGIN;
+        }
+
+        return self::ensureHttps('http://localhost');
+    }
+
+    /**
+     * Origin embedded in outbound verification emails — never loopback (mobile inboxes cannot reach dev machine).
+     */
+    public static function publicBaseUrlForEmail(): string
+    {
+        $candidates = [
+            trim((string) config('services.borrower_verify.base_url', '')),
+            trim((string) config('app.frontend_url', '')),
+            trim((string) config('app.url', '')),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if ($candidate === '' || self::isLoopbackUrl($candidate)) {
+                continue;
+            }
+
+            return self::ensureHttps($candidate);
+        }
+
+        return self::PRODUCTION_PUBLIC_ORIGIN;
+    }
+
+    private static function frontendLoginBase(): string
+    {
+        $frontend = trim((string) config('app.frontend_url', ''));
+        if ($frontend !== '' && (self::allowLocalHostAlignment() || ! self::isLoopbackUrl($frontend))) {
+            return rtrim(self::ensureHttps($frontend), '/');
+        }
+
+        $verifyBase = trim((string) config('services.borrower_verify.base_url', ''));
+        if ($verifyBase !== '' && (self::allowLocalHostAlignment() || ! self::isLoopbackUrl($verifyBase))) {
+            return rtrim(self::ensureHttps($verifyBase), '/');
+        }
+
+        if (! self::allowLocalHostAlignment()) {
+            return self::PRODUCTION_PUBLIC_ORIGIN;
+        }
+
+        return rtrim(self::ensureHttps((string) config('app.url', 'http://localhost')), '/');
+    }
+
+    private static function allowLocalHostAlignment(): bool
+    {
+        if (app()->environment('local', 'testing')) {
+            return true;
+        }
+
+        $appUrl = trim((string) config('app.url', ''));
+
+        return $appUrl === '' || self::isLoopbackUrl($appUrl);
+    }
+
+    private static function isLoopbackUrl(string $url): bool
+    {
+        $parts = parse_url($url);
+        if (! is_array($parts) || empty($parts['host'])) {
+            return false;
+        }
+
+        $host = strtolower((string) $parts['host']);
+
+        return in_array($host, ['localhost', '127.0.0.1', '0.0.0.0', '[::1]'], true);
     }
 
     private static function originKey(string $url): string
@@ -67,54 +199,17 @@ final class BorrowerVerificationUrl
         return $url;
     }
 
-    public static function signedVerifyUrl(User $user): string
-    {
-        $hours = max(1, min(720, (int) config('services.borrower_verify.expires_hours', 168)));
-        $base = rtrim(self::publicBaseUrl(), '/');
-
-        $appUrl = rtrim((string) config('app.url'), '/');
-        URL::forceRootUrl($base);
-
-        try {
-            $relative = URL::temporarySignedRoute(
-                'borrower.email.verify',
-                now()->addHours($hours),
-                [
-                    'id' => $user->getKey(),
-                    'hash' => sha1((string) $user->getEmailForVerification()),
-                ],
-                false,
-            );
-        } finally {
-            if ($appUrl !== '') {
-                URL::forceRootUrl($appUrl);
-            }
-        }
-
-        return $base.$relative;
-    }
-
-    /**
-     * Origin borrowers click in email — public site (FRONTEND_URL), not the API subdomain.
-     */
-    private static function publicBaseUrl(): string
-    {
-        $configured = trim((string) config('services.borrower_verify.base_url', ''));
-        if ($configured !== '') {
-            return self::ensureHttps($configured);
-        }
-
-        $frontend = trim((string) config('app.frontend_url', ''));
-        if ($frontend !== '') {
-            return self::ensureHttps($frontend);
-        }
-
-        return self::ensureHttps((string) config('app.url', 'http://localhost'));
-    }
-
     private static function ensureHttps(string $url): string
     {
         if (app()->environment('production') && str_starts_with(strtolower($url), 'http://')) {
+            return 'https://'.substr($url, 7);
+        }
+
+        if (
+            ! self::allowLocalHostAlignment()
+            && ! self::isLoopbackUrl($url)
+            && str_starts_with(strtolower($url), 'http://')
+        ) {
             return 'https://'.substr($url, 7);
         }
 

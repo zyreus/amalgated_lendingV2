@@ -68,13 +68,11 @@ class BorrowerEmailVerificationController extends Controller
             ]);
         }
 
-        if ($request->hasValidSignature(false)) {
-            $query = http_build_query(array_filter([
+        if ($this->legacyQueryHasValidSignature($request, $id, $hash)) {
+            $target = BorrowerVerificationUrl::canonicalVerifyUrl($id, $hash, array_filter([
                 'expires' => $request->query('expires'),
                 'signature' => $request->query('signature'),
-            ]));
-
-            $target = url("/borrower/email/verify/{$id}/{$hash}").($query !== '' ? '?'.$query : '');
+            ], static fn ($v) => $v !== null && $v !== ''));
 
             Log::debug('borrower.email.verify.legacy_redirect', ['target' => $target]);
 
@@ -134,5 +132,23 @@ class BorrowerEmailVerificationController extends Controller
             ], $result['http_status'] >= 400 ? $result['http_status'] : SymfonyResponse::HTTP_OK)
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
             ->header('Pragma', 'no-cache');
+    }
+
+    private function legacyQueryHasValidSignature(Request $request, int $id, string $hash): bool
+    {
+        if ($request->hasValidSignature(false)) {
+            return true;
+        }
+
+        $canonical = Request::create(
+            "/borrower/email/verify/{$id}/{$hash}",
+            'GET',
+            array_filter([
+                'expires' => $request->query('expires'),
+                'signature' => $request->query('signature'),
+            ], static fn ($v) => $v !== null && $v !== '')
+        );
+
+        return $canonical->hasValidSignature(false);
     }
 }
