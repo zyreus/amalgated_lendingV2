@@ -7,7 +7,7 @@ function borrowerVerifyApiBase() {
     .trim()
     .replace(/\/$/, '')
   if (explicit) return explicit
-  const port = import.meta.env.VITE_BACKEND_PORT || '8001'
+  const port = import.meta.env.VITE_BACKEND_PORT || '8000'
   return `http://127.0.0.1:${port}`
 }
 

@@ -86,8 +86,8 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Borrower', 'description' => 'Borrower profile (no admin permissions by default).']
         );
 
-        $adminUsername = env('ADMIN_SEED_USERNAME', 'admin');
-        $adminPass = env('ADMIN_SEED_PASSWORD', 'admin123');
+        $adminUsername = env('ADMIN_SEED_USERNAME', 'aliadmin');
+        $adminPass = env('ADMIN_SEED_PASSWORD', 'aliadmin8888');
         $adminEmail = $adminUsername.'@amalgated-lending.local';
 
         $user = User::updateOrCreate(

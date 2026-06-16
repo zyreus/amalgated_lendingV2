@@ -30,6 +30,13 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
         'email',
         'password',
         'phone',
+        'phone_verified_at',
+        'borrower_status',
+        'otp_code',
+        'otp_expiration',
+        'verification_attempts',
+        'otp_resend_attempts',
+        'otp_last_sent_at',
         'is_active',
         'role',
         'credit_score',
@@ -51,10 +58,17 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
     protected $hidden = [
         'password',
         'remember_token',
+        'otp_code',
+        'otp_expiration',
+        'verification_attempts',
+        'otp_resend_attempts',
     ];
 
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'phone_verified_at' => 'datetime',
+        'otp_expiration' => 'datetime',
+        'otp_last_sent_at' => 'datetime',
         'is_active' => 'boolean',
         'credit_score' => 'decimal:2',
         'is_archived' => 'boolean',

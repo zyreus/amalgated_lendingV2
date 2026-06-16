@@ -177,14 +177,14 @@ export default function BorrowerLayout() {
   const [notifUnread, setNotifUnread] = useState(null)
   const [notifModalOpen, setNotifModalOpen] = useState(false)
   const notifWrapRef = useRef(null)
-  const avatarUrl = isImagePath(user?.profile_photo_path)
-    ? getLaravelStorageFileUrl(user?.profile_photo_path)
-    : isImagePath(user?.profile_photo_url)
-      ? getLaravelStorageFileUrl(user?.profile_photo_url)
-      : isImagePath(user?.id_document_path)
-        ? getLaravelStorageFileUrl(user?.id_document_path)
-        : isImagePath(user?.id_document_url)
-          ? getLaravelStorageFileUrl(user?.id_document_url)
+  const avatarUrl = isImagePath(user?.profile_photo_url)
+    ? getLaravelStorageFileUrl(user?.profile_photo_url)
+    : isImagePath(user?.id_document_url)
+      ? getLaravelStorageFileUrl(user?.id_document_url)
+      : isImagePath(user?.profile_photo_path)
+        ? getLaravelStorageFileUrl(user?.profile_photo_path)
+        : isImagePath(user?.id_document_path)
+          ? getLaravelStorageFileUrl(user?.id_document_path)
           : null
 
   useEffect(() => {

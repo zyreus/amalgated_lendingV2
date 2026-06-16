@@ -54,7 +54,6 @@ export function getLendingChatSecret() {
 
 /** Default Node chat/Socket.IO origin in dev (see chat-server `PORT`, usually 8010). */
 const DEFAULT_CHAT_DEV_ORIGIN = 'http://127.0.0.1:8010'
-const DEFAULT_CHAT_DEV_FALLBACK_ORIGIN = 'http://127.0.0.1:8011'
 const DEFAULT_CHAT_REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_CHAT_REQUEST_TIMEOUT_MS || 15000)
 
 function localDevChatOriginsFromWindow() {
@@ -67,7 +66,7 @@ function localDevChatOriginsFromWindow() {
     return derived ? [derived] : []
   }
   const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
-  return [`${protocol}//${host}:8010`, `${protocol}//${host}:8011`]
+  return [`${protocol}//${host}:8010`]
 }
 
 function normalizePublicHostname(hostname) {
@@ -173,9 +172,6 @@ function devNodeChatOrigins() {
   add((import.meta.env.VITE_CHAT_DEV_ORIGIN || '').trim())
   add((import.meta.env.VITE_CHAT_PROXY_TARGET || '').trim())
   add(DEFAULT_CHAT_DEV_ORIGIN)
-  add(DEFAULT_CHAT_DEV_FALLBACK_ORIGIN)
-  // Chat server auto-falls back from 8010 -> 8011 when the port is occupied.
-  add(DEFAULT_CHAT_DEV_ORIGIN.replace(/:8010$/, ':8011'))
 
   return candidates
 }

@@ -60,6 +60,27 @@ return [
     ],
 
     /*
+    | Borrower OTP SMS delivery. Use provider "semaphore" for PH SMS, "twilio"
+    | for Twilio, or "log" for local testing without sending real messages.
+    */
+    'sms' => [
+        'otp_enabled' => filter_var(env('SMS_OTP_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'provider' => env('SMS_PROVIDER', 'log'),
+        'timeout' => max(3, (int) env('SMS_TIMEOUT', 10)),
+        'verify_ssl' => filter_var(env('SMS_VERIFY_SSL', true), FILTER_VALIDATE_BOOL),
+        'semaphore' => [
+            'key' => env('SEMAPHORE_API_KEY'),
+            'sender' => env('SEMAPHORE_SENDER_NAME', 'AMALEND'),
+            'url' => env('SEMAPHORE_API_URL', 'https://api.semaphore.co/api/v4/messages'),
+        ],
+        'twilio' => [
+            'sid' => env('TWILIO_ACCOUNT_SID'),
+            'token' => env('TWILIO_AUTH_TOKEN'),
+            'from' => env('TWILIO_FROM'),
+        ],
+    ],
+
+    /*
     | Borrower portal email verification (signed URL → web route borrower.email.verify).
     | Cooldown avoids rapid resend bursts; queue job skips while cache key is set.
     */

@@ -26,6 +26,15 @@ class LoanApplicationWorkflowValidator
 
         $data = $app->form_data ?? [];
 
+        $productFields = config('amalgated_loans.product_application_fields.'.$loanType, []);
+        if ($productFields !== []) {
+            foreach ($productFields as $rows) {
+                $errors = array_merge($errors, $this->validateFieldRows($rows, $data));
+            }
+
+            return array_merge($errors, $this->validateLoanProductBasics($data));
+        }
+
         foreach (config('amalgated_loans.wizard_common', []) as $row) {
             if (! $this->fieldRequiredForLoanType($row, $loanType)) {
                 continue;
@@ -48,6 +57,38 @@ class LoanApplicationWorkflowValidator
             }
         }
 
+        return array_merge($errors, $this->validateLoanProductBasics($data));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function validateFormStep(LoanApplication $app, int $step): array
+    {
+        $loanType = $app->loan_type;
+        if (! $loanType) {
+            return ['Select a loan type.'];
+        }
+
+        $data = $app->form_data ?? [];
+        $stepConfig = collect(config('amalgated_loans.product_application_steps.'.$loanType, []))->firstWhere('id', $step);
+        $section = is_array($stepConfig) ? ($stepConfig['section'] ?? null) : null;
+        if (! $section || in_array($section, ['documents', 'review'], true)) {
+            return [];
+        }
+
+        $rows = config('amalgated_loans.product_application_fields.'.$loanType.'.'.$section, []);
+        $errors = $this->validateFieldRows($rows, $data);
+
+        return $section === 'loan' ? array_merge($errors, $this->validateLoanProductBasics($data)) : $errors;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function validateLoanProductBasics(array $data): array
+    {
+        $errors = [];
         $selectedProductId = isset($data['loan_product_id']) ? (int) $data['loan_product_id'] : 0;
         if ($selectedProductId <= 0) {
             $errors[] = 'Loan product is required.';
@@ -69,6 +110,46 @@ class LoanApplicationWorkflowValidator
         }
 
         return $errors;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function validateFieldRows(array $rows, array $data): array
+    {
+        $errors = [];
+        foreach ($rows as $row) {
+            if (! $this->isProductFieldRequired($row, $data)) {
+                continue;
+            }
+            $key = $row['key'];
+            $val = $data[$key] ?? null;
+            if ($val === null || $val === '') {
+                $errors[] = ($row['label'] ?? $key).' is required.';
+            }
+        }
+
+        return $errors;
+    }
+
+    private function isProductFieldRequired(array $row, array $data): bool
+    {
+        if ($row['required'] ?? false) {
+            return true;
+        }
+
+        $requiredIf = $row['required_if'] ?? null;
+        if (! is_array($requiredIf)) {
+            return false;
+        }
+
+        foreach ($requiredIf as $key => $expected) {
+            if (($data[$key] ?? null) !== $expected) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -97,7 +178,9 @@ class LoanApplicationWorkflowValidator
             return ['Loan type is required before documents.'];
         }
 
-        $status = LoanApplicationDocumentStatus::forGeneralLoanType($loanType, $app->documents ?? []);
+        $status = $loanType === LoanApplication::TYPE_TRAVEL_ASSISTANCE
+            ? LoanApplicationDocumentStatus::forTravelPurpose((string) (($app->form_data ?? [])['travel_purpose'] ?? ''), $app->documents ?? [])
+            : LoanApplicationDocumentStatus::forGeneralLoanType($loanType, $app->documents ?? []);
         $errors = [];
         foreach ($status as $key => $row) {
             if (! $row['ok']) {

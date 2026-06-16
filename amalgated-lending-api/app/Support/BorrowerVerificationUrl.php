@@ -19,7 +19,7 @@ final class BorrowerVerificationUrl
             $base = rtrim((string) config('services.borrower_verify.base_url', ''), '/');
         }
 
-        // Local split stack: verify links hit Laravel (e.g. :8001) while Vite runs elsewhere (e.g. :6174).
+        // Local split stack: verify links hit Laravel (e.g. :8000) while Vite runs elsewhere (e.g. :6174).
         // When the user verified on the Laravel/public host, send them to login on that same origin so they
         // are not bounced to a different port that may be down or unrelated to the link they clicked.
         $verifyBase = rtrim((string) config('services.borrower_verify.base_url', ''), '/');

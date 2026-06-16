@@ -6,8 +6,10 @@ export const LOAN_PRODUCT_KEYS = {
   CHATTEL_MORTGAGE: 'chattel_mortgage',
   REAL_ESTATE_MORTGAGE: 'real_estate_mortgage',
   SALARY_LOAN: 'salary_loan',
+  APPLIANCE_LOAN: 'appliance_loan',
   TRAVEL_ASSISTANCE: 'travel_assistance',
   SSS_PENSION: 'sss_pension',
+  GSIS_PENSION: 'gsis_pension',
 }
 
 export const LOAN_PRODUCT_DOCUMENT_CHECKLISTS = {
@@ -46,6 +48,12 @@ export const LOAN_PRODUCT_DOCUMENT_CHECKLISTS = {
     'Two (2) valid government IDs — borrower',
     'Two (2) valid government IDs — co-maker',
   ],
+  [LOAN_PRODUCT_KEYS.APPLIANCE_LOAN]: [
+    'Valid government-issued ID',
+    'Proof of billing',
+    'Proof of income',
+    'Quotation or invoice from approved partner store',
+  ],
   [LOAN_PRODUCT_KEYS.TRAVEL_ASSISTANCE]: [
     'Signed loan application form',
     'Two (2) valid government-issued IDs',
@@ -68,6 +76,12 @@ export const LOAN_PRODUCT_DOCUMENT_CHECKLISTS = {
     'Four (4) months of bank statements (one file per month)',
     'If co-maker: co-maker contact details and IDs as applicable',
   ],
+  [LOAN_PRODUCT_KEYS.GSIS_PENSION]: [
+    'GSIS ID',
+    'Pension voucher',
+    'Recent bank statement',
+    'Valid government-issued ID',
+  ],
 }
 
 export function getLoanProductDocumentList(key) {
@@ -80,7 +94,9 @@ export function documentProductKeyFromSlug(slug) {
   if (s.includes('chattel')) return LOAN_PRODUCT_KEYS.CHATTEL_MORTGAGE
   if (s.includes('real-estate') || s === 'rem') return LOAN_PRODUCT_KEYS.REAL_ESTATE_MORTGAGE
   if (s.includes('salary-loan') || (s.includes('salary') && !s.includes('aci'))) return LOAN_PRODUCT_KEYS.SALARY_LOAN
+  if (s.includes('appliance')) return LOAN_PRODUCT_KEYS.APPLIANCE_LOAN
   if (s.includes('travel')) return LOAN_PRODUCT_KEYS.TRAVEL_ASSISTANCE
+  if (s.includes('gsis')) return LOAN_PRODUCT_KEYS.GSIS_PENSION
   if (s.includes('pension') || s.includes('sss')) return LOAN_PRODUCT_KEYS.SSS_PENSION
   return null
 }

@@ -3,7 +3,7 @@
 const { performance } = require('node:perf_hooks');
 
 const targets = [
-  process.env.PERF_URL_HEALTH || 'http://127.0.0.1:8001/api/v1/health',
+  process.env.PERF_URL_HEALTH || 'http://127.0.0.1:8000/api/v1/health',
   process.env.PERF_URL_CHAT_HEALTH || 'http://127.0.0.1:8010/health',
 ];
 const runs = Number(process.env.PERF_RUNS || 20);

@@ -57,10 +57,52 @@ export function BorrowerAuthProvider({ children }) {
     return res
   }, [])
 
-  const register = useCallback(async ({ name, email, phone, password, password_confirmation }) => {
+  const register = useCallback(async (payload) => {
+    const body =
+      typeof FormData !== 'undefined' && payload instanceof FormData
+        ? payload
+        : JSON.stringify(payload)
     const res = await borrowerApi('/borrower/register', {
       method: 'POST',
-      body: JSON.stringify({ name, email, phone, password, password_confirmation }),
+      body,
+    })
+    if (res.token || res.access_token) {
+      setBorrowerToken(res.token || res.access_token)
+      setBorrowerUser(res.user)
+      setUser(res.user)
+    }
+    return res
+  }, [])
+
+  const verifyOtp = useCallback(async (username, code) => {
+    const res = await borrowerApi('/borrower/verify-otp', {
+      method: 'POST',
+      body: JSON.stringify({ username, code }),
+    })
+    setBorrowerToken(res.token || res.access_token)
+    setBorrowerUser(res.user)
+    setUser(res.user)
+    return res
+  }, [])
+
+  const requestOtp = useCallback(async (username) => {
+    return borrowerApi('/borrower/otp/request', {
+      method: 'POST',
+      body: JSON.stringify({ username }),
+    })
+  }, [])
+
+  const requestPasswordOtp = useCallback(async (phone) => {
+    return borrowerApi('/borrower/password/forgot-otp', {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+    })
+  }, [])
+
+  const resetPasswordWithOtp = useCallback(async ({ phone, code, password, password_confirmation }) => {
+    const res = await borrowerApi('/borrower/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ phone, code, password, password_confirmation }),
     })
     setBorrowerToken(res.token || res.access_token)
     setBorrowerUser(res.user)
@@ -80,8 +122,20 @@ export function BorrowerAuthProvider({ children }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user, booting, authed: !!user, login, register, logout, loadMe }),
-    [user, booting, login, register, logout, loadMe],
+    () => ({
+      user,
+      booting,
+      authed: !!user,
+      login,
+      register,
+      verifyOtp,
+      requestOtp,
+      requestPasswordOtp,
+      resetPasswordWithOtp,
+      logout,
+      loadMe,
+    }),
+    [user, booting, login, register, verifyOtp, requestOtp, requestPasswordOtp, resetPasswordWithOtp, logout, loadMe],
   )
 
   return <BorrowerAuthContext.Provider value={value}>{children}</BorrowerAuthContext.Provider>

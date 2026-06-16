@@ -1075,7 +1075,9 @@ class BorrowerPortalController extends Controller
      */
     private function serializeSubmittedGeneralLendingApplication(LoanApplication $a): array
     {
-        $docStatus = LoanApplicationDocumentStatus::forGeneralLoanType($a->loan_type, $a->documents);
+        $docStatus = $a->loan_type === LoanApplication::TYPE_TRAVEL_ASSISTANCE
+            ? LoanApplicationDocumentStatus::forTravelPurpose((string) (($a->form_data ?? [])['travel_purpose'] ?? ''), $a->documents)
+            : LoanApplicationDocumentStatus::forGeneralLoanType($a->loan_type, $a->documents);
 
         return [
             'id' => $a->id,

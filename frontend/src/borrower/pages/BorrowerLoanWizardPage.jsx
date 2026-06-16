@@ -124,6 +124,12 @@ export default function BorrowerLoanWizardPage() {
     navigate('/borrower/applications', { replace: true })
   }, [applicationId, app, navigate])
 
+  useEffect(() => {
+    if (!applicationId || !app?.loan_type || !schema?.loan_application_routes) return
+    const slug = schema.loan_application_routes[app.loan_type]
+    if (slug) navigate(`/borrower/loan-application/${slug}?application_id=${applicationId}`, { replace: true })
+  }, [applicationId, app?.loan_type, navigate, schema])
+
   const persist = useDebouncedCallback(async (nextForm, nextStep, nextLoanType) => {
     if (!applicationId || !app) return
     setSaving(true)
@@ -182,7 +188,8 @@ export default function BorrowerLoanWizardPage() {
         method: 'POST',
         body: JSON.stringify({ loan_type: loanType }),
       })
-      navigate(`/borrower/apply-loan/${res.data.id}`, { replace: true })
+      const slug = schema?.loan_application_routes?.[loanType] || loanType
+      navigate(`/borrower/loan-application/${slug}?application_id=${res.data.id}`, { replace: true })
     } catch (e) {
       setError(e.message || 'Could not start application.')
     }

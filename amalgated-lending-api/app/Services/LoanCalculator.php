@@ -64,6 +64,12 @@ class LoanCalculator
             ]);
         }
 
+        if (! empty($cfg['min_principal']) && $amount < (float) $cfg['min_principal']) {
+            throw ValidationException::withMessages([
+                'loan_amount' => ['Loan amount must be at least ₱'.number_format((float) $cfg['min_principal'], 2).'.'],
+            ]);
+        }
+
         if ($product->max_term !== null && $term > (int) $product->max_term) {
             throw ValidationException::withMessages([
                 'term_months' => ['Term exceeds product maximum of '.$product->max_term.' months.'],

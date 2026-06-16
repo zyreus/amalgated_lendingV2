@@ -61,7 +61,7 @@ class LoanApplicationController extends Controller
 
     public function store(StoreLoanApplicationRequest $request): JsonResponse
     {
-        $payload = $request->validated();
+        $payload = $this->sanitizeBorrowerPayload($request, $request->validated());
         $user = $request->user();
 
         $compute = $this->calculator->compute([
@@ -82,7 +82,7 @@ class LoanApplicationController extends Controller
             'loan_type' => (string) ($payload['loan_type'] ?? LoanApplication::TYPE_CHATTEL),
             'loan_amount' => (float) $payload['loan_amount'],
             'term_months' => (int) $payload['term_months'],
-            'status' => (string) ($payload['status'] ?? LoanApplication::STATUS_PENDING),
+            'status' => $this->resolveBorrowerSafeStatus($request, $payload),
             'co_maker_name' => $payload['co_maker_name'] ?? null,
             'co_maker_email' => $payload['co_maker_email'] ?? null,
             'co_maker_phone' => $payload['co_maker_phone'] ?? null,
@@ -110,7 +110,7 @@ class LoanApplicationController extends Controller
             return response()->json(['ok' => false, 'message' => 'Forbidden.'], 403);
         }
 
-        $payload = $request->validated();
+        $payload = $this->sanitizeBorrowerPayload($request, $request->validated());
         $loanApplication->fill($payload);
 
         $needsRecompute = isset($payload['loan_product_id'])
@@ -178,5 +178,52 @@ class LoanApplicationController extends Controller
         }
 
         return (int) $loanApplication->user_id === (int) $user->id;
+    }
+
+    private function canManageWorkflow(Request $request): bool
+    {
+        $user = $request->user();
+        if (! $user) {
+            return false;
+        }
+
+        return $user->hasPermission('loans.approve');
+    }
+
+  /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function sanitizeBorrowerPayload(Request $request, array $payload): array
+    {
+        if ($this->canManageWorkflow($request)) {
+            return $payload;
+        }
+
+        unset(
+            $payload['status'],
+            $payload['verified_at'],
+            $payload['approved_amount'],
+            $payload['rejection_reason'],
+            $payload['documents'],
+        );
+
+        return $payload;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function resolveBorrowerSafeStatus(Request $request, array $payload): string
+    {
+        if ($this->canManageWorkflow($request)) {
+            return (string) ($payload['status'] ?? LoanApplication::STATUS_PENDING);
+        }
+
+        $status = (string) ($payload['status'] ?? LoanApplication::STATUS_PENDING);
+
+        return in_array($status, [LoanApplication::STATUS_DRAFT, LoanApplication::STATUS_PENDING], true)
+            ? $status
+            : LoanApplication::STATUS_PENDING;
     }
 }

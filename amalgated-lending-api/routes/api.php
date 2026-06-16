@@ -77,8 +77,11 @@ Route::prefix('v1')->group(function () {
     Route::post('/borrower/register', [BorrowerAuthController::class, 'register'])->middleware('throttle:auth-register');
     Route::post('/borrower/otp/request', [BorrowerAuthController::class, 'requestOtp'])->middleware('throttle:auth-password-reset');
     Route::post('/borrower/otp/verify', [BorrowerAuthController::class, 'verifyOtpLogin'])->middleware('throttle:auth-login');
+    Route::post('/borrower/verify-otp', [BorrowerAuthController::class, 'verifyOtpLogin'])->middleware('throttle:auth-login');
     Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:auth-login');
     Route::post('/borrower/forgot-password', [PasswordResetController::class, 'requestBorrower'])->middleware('throttle:auth-password-reset');
+    Route::post('/borrower/password/forgot-otp', [BorrowerAuthController::class, 'requestPasswordOtp'])->middleware('throttle:auth-password-reset');
+    Route::post('/borrower/reset-password', [BorrowerAuthController::class, 'resetPasswordWithOtp'])->middleware('throttle:auth-password-reset');
     Route::post('/admin/forgot-password', [PasswordResetController::class, 'requestAdmin'])->middleware('throttle:auth-password-reset');
     Route::post('/password/reset', [PasswordResetController::class, 'reset'])->middleware('throttle:auth-password-reset');
 
@@ -109,7 +112,9 @@ Route::prefix('v1')->group(function () {
         ->middleware(['auth:api', 'active', 'borrower', 'throttle:face_verify']);
 
     Route::get('/public/cms', [CmsController::class, 'publicSection']);
-    Route::get('/public-files/{path}', [PublicFileController::class, 'show'])->where('path', '.*');
+    Route::get('/public-files/{path}', [PublicFileController::class, 'show'])
+        ->where('path', '.*')
+        ->name('api.public-files.show');
     Route::get('/public/loan-products', [LoanProductController::class, 'publicIndex']);
     Route::post('/public/loan-products/calculate', [LoanProductController::class, 'calculate']);
     Route::post('/public/loan-computations/quick', [LoanComputationController::class, 'compute']);
@@ -410,11 +415,22 @@ Route::prefix('v1')->group(function () {
         Route::delete('/chat/conversations/{sessionId}/warehouse', [AdminChatController::class, 'destroyConversation']);
         Route::get('/chat/knowledge', [AdminChatKnowledgeController::class, 'stats']);
         Route::post('/chat/knowledge/sync', [AdminChatKnowledgeController::class, 'sync']);
-        Route::get('/loan-products', [LoanProductController::class, 'adminIndex']);
-        Route::post('/loan-products', [LoanProductController::class, 'store']);
-        Route::put('/loan-products/{loanProduct}', [LoanProductController::class, 'update']);
-        Route::delete('/loan-products/{loanProduct}', [LoanProductController::class, 'destroy']);
-        Route::apiResource('/loan-applications', LoanApplicationController::class);
+        Route::get('/loan-products', [LoanProductController::class, 'adminIndex'])->middleware('permission:loans.view');
+        Route::middleware('permission:cms.manage')->group(function () {
+            Route::post('/loan-products', [LoanProductController::class, 'store']);
+            Route::put('/loan-products/{loanProduct}', [LoanProductController::class, 'update']);
+            Route::delete('/loan-products/{loanProduct}', [LoanProductController::class, 'destroy']);
+        });
+        Route::middleware('permission:loans.view')->group(function () {
+            Route::get('/loan-applications', [LoanApplicationController::class, 'index']);
+            Route::get('/loan-applications/{loan_application}', [LoanApplicationController::class, 'show']);
+        });
+        Route::middleware('permission:loans.approve')->group(function () {
+            Route::post('/loan-applications', [LoanApplicationController::class, 'store']);
+            Route::put('/loan-applications/{loan_application}', [LoanApplicationController::class, 'update']);
+            Route::patch('/loan-applications/{loan_application}', [LoanApplicationController::class, 'update']);
+            Route::delete('/loan-applications/{loan_application}', [LoanApplicationController::class, 'destroy']);
+        });
     });
 
     Route::prefix('borrower')->middleware(['auth:api', 'active', 'borrower'])->group(function () {

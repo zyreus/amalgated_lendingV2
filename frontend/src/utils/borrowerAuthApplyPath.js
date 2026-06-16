@@ -3,8 +3,19 @@ const SLUG_TO_LOAN_TYPE = {
   'chattel-mortgage': 'chattel',
   'real-estate-mortgage': 'real_estate',
   'salary-loan': 'salary',
+  appliance: 'appliance',
   'travel-assistance-loan': 'travel_assistance',
   'sss-pension-loan': 'sss_pension',
+  'gsis-pension-loan': 'sss_pension',
+  'pension-loan': 'sss_pension',
+}
+
+const LOAN_TYPE_TO_APPLICATION_ROUTE = {
+  salary: '/borrower/loan-application/salary-loan',
+  chattel: '/borrower/loan-application/chattel-mortgage',
+  real_estate: '/borrower/loan-application/real-estate-mortgage',
+  sss_pension: '/borrower/loan-application/pension-loan',
+  travel_assistance: '/borrower/loan-application/travel-assistance',
 }
 
 export function loanTypeFromProductSlug(slug) {
@@ -15,6 +26,7 @@ export function loanTypeFromProductSlug(slug) {
 /** Post-login destination for starting a loan application in the portal. */
 export function borrowerApplyRedirectPath(productSlug) {
   const loanType = loanTypeFromProductSlug(productSlug)
+  if (LOAN_TYPE_TO_APPLICATION_ROUTE[loanType]) return LOAN_TYPE_TO_APPLICATION_ROUTE[loanType]
   const params = new URLSearchParams()
   if (loanType) params.set('loan_type', loanType)
   const qs = params.toString()

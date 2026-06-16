@@ -13,7 +13,7 @@ class CmsLandingNewsletterSeeder extends Seeder
 {
     public function run(): void
     {
-        $adminUsername = env('ADMIN_SEED_USERNAME', 'admin');
+        $adminUsername = env('ADMIN_SEED_USERNAME', 'aliadmin');
         $adminEmail = $adminUsername.'@amalgated-lending.local';
         $editorId = User::query()->where('email', $adminEmail)->value('id');
 

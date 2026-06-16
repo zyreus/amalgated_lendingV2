@@ -6,7 +6,6 @@
 const HIDDEN_SLUGS = new Set([
   'rem',
   'travel-abroad',
-  'appliance',
   'salary-aci',
 ])
 

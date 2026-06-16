@@ -9,8 +9,9 @@ export default function BorrowerLoginPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { login, loadMe } = useBorrowerAuth()
-  const [username, setUsername] = useState('')
+  const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(true)
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
@@ -37,12 +38,16 @@ export default function BorrowerLoginPage() {
     setLoading(true)
     setErrorMsg('')
     try {
-      await login(username.trim(), password)
+      await login(phone.trim(), password, rememberMe)
       const redirect = searchParams.get('redirect')
       const target =
         redirect && redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/borrower/dashboard'
       navigate(target, { replace: true })
     } catch (err) {
+      if (err?.body?.verification_required && err?.body?.phone) {
+        navigate(`/borrower/verify-otp?phone=${encodeURIComponent(err.body.phone)}`, { replace: true })
+        return
+      }
       setErrorMsg(err.message || 'Borrower login failed.')
     } finally {
       setLoading(false)
@@ -89,11 +94,12 @@ export default function BorrowerLoginPage() {
           </div>
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
               required
-              placeholder="Username or email"
-              autoComplete="username"
+              placeholder="Phone number (09XXXXXXXXX)"
+              inputMode="tel"
+              autoComplete="tel"
               className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition-colors duration-300 placeholder:text-gray-500 focus:border-[#DC2626]/50 focus:ring-2 focus:ring-[#DC2626]/20 dark:border-[#1F2937] dark:bg-[#0F172A] dark:text-gray-100 dark:placeholder:text-gray-400"
             />
             <PasswordInput
@@ -103,7 +109,16 @@ export default function BorrowerLoginPage() {
               placeholder="Password"
               autoComplete="current-password"
             />
-            <div className="flex justify-end">
+            <div className="flex items-center justify-between gap-3">
+              <label className="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                />
+                Remember me
+              </label>
               <Link
                 to="/borrower/forgot-password"
                 className="text-sm font-medium text-red-600 transition hover:text-red-700 hover:underline dark:text-red-400 dark:hover:text-red-300"

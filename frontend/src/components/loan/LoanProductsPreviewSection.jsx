@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getLoanProducts } from '../../utils/loanProductsPublicApi.js'
+import { buildLoanProductDisplayCards } from '../../utils/loanProductDisplayCards.js'
 import LoanProductCard from './LoanProductCard.jsx'
 
 export default function LoanProductsPreviewSection() {
@@ -15,7 +16,7 @@ export default function LoanProductsPreviewSection() {
       setError('')
       try {
         const rows = await getLoanProducts()
-        if (!cancelled) setItems((rows || []).slice(0, 3))
+        if (!cancelled) setItems(buildLoanProductDisplayCards(rows || []))
       } catch (e) {
         if (!cancelled) setError(e.message || 'Could not load products.')
       } finally {
@@ -49,8 +50,8 @@ export default function LoanProductsPreviewSection() {
         </div>
 
         {loading ? (
-          <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {[1, 2, 3].map((i) => (
+          <div className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            {[1, 2, 3, 4, 5, 6, 7].map((i) => (
               <div
                 key={i}
                 className="h-64 animate-pulse rounded-2xl border border-black/5 bg-black/[0.04] dark:bg-white/[0.06]"
@@ -62,9 +63,9 @@ export default function LoanProductsPreviewSection() {
             {error}
           </p>
         ) : (
-          <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
             {items.map((p) => (
-              <LoanProductCard key={p.id} product={p} compact showApply={false} />
+              <LoanProductCard key={p.id} product={p} compact />
             ))}
           </div>
         )}

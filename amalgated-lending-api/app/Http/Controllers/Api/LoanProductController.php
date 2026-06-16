@@ -156,6 +156,15 @@ class LoanProductController extends Controller
             ], 422);
         }
 
+        if (! empty($cfg['min_principal']) && $principal > 0 && $principal < (float) $cfg['min_principal']) {
+            $minFmt = number_format((float) $cfg['min_principal'], 2);
+
+            return response()->json([
+                'ok' => false,
+                'message' => "Loan amount must be at least ₱{$minFmt} for this product.",
+            ], 422);
+        }
+
         if ($principal <= 0) {
             return response()->json([
                 'ok' => true,

@@ -58,7 +58,6 @@ class AdminAuthController extends Controller
             'token_type' => 'bearer',
             'expires_in' => auth('api')->factory()->getTTL() * 60,
             'user' => $authUser->toAuthPayload(),
-            'chat_api_secret' => $this->chatApiSecret(),
         ]);
     }
 
@@ -71,7 +70,6 @@ class AdminAuthController extends Controller
         return response()->json([
             'ok' => true,
             'user' => $user->toAuthPayload(),
-            'chat_api_secret' => $this->chatApiSecret(),
         ]);
     }
 

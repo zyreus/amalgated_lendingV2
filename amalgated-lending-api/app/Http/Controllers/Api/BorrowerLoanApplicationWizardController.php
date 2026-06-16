@@ -4,9 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Mail\GeneralLoanApplicationStatusMail;
+use App\Models\ChattelMortgageDetail;
 use App\Models\Loan;
 use App\Models\LoanApplication;
 use App\Models\LoanProduct;
+use App\Models\PensionLoanDetail;
+use App\Models\RealEstateDetail;
+use App\Models\SalaryLoanDetail;
+use App\Models\TravelAssistanceDetail;
 use App\Services\CreditWellnessService;
 use App\Services\LoanApplicationWorkflowValidator;
 use App\Services\LoanCalculator;
@@ -15,6 +20,7 @@ use App\Services\SignatureStorageService;
 use App\Services\TransactionalMailSender;
 use App\Support\PublicStorageUrl;
 use App\Support\SignedPrintUrls;
+use InvalidArgumentException;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -40,10 +46,14 @@ class BorrowerLoanApplicationWizardController extends Controller
             'ok' => true,
             'data' => [
                 'loan_types' => config('amalgated_loans.general_loan_types'),
+                'loan_application_routes' => config('amalgated_loans.loan_application_routes'),
+                'product_application_steps' => config('amalgated_loans.product_application_steps'),
+                'product_application_fields' => config('amalgated_loans.product_application_fields'),
                 'loan_type_product_map' => $this->loanTypeProductMap(),
                 'wizard_common' => config('amalgated_loans.wizard_common'),
                 'loan_type_fields' => config('amalgated_loans.general_form_fields'),
                 'documents_by_type' => config('amalgated_loans.general_documents'),
+                'travel_assistance_documents_by_purpose' => config('amalgated_loans.travel_assistance_documents_by_purpose'),
                 'loan_products' => LoanProduct::query()
                     ->active()
                     ->orderBy('sort_order')
@@ -107,6 +117,7 @@ class BorrowerLoanApplicationWizardController extends Controller
         $this->syncProductAndFinancialFieldsFromForm($app);
         $this->applyProductComputation($app);
         $app->save();
+        $this->syncSpecificLoanDetails($app);
 
         return response()->json([
             'ok' => true,
@@ -136,7 +147,7 @@ class BorrowerLoanApplicationWizardController extends Controller
         $data = $request->validate([
             'form_data' => 'nullable|array',
             'loan_type' => 'sometimes|string|in:'.implode(',', array_keys(config('amalgated_loans.general_loan_types'))),
-            'draft_step' => 'sometimes|integer|min:1|max:5',
+            'draft_step' => 'sometimes|integer|min:1|max:6',
         ]);
 
         if (isset($data['loan_type'])) {
@@ -154,6 +165,7 @@ class BorrowerLoanApplicationWizardController extends Controller
             $loanApplication->draft_updated_at = now();
         }
         $loanApplication->save();
+        $this->syncSpecificLoanDetails($loanApplication);
 
         return response()->json([
             'ok' => true,
@@ -226,17 +238,37 @@ class BorrowerLoanApplicationWizardController extends Controller
         $defs = config('amalgated_loans.general_documents.'.$loanApplication->loan_type, []);
         $multiple = (bool) ($defs[$docKey]['multiple'] ?? false);
 
+        $removedPaths = [];
+
         if ($multiple && is_array($documents[$docKey])) {
-            $list = array_values(array_filter($documents[$docKey], fn ($p) => $p !== $path));
-            $documents[$docKey] = $list;
-        } else {
-            if ($documents[$docKey] === $path || $path === null) {
-                unset($documents[$docKey]);
+            if ($path === null || $path === '') {
+                return response()->json(['ok' => false, 'message' => 'Document path is required.'], 422);
             }
+
+            $existing = array_values(array_filter($documents[$docKey], fn ($p) => is_string($p) && $p !== ''));
+            if (! in_array($path, $existing, true)) {
+                return response()->json(['ok' => false, 'message' => 'Document path is not attached to this application.'], 422);
+            }
+
+            $documents[$docKey] = array_values(array_filter($existing, fn ($p) => $p !== $path));
+            $removedPaths[] = $path;
+        } else {
+            $currentPath = is_string($documents[$docKey]) ? $documents[$docKey] : null;
+            if ($currentPath === null || ($path !== null && $path !== $currentPath)) {
+                return response()->json(['ok' => false, 'message' => 'Document path is not attached to this application.'], 422);
+            }
+
+            unset($documents[$docKey]);
+            $removedPaths[] = $currentPath;
         }
 
-        if ($path && $path !== '') {
-            Storage::disk('public')->delete($path);
+        $deletablePrefix = 'documents/'.$loanApplication->id.'/'.$docKey.'/';
+        $removedPaths = array_values(array_filter(
+            $removedPaths,
+            fn ($p) => is_string($p) && str_starts_with($p, $deletablePrefix)
+        ));
+        if ($removedPaths !== []) {
+            Storage::disk('public')->delete($removedPaths);
         }
 
         $loanApplication->documents = $documents;
@@ -256,15 +288,15 @@ class BorrowerLoanApplicationWizardController extends Controller
         $this->authorizeBorrower($request, $loanApplication);
         $this->ensureGeneralLoanApplication($loanApplication);
         $data = $request->validate([
-            'step' => 'required|integer|min:1|max:4',
+            'step' => 'required|integer|min:1|max:6',
         ]);
         $step = (int) $data['step'];
-        $errors = match ($step) {
-            1 => $this->validator->validateForm($loanApplication),
-            2 => $this->validator->validateDocumentsComplete($loanApplication),
-            3 => $this->validator->validateBeforeSignatureStep($loanApplication),
-            4 => $this->validator->validateSubmit($loanApplication),
-            default => [],
+        $stepConfig = collect(config('amalgated_loans.product_application_steps.'.$loanApplication->loan_type, []))->firstWhere('id', $step);
+        $section = is_array($stepConfig) ? ($stepConfig['section'] ?? null) : null;
+        $errors = match ($section) {
+            'documents' => $this->validator->validateDocumentsComplete($loanApplication),
+            'review' => $this->validator->validateSubmit($loanApplication),
+            default => $this->validator->validateFormStep($loanApplication, $step),
         };
 
         return response()->json([
@@ -291,7 +323,11 @@ class BorrowerLoanApplicationWizardController extends Controller
             'signature_base64' => 'required|string',
         ]);
 
-        $path = $this->signatures->storeBase64Png($data['signature_base64'], 'signatures');
+        try {
+            $path = $this->signatures->storeBase64Png($data['signature_base64'], 'signatures');
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
+        }
 
         match ($data['role']) {
             'applicant' => $loanApplication->applicant_signature = $path,
@@ -337,6 +373,7 @@ class BorrowerLoanApplicationWizardController extends Controller
                 $locked->is_submitted = true;
                 $locked->draft_step = 5;
                 $locked->save();
+                $this->syncSpecificLoanDetails($locked);
 
                 $linkedLoan = $locked->loan;
                 $payload = $this->buildLoanPayloadFromApplication($locked);
@@ -563,6 +600,7 @@ class BorrowerLoanApplicationWizardController extends Controller
             'computed_values' => $a->computed_values,
             'computation_breakdown' => $a->computation_breakdown,
             'form_data' => $a->form_data ?? [],
+            'specific_details' => $this->serializeSpecificDetails($a),
             'documents' => $docs,
             'draft_step' => $a->draft_step,
             'draft_updated_at' => $a->draft_updated_at?->toIso8601String(),
@@ -623,6 +661,153 @@ class BorrowerLoanApplicationWizardController extends Controller
         if (array_key_exists('term_months', $form) && $form['term_months'] !== '' && $form['term_months'] !== null) {
             $app->term_months = max(1, (int) $form['term_months']);
         }
+    }
+
+    private function syncSpecificLoanDetails(LoanApplication $app): void
+    {
+        $form = is_array($app->form_data) ? $app->form_data : [];
+
+        match ($app->loan_type) {
+            LoanApplication::TYPE_SALARY => SalaryLoanDetail::updateOrCreate(
+                ['loan_application_id' => $app->id],
+                $this->onlyFormKeys($form, [
+                    'full_name',
+                    'birthdate',
+                    'civil_status',
+                    'address',
+                    'phone',
+                    'employer_name',
+                    'company_address',
+                    'position',
+                    'employment_type',
+                    'years_of_service',
+                    'monthly_gross_salary',
+                    'monthly_net_salary',
+                    'other_income',
+                    'loan_purpose',
+                ])
+            ),
+            LoanApplication::TYPE_CHATTEL => ChattelMortgageDetail::updateOrCreate(
+                ['loan_application_id' => $app->id],
+                $this->onlyFormKeys($form, [
+                    'full_name',
+                    'birthdate',
+                    'civil_status',
+                    'address',
+                    'phone',
+                    'vehicle_type',
+                    'brand',
+                    'model',
+                    'year_model',
+                    'plate_number',
+                    'engine_number',
+                    'chassis_number',
+                    'or_number',
+                    'cr_number',
+                    'market_value',
+                    'loan_purpose',
+                ])
+            ),
+            LoanApplication::TYPE_REAL_ESTATE => RealEstateDetail::updateOrCreate(
+                ['loan_application_id' => $app->id],
+                $this->onlyFormKeys($form, [
+                    'full_name',
+                    'birthdate',
+                    'civil_status',
+                    'address',
+                    'phone',
+                    'property_type',
+                    'title_number',
+                    'tax_declaration_number',
+                    'property_address',
+                    'lot_area',
+                    'floor_area',
+                    'market_value',
+                    'assessed_value',
+                    'loan_purpose',
+                ])
+            ),
+            LoanApplication::TYPE_SSS_PENSION => PensionLoanDetail::updateOrCreate(
+                ['loan_application_id' => $app->id],
+                $this->onlyFormKeys($form, [
+                    'full_name',
+                    'birthdate',
+                    'civil_status',
+                    'address',
+                    'phone',
+                    'pension_type',
+                    'sss_number',
+                    'gsis_bp_number',
+                    'monthly_pension',
+                    'pension_start_date',
+                    'bank_account_number',
+                    'loan_purpose',
+                ])
+            ),
+            LoanApplication::TYPE_TRAVEL_ASSISTANCE => TravelAssistanceDetail::updateOrCreate(
+                ['application_id' => $app->id],
+                [
+                    'travel_purpose' => $this->nullableFormValue($form, 'travel_purpose'),
+                    'destination_country' => $this->nullableFormValue($form, 'destination_country'),
+                    'destination_city' => $this->nullableFormValue($form, 'destination_city'),
+                    'departure_date' => $this->nullableFormValue($form, 'departure_date'),
+                    'return_date' => $this->nullableFormValue($form, 'return_date'),
+                    'visa_status' => $this->nullableFormValue($form, 'visa_status'),
+                    'agency_name' => $this->nullableFormValue($form, 'agency_name'),
+                    'employer_name' => $this->nullableFormValue($form, 'employer_name'),
+                    'travel_cost' => $this->numberOrNull($form, 'travel_cost'),
+                    'airfare_cost' => $this->numberOrNull($form, 'airfare_cost'),
+                    'visa_cost' => $this->numberOrNull($form, 'visa_cost'),
+                    'medical_cost' => $this->numberOrNull($form, 'medical_cost'),
+                    'placement_fee' => $this->numberOrNull($form, 'placement_fee'),
+                    'other_expenses' => $this->numberOrNull($form, 'other_expenses'),
+                ]
+            ),
+            default => null,
+        };
+    }
+
+    private function onlyFormKeys(array $form, array $keys): array
+    {
+        $out = [];
+        foreach ($keys as $key) {
+            $value = $form[$key] ?? null;
+            $out[$key] = $value === '' ? null : $value;
+        }
+
+        return $out;
+    }
+
+    private function nullableFormValue(array $form, string $key): mixed
+    {
+        $value = $form[$key] ?? null;
+
+        return $value === '' ? null : $value;
+    }
+
+    private function numberOrNull(array $form, string $key): ?float
+    {
+        $value = $this->nullableFormValue($form, $key);
+
+        return is_numeric($value) ? (float) $value : null;
+    }
+
+    private function serializeSpecificDetails(LoanApplication $app): ?array
+    {
+        $model = match ($app->loan_type) {
+            LoanApplication::TYPE_SALARY => SalaryLoanDetail::query()->where('loan_application_id', $app->id)->first(),
+            LoanApplication::TYPE_CHATTEL => ChattelMortgageDetail::query()->where('loan_application_id', $app->id)->first(),
+            LoanApplication::TYPE_REAL_ESTATE => RealEstateDetail::query()->where('loan_application_id', $app->id)->first(),
+            LoanApplication::TYPE_SSS_PENSION => PensionLoanDetail::query()->where('loan_application_id', $app->id)->first(),
+            LoanApplication::TYPE_TRAVEL_ASSISTANCE => TravelAssistanceDetail::query()->where('application_id', $app->id)->first(),
+            default => null,
+        };
+
+        if (! $model) {
+            return null;
+        }
+
+        return collect($model->toArray())->except(['id', 'loan_application_id', 'application_id', 'created_at', 'updated_at'])->all();
     }
 
     private function applyProductComputation(LoanApplication $app): void

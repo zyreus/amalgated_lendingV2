@@ -132,10 +132,10 @@ export default defineConfig(({ mode }) => {
     env.VITE_BACKEND_PORT ||
     readLaravelActivePort() ||
     env.LARAVEL_PORT ||
-    '8001'
+    '8000'
   const proxyTarget = (fromWaitLocal || `http://127.0.0.1:${laravelPort}`).replace(/\/$/, '')
   const portMatch = proxyTarget.match(/:(\d+)/)
-  const apiPort = portMatch ? portMatch[1] : '8001'
+  const apiPort = portMatch ? portMatch[1] : '8000'
 
   /** Node chat server (REST fallbacks + optional same-origin Socket.IO proxy). */
   const chatPortFromFile = readChatActivePort()

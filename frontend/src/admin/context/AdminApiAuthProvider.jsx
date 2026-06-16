@@ -19,7 +19,7 @@ export function AdminApiAuthProvider({ children }) {
       const res = await api('/admin/me')
       setUser(res.user)
       setAdminUser(res.user)
-      setSessionLendingAdminSecret(res.chat_api_secret)
+      setSessionLendingAdminSecret(res.chat_api_secret || '')
     } catch {
       setToken(null)
       clearAdminUser()
@@ -50,7 +50,7 @@ export function AdminApiAuthProvider({ children }) {
     setToken(res.token || res.access_token)
     setUser(res.user)
     setAdminUser(res.user)
-    setSessionLendingAdminSecret(res.chat_api_secret)
+    setSessionLendingAdminSecret(res.chat_api_secret || '')
     return res
   }, [])
 

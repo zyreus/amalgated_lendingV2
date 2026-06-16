@@ -1,102 +1,37 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import SubPageHeader from '../components/SubPageHeader.jsx'
 import Footer from '../components/Footer.jsx'
-import LoanProductIcon from '../components/loan/LoanProductIcon.jsx'
+import LoanProductCard from '../components/loan/LoanProductCard.jsx'
 import LoanProductsCalculator from '../components/loan/LoanProductsCalculator.jsx'
-import { tierAccentClass, tierCardClass, tierIconWrapClass } from '../components/loan/loanProductStyles.js'
 import { getLoanProducts } from '../utils/loanProductsPublicApi.js'
-import { loanProductApplyPath } from '../utils/loanProductApplyPath.js'
+import { buildLoanProductDisplayCards } from '../utils/loanProductDisplayCards.js'
 import { borrowerLoginApplyPath } from '../utils/borrowerAuthApplyPath.js'
 
-function ProductDetail({ product }) {
-  const tier = product.tier || 'blue'
-  const rateLabel =
-    product.rate_type === 'fixed'
-      ? `${Number(product.interest_rate).toFixed(2)}% fixed`
-      : `${Number(product.interest_rate).toFixed(2)}% per month`
+const FILTERS = [
+  { value: 'all', label: 'All loan products' },
+  { value: 'salary', label: 'Salary' },
+  { value: 'mortgage', label: 'Mortgage' },
+  { value: 'appliance', label: 'Appliance' },
+  { value: 'pension', label: 'Pension' },
+  { value: 'travel', label: 'Travel Assistance' },
+]
 
-  return (
-    <article
-      id={product.slug}
-      className={`scroll-mt-24 rounded-2xl border p-5 transition hover:shadow-lg sm:p-8 ${tierCardClass(tier)}`}
-    >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex gap-4">
-          <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${tierIconWrapClass(tier)}`}>
-            <LoanProductIcon iconKey={product.icon_key} className="h-7 w-7" />
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold tracking-tight text-brand-text dark:text-white">{product.name}</h2>
-            <p className={`mt-1 text-base font-semibold ${tierAccentClass(tier)}`}>{rateLabel}</p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2 sm:justify-end">
-          <Link
-            to={loanProductApplyPath(product.slug)}
-            className="rounded-xl bg-brand-primary px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-brand-primary-hover"
-          >
-            Apply now
-          </Link>
-          <Link
-            to="/contact"
-            className="rounded-xl border border-brand-secondary/50 px-4 py-2 text-sm font-semibold text-brand-text transition hover:bg-black/[0.04] dark:border-[#374151] dark:text-white dark:hover:bg-white/5"
-          >
-            Inquire now
-          </Link>
-        </div>
-      </div>
-      {product.description ? (
-        <p className="mt-4 text-sm leading-relaxed text-brand-text/80 dark:text-white/75">{product.description}</p>
-      ) : null}
-      <dl className="mt-6 grid gap-3 text-sm sm:grid-cols-2">
-        {product.collateral ? (
-          <div className="rounded-xl bg-white/60 p-3 dark:bg-black/20">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-brand-text/60 dark:text-white/50">Collateral</dt>
-            <dd className="mt-1 text-brand-text dark:text-white">{product.collateral}</dd>
-          </div>
-        ) : null}
-        {product.requirements ? (
-          <div className="rounded-xl bg-white/60 p-3 dark:bg-black/20 sm:col-span-2">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-brand-text/60 dark:text-white/50">
-              Requirements
-            </dt>
-            <dd className="mt-1 whitespace-pre-wrap text-brand-text dark:text-white">{product.requirements}</dd>
-          </div>
-        ) : null}
-        {product.max_term != null ? (
-          <div className="rounded-xl bg-white/60 p-3 dark:bg-black/20">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-brand-text/60 dark:text-white/50">Max term</dt>
-            <dd className="mt-1 text-brand-text dark:text-white">{product.max_term} months</dd>
-          </div>
-        ) : null}
-        {product.age_limit != null || product.safe_age != null ? (
-          <div className="rounded-xl bg-white/60 p-3 dark:bg-black/20">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-brand-text/60 dark:text-white/50">Age</dt>
-            <dd className="mt-1 text-brand-text dark:text-white">
-              {product.safe_age != null ? <>Safe age: {product.safe_age}</> : null}
-              {product.safe_age != null && product.age_limit != null ? ' · ' : null}
-              {product.age_limit != null ? <>Max: {product.age_limit}</> : null}
-            </dd>
-          </div>
-        ) : null}
-        {product.downpayment ? (
-          <div className="rounded-xl bg-white/60 p-3 dark:bg-black/20">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-brand-text/60 dark:text-white/50">
-              Downpayment
-            </dt>
-            <dd className="mt-1 text-brand-text dark:text-white">{product.downpayment}</dd>
-          </div>
-        ) : null}
-      </dl>
-    </article>
-  )
+function productMatchesFilter(product, filter) {
+  const slug = String(product.display_slug || product.slug || '').toLowerCase()
+  const name = String(product.name || '').toLowerCase()
+  if (filter === 'all') return true
+  if (filter === 'mortgage') return slug.includes('mortgage') || name.includes('mortgage')
+  if (filter === 'pension') return slug.includes('pension') || name.includes('pension')
+  return slug.includes(filter) || name.includes(filter)
 }
 
 export default function LoanProductsPage() {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState('all')
 
   useEffect(() => {
     let cancelled = false
@@ -118,6 +53,25 @@ export default function LoanProductsPage() {
   }, [])
 
   const sampleProduct = products.find((p) => p.sample_monthly_pension != null) || products.find((p) => p.slug === 'sss-gsis')
+  const productCards = useMemo(() => buildLoanProductDisplayCards(products), [products])
+  const visibleProductCards = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    return productCards.filter((product) => {
+      if (!productMatchesFilter(product, filter)) return false
+      if (!term) return true
+      return [
+        product.name,
+        product.description,
+        product.slug,
+        product.loanAmountLabel,
+        product.termLabel,
+        ...(product.features || []),
+        ...(product.purposes || []),
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term))
+    })
+  }, [filter, productCards, search])
 
   return (
     <div className="flex min-h-screen flex-col page-shell-bg text-brand-text">
@@ -141,7 +95,7 @@ export default function LoanProductsPage() {
           </div>
         </section>
 
-        <div className="app-container max-w-5xl space-y-10 py-10 sm:py-14">
+        <div className="app-container space-y-10 py-10 sm:py-14">
           {loading ? (
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
@@ -154,9 +108,46 @@ export default function LoanProductsPage() {
             </div>
           ) : (
             <div className="space-y-8">
-              {products.map((p) => (
-                <ProductDetail key={p.id} product={p} />
-              ))}
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
+                <div className="grid gap-3 md:grid-cols-[1fr_16rem]">
+                  <label className="block text-sm">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-brand-text/60 dark:text-white/50">Search loan products</span>
+                    <input
+                      type="search"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search salary, travel, OFW, pension..."
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-brand-text/60 dark:text-white/50">Loan product filter</span>
+                    <select
+                      value={filter}
+                      onChange={(e) => setFilter(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                    >
+                      {FILTERS.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              {visibleProductCards.length ? (
+                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+                  {visibleProductCards.map((p) => (
+                    <LoanProductCard key={p.id} product={p} />
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                  No loan products matched your search or filter.
+                </p>
+              )}
             </div>
           )}
 

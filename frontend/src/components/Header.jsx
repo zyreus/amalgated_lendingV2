@@ -1,95 +1,402 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import {
+  ArrowRight,
+  BadgeCheck,
+  Banknote,
+  Building2,
+  Calculator,
+  Car,
+  ChevronDown,
+  FileText,
+  Home,
+  Landmark,
+  LockKeyhole,
+  LogIn,
+  MapPin,
+  Menu,
+  Newspaper,
+  PiggyBank,
+  Plane,
+  ShieldCheck,
+  Smartphone,
+  X,
+} from 'lucide-react'
 
-const MAIN_OFFICE =
-  'ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000'
-const MAP_EMBED_SRC = `https://www.google.com/maps?q=${encodeURIComponent(MAIN_OFFICE)}&z=15&output=embed`
-
-/**
- * Enterprise mega-menu rows — titles match public marketing; routes map to existing SPA pages.
- */
-const MEGA_LOAN_PRODUCTS = [
+const SECTION_NAV_ITEMS = [
   {
-    to: '/loans/salary-loan',
-    title: 'Salary Loan',
-    desc: 'Payroll-backed financing for employed professionals with clear amortization.',
+    key: 'trust',
+    label: 'Trust',
+    sectionId: 'trust',
+    icon: ShieldCheck,
+    description: 'Licensing, security, and borrower protection.',
   },
   {
-    to: '/loans/real-estate-mortgage',
-    title: 'Collateral Loan',
-    desc: 'Property-secured credit lines with structured appraisal and transparent charges.',
+    key: 'calculator',
+    label: 'Calculator',
+    sectionId: 'calculator',
+    icon: Calculator,
+    description: 'Estimate payments before applying.',
   },
   {
-    to: '/loans/chattel-mortgage',
-    title: 'Vehicle Loan',
-    desc: 'Chattel mortgage for cars, trucks, and equipment with straightforward collateral terms.',
+    key: 'news',
+    label: 'News',
+    sectionId: 'newsletter',
+    icon: Newspaper,
+    description: 'Announcements and lending updates.',
   },
 ]
 
-const loanMegaCardClass =
-  'group flex h-full flex-col rounded-xl border border-black/[0.07] bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-primary/35 hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] dark:border-white/10 dark:bg-[#111827]/80 dark:hover:border-brand-primary/45'
+const RESOURCE_LINKS = [
+  { label: 'Resources', to: '/application-flow', icon: FileText, description: 'Application flow and borrower guidance.' },
+  { label: 'Branches', to: '/branches', icon: MapPin, description: 'Davao HQ and nationwide service coverage.' },
+]
 
-/** Resources dropdown — slightly softer border, longer hover transition, red accent on hover. */
-const resourceNavCardClass =
-  'group flex h-full min-h-[11.5rem] flex-col rounded-xl border border-black/[0.08] bg-white p-4 shadow-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-brand-primary/55 hover:shadow-[0_12px_32px_rgba(0,0,0,0.1)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary dark:border-white/10 dark:bg-[#111827]/85 dark:hover:border-brand-primary/60 dark:hover:shadow-[0_12px_32px_rgba(0,0,0,0.35)]'
+const LOAN_PRODUCTS = [
+  {
+    title: 'Salary Loan',
+    description: 'Payroll-backed financing for employed professionals with predictable monthly amortization.',
+    to: '/loan-products/salary-loan',
+    icon: Banknote,
+  },
+  {
+    title: 'Chattel Mortgage Loan',
+    description: 'Vehicle and equipment-backed loan options with structured collateral review.',
+    to: '/loan-products/chattel-mortgage',
+    icon: Car,
+  },
+  {
+    title: 'Real Estate Mortgage Loan',
+    description: 'Property-secured lending with appraisal-led terms and transparent fees.',
+    to: '/loan-products/real-estate-mortgage',
+    icon: Home,
+  },
+  {
+    title: 'Appliance Loan',
+    description: 'Flexible financing for household essentials and approved partner purchases.',
+    to: '/loan-products/appliance-loan',
+    icon: Smartphone,
+  },
+  {
+    title: 'SSS Pension Loan',
+    description: 'Dedicated pensioner financing with verification support and secure document upload.',
+    to: '/loan-products/sss-pension-loan',
+    icon: PiggyBank,
+  },
+  {
+    title: 'GSIS Pension Loan',
+    description: 'Pension-based financing pathway for qualified GSIS members and retirees.',
+    to: '/loan-products/gsis-pension-loan',
+    icon: Landmark,
+  },
+  {
+    title: 'Travel Assistance Loan',
+    description: 'Travel cost financing for OFWs, seafarers, students, tourists, and professionals.',
+    to: '/loan-products/travel-assistance-loan',
+    icon: Plane,
+  },
+]
 
-/** Dropdown affordance only — no category icons in the navbar. */
-function IconChevron({ open, className = '' }) {
+function isRouteActive(pathname, to) {
+  if (to === '/') return pathname === '/'
+  return pathname === to || pathname.startsWith(`${to}/`)
+}
+
+function HeaderButton({ children, className = '', ...props }) {
   return (
-    <svg
-      width={14}
-      height={14}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2.25}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={`pointer-events-none inline-block h-3.5 w-3.5 shrink-0 self-center transition-transform duration-200 ${open ? 'rotate-180' : ''} ${className}`.trim()}
-      aria-hidden
+    <button
+      type="button"
+      className={`group relative inline-flex min-h-10 items-center gap-1.5 whitespace-nowrap rounded-2xl px-3 text-[13px] font-medium text-slate-700 outline-none transition duration-200 hover:bg-white/75 hover:text-brand-primary focus-visible:ring-2 focus-visible:ring-brand-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white 2xl:min-h-11 2xl:gap-2 2xl:px-3.5 2xl:text-sm ${className}`}
+      {...props}
     >
-      <path d="M19 9l-7 7-7-7" />
-    </svg>
+      {children}
+      <span className="absolute inset-x-3 -bottom-0.5 h-0.5 origin-left scale-x-0 rounded-full bg-gradient-to-r from-brand-primary to-orange-400 transition-transform duration-300 group-hover:scale-x-100 group-focus-visible:scale-x-100" />
+    </button>
   )
 }
 
-function megaPanelClass() {
-  return 'rounded-3xl border border-black/[0.07] bg-white/[0.98] p-5 shadow-[0_24px_60px_rgba(15,23,42,0.1),0_0_0_1px_rgba(217,34,67,0.06)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0f172a]/98'
+function HeaderLink({ to, active, children, className = '', onClick }) {
+  return (
+    <Link
+      to={to}
+      onClick={onClick}
+      className={`group relative inline-flex min-h-10 items-center gap-1.5 whitespace-nowrap rounded-2xl px-3 text-[13px] font-medium outline-none transition duration-200 focus-visible:ring-2 focus-visible:ring-brand-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white 2xl:min-h-11 2xl:gap-2 2xl:px-3.5 2xl:text-sm ${
+        active
+          ? 'bg-brand-primary/10 text-brand-primary'
+          : 'text-slate-700 hover:bg-white/75 hover:text-brand-primary'
+      } ${className}`}
+    >
+      {children}
+      <span
+        className={`absolute inset-x-3 -bottom-0.5 h-0.5 origin-left rounded-full bg-gradient-to-r from-brand-primary to-orange-400 transition-transform duration-300 ${
+          active ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100 group-focus-visible:scale-x-100'
+        }`}
+      />
+    </Link>
+  )
 }
 
-function HeaderMegaPanel({
-  menuKey,
-  align = 'left',
-  widthClass,
-  children,
-  baseId,
-  openMenu,
-  reduceMotion,
-  clearCloseTimer,
-  scheduleClose,
-}) {
-  const isOpen = openMenu === menuKey
-  const w =
-    widthClass ||
-    'w-[min(100vw-2rem,560px)] sm:w-[min(100vw-2rem,640px)]'
+function BrandMark({ onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex min-w-0 max-w-[17rem] items-center gap-3 rounded-3xl p-1.5 pr-3 text-left outline-none transition hover:bg-white/70 focus-visible:ring-2 focus-visible:ring-brand-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white sm:max-w-[21rem] xl:max-w-[19rem] 2xl:max-w-[23rem]"
+      aria-label="Go to Amalgated Lending homepage"
+    >
+      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white shadow-[0_12px_30px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/80 transition duration-300 group-hover:-translate-y-0.5 group-hover:ring-brand-primary/30 sm:h-14 sm:w-14">
+        <img
+          src="/amalgated-lending-logo.png"
+          alt=""
+          width={52}
+          height={52}
+          decoding="async"
+          fetchPriority="high"
+          className="h-10 w-10 rounded-xl object-contain sm:h-12 sm:w-12"
+        />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-base font-bold tracking-tight text-slate-950 sm:text-xl xl:text-lg 2xl:text-xl">
+          Amalgated Lending Inc.
+        </span>
+        <span className="mt-0.5 hidden truncate text-sm font-medium text-slate-500 sm:block xl:text-xs 2xl:text-sm">
+          Digital Lending • Davao HQ • Nationwide Service
+        </span>
+      </span>
+    </button>
+  )
+}
+
+function LoanMegaMenu({ id, isOpen, reduceMotion, onClose, onEnter, onLeave }) {
   return (
     <AnimatePresence>
       {isOpen ? (
         <motion.div
-          id={`${baseId}-${menuKey}-mega`}
+          id={id}
           role="region"
-          aria-label={`${menuKey} menu`}
-          initial={reduceMotion ? false : { opacity: 0, y: 6 }}
-          animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
-          exit={reduceMotion ? {} : { opacity: 0, y: 6 }}
-          transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
-          className={`absolute top-full z-[70] pt-2 before:pointer-events-auto before:absolute before:inset-x-0 before:-top-2 before:h-2 before:content-[''] ${align === 'right' ? 'right-0' : 'left-0'}`}
-          onPointerEnter={clearCloseTimer}
-          onPointerLeave={scheduleClose}
+          aria-label="Loan products mega menu"
+          initial={reduceMotion ? false : { opacity: 0, y: 10, scale: 0.98 }}
+          animate={reduceMotion ? {} : { opacity: 1, y: 0, scale: 1 }}
+          exit={reduceMotion ? {} : { opacity: 0, y: 8, scale: 0.98 }}
+          transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          className="absolute left-1/2 top-full z-[80] hidden w-[min(94vw,1080px)] -translate-x-1/2 pt-4 xl:block"
+          onPointerEnter={onEnter}
+          onPointerLeave={onLeave}
         >
-          <div className={`${megaPanelClass()} ${w}`}>{children}</div>
+          <div className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/95 shadow-[0_28px_80px_rgba(15,23,42,0.18)] ring-1 ring-brand-primary/10 backdrop-blur-2xl">
+            <div className="grid gap-0 lg:grid-cols-[0.85fr_1.8fr]">
+              <div className="bg-gradient-to-br from-brand-primary via-red-600 to-orange-500 p-6 text-white">
+                <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold ring-1 ring-white/25">
+                  <BadgeCheck className="h-3.5 w-3.5" />
+                  Borrower-first products
+                </div>
+                <h2 className="mt-5 text-2xl font-bold tracking-tight">Choose the right financing path.</h2>
+                <p className="mt-3 text-sm leading-6 text-white/82">
+                  Explore transparent loan categories, compare requirements, then continue through the secure borrower portal.
+                </p>
+                <div className="mt-6 rounded-2xl bg-white/12 p-4 ring-1 ring-white/20">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">Service promise</p>
+                  <p className="mt-2 text-sm font-medium">Davao-based support with nationwide digital processing.</p>
+                </div>
+                <Link
+                  to="/loan-products"
+                  onClick={onClose}
+                  className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-bold text-brand-primary shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                >
+                  View all products
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
+              <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+                {LOAN_PRODUCTS.map((product) => {
+                  const Icon = product.icon
+                  return (
+                    <Link
+                      key={product.title}
+                      to={product.to}
+                      onClick={onClose}
+                      className="group flex min-h-[13rem] flex-col rounded-3xl border border-slate-200/80 bg-gradient-to-br from-white to-slate-50/80 p-4 outline-none transition duration-300 hover:-translate-y-1 hover:border-brand-primary/35 hover:shadow-[0_18px_40px_rgba(15,23,42,0.10)] focus-visible:ring-2 focus-visible:ring-brand-primary/35"
+                    >
+                      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-primary/10 text-brand-primary transition group-hover:bg-brand-primary group-hover:text-white">
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <span className="mt-4 text-sm font-bold tracking-tight text-slate-950 group-hover:text-brand-primary">
+                        {product.title}
+                      </span>
+                      <span className="mt-2 flex-1 text-xs leading-5 text-slate-600">{product.description}</span>
+                      <span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-brand-primary">
+                        Apply now
+                        <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-1" />
+                      </span>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
         </motion.div>
+      ) : null}
+    </AnimatePresence>
+  )
+}
+
+function MobileDrawer({ open, id, reduceMotion, close, goToSection, goHome }) {
+  const drawerLinks = useMemo(
+    () => [
+      ...SECTION_NAV_ITEMS.map((item) => ({ ...item, type: 'section' })),
+      { key: 'loan-products', label: 'Loan Products', to: '/loan-products', icon: Landmark, description: 'Browse every lending product.', type: 'route' },
+      ...RESOURCE_LINKS.map((item) => ({ ...item, key: item.label.toLowerCase(), type: 'route' })),
+    ],
+    [],
+  )
+
+  useEffect(() => {
+    if (!open) return undefined
+    const original = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = original
+    }
+  }, [open])
+
+  return (
+    <AnimatePresence>
+      {open ? (
+        <>
+          <motion.button
+            type="button"
+            aria-label="Close navigation overlay"
+            className="fixed inset-0 z-[70] bg-slate-950/35 backdrop-blur-sm xl:hidden"
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={reduceMotion ? {} : { opacity: 1 }}
+            exit={reduceMotion ? {} : { opacity: 0 }}
+            onClick={close}
+          />
+          <motion.nav
+            id={id}
+            aria-label="Mobile navigation"
+            className="fixed bottom-0 right-0 top-0 z-[80] flex w-[min(92vw,420px)] flex-col overflow-hidden border-l border-white/70 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.28)] xl:hidden"
+            initial={reduceMotion ? false : { x: '100%' }}
+            animate={reduceMotion ? {} : { x: 0 }}
+            exit={reduceMotion ? {} : { x: '100%' }}
+            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200/80 px-5 py-4">
+              <div>
+                <p className="text-sm font-bold text-slate-950">Amalgated Lending</p>
+                <p className="text-xs font-medium text-slate-500">Secure borrower navigation</p>
+              </div>
+              <button
+                type="button"
+                onClick={close}
+                className="grid h-11 w-11 place-items-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-primary/35"
+                aria-label="Close menu"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 space-y-3 overflow-y-auto px-4 py-5">
+              <button
+                type="button"
+                onClick={() => {
+                  goHome()
+                  close()
+                }}
+                className="flex w-full items-center gap-3 rounded-3xl bg-slate-50 px-4 py-4 text-left transition hover:bg-brand-primary/8"
+              >
+                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-white text-brand-primary shadow-sm">
+                  <Building2 className="h-5 w-5" />
+                </span>
+                <span>
+                  <span className="block text-sm font-bold text-slate-950">Home</span>
+                  <span className="text-xs text-slate-500">Return to main website</span>
+                </span>
+              </button>
+
+              {drawerLinks.map((item) => {
+                const Icon = item.icon
+                if (item.type === 'section') {
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => {
+                        goToSection(item.sectionId)
+                        close()
+                      }}
+                      className="flex w-full items-center gap-3 rounded-3xl px-4 py-3 text-left transition hover:bg-brand-primary/8 focus-visible:ring-2 focus-visible:ring-brand-primary/35"
+                    >
+                      <span className="grid h-10 w-10 place-items-center rounded-2xl bg-brand-primary/10 text-brand-primary">
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-bold text-slate-900">{item.label}</span>
+                        <span className="line-clamp-1 text-xs text-slate-500">{item.description}</span>
+                      </span>
+                    </button>
+                  )
+                }
+                return (
+                  <Link
+                    key={item.key}
+                    to={item.to}
+                    onClick={close}
+                    className="flex w-full items-center gap-3 rounded-3xl px-4 py-3 text-left transition hover:bg-brand-primary/8 focus-visible:ring-2 focus-visible:ring-brand-primary/35"
+                  >
+                    <span className="grid h-10 w-10 place-items-center rounded-2xl bg-brand-primary/10 text-brand-primary">
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-bold text-slate-900">{item.label}</span>
+                      <span className="line-clamp-1 text-xs text-slate-500">{item.description}</span>
+                    </span>
+                  </Link>
+                )
+              })}
+
+              <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-3">
+                <p className="px-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Loan products</p>
+                <div className="mt-2 grid gap-2">
+                  {LOAN_PRODUCTS.map((product) => {
+                    const Icon = product.icon
+                    return (
+                      <Link
+                        key={product.title}
+                        to={product.to}
+                        onClick={close}
+                        className="flex items-center gap-3 rounded-2xl bg-white px-3 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:text-brand-primary"
+                      >
+                        <Icon className="h-4 w-4 text-brand-primary" />
+                        <span>{product.title}</span>
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-slate-200/80 p-4">
+              <div className="grid gap-3">
+                <Link
+                  to="/borrower/login"
+                  onClick={close}
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-primary via-red-600 to-orange-500 px-5 text-sm font-bold text-white shadow-[0_16px_36px_rgba(217,34,67,0.28)] transition hover:-translate-y-0.5"
+                >
+                  <LogIn className="h-4 w-4" />
+                  Borrower Login
+                </Link>
+                <Link
+                  to="/admin/login"
+                  onClick={close}
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm transition hover:border-brand-primary/30 hover:text-brand-primary"
+                >
+                  <LockKeyhole className="h-4 w-4" />
+                  Admin Portal
+                </Link>
+              </div>
+            </div>
+          </motion.nav>
+        </>
       ) : null}
     </AnimatePresence>
   )
@@ -97,12 +404,11 @@ function HeaderMegaPanel({
 
 export default function Header() {
   const baseId = useId()
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const [mobileAccordion, setMobileAccordion] = useState(null)
-  const [openMenu, setOpenMenu] = useState(null)
-  const [scrolled, setScrolled] = useState(false)
-  const closeTimer = useRef(null)
   const headerRef = useRef(null)
+  const closeTimer = useRef(null)
+  const [scrolled, setScrolled] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [loanMenuOpen, setLoanMenuOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
   const reduceMotion = useReducedMotion()
@@ -116,49 +422,18 @@ export default function Header() {
 
   const scheduleClose = useCallback(() => {
     clearCloseTimer()
-    closeTimer.current = window.setTimeout(() => setOpenMenu(null), 200)
+    closeTimer.current = window.setTimeout(() => setLoanMenuOpen(false), 150)
   }, [clearCloseTimer])
 
-  const openOrToggle = useCallback(
-    (key) => {
-      clearCloseTimer()
-      setOpenMenu((prev) => (prev === key ? null : key))
-    },
-    [clearCloseTimer],
-  )
+  const openLoanMenu = useCallback(() => {
+    clearCloseTimer()
+    setLoanMenuOpen(true)
+  }, [clearCloseTimer])
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 6)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
-
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === 'Escape') {
-        setOpenMenu(null)
-        setMobileOpen(false)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
-  useEffect(() => {
-    if (!openMenu) return undefined
-    const onDoc = (e) => {
-      if (headerRef.current?.contains(e.target)) return
-      setOpenMenu(null)
-    }
-    document.addEventListener('pointerdown', onDoc)
-    return () => document.removeEventListener('pointerdown', onDoc)
-  }, [openMenu])
-
-  useEffect(() => {
-    setOpenMenu(null)
-    setMobileOpen(false)
-  }, [location.pathname])
+  const closeLoanMenu = useCallback(() => {
+    clearCloseTimer()
+    setLoanMenuOpen(false)
+  }, [clearCloseTimer])
 
   const scrollToSection = useCallback((id) => {
     const tryScroll = (attempt = 0) => {
@@ -167,15 +442,14 @@ export default function Header() {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' })
         return
       }
-      if (attempt < 15) {
-        window.setTimeout(() => tryScroll(attempt + 1), 80)
-      }
+      if (attempt < 15) window.setTimeout(() => tryScroll(attempt + 1), 80)
     }
     tryScroll()
   }, [])
 
   const goToSection = useCallback(
     (id) => {
+      closeLoanMenu()
       if (location.pathname === '/') {
         scrollToSection(id)
         return
@@ -183,606 +457,148 @@ export default function Header() {
       navigate('/')
       window.setTimeout(() => scrollToSection(id), 120)
     },
-    [location.pathname, navigate, scrollToSection],
+    [closeLoanMenu, location.pathname, navigate, scrollToSection],
   )
 
   const goHome = useCallback(() => {
+    closeLoanMenu()
     if (location.pathname === '/') {
       scrollToSection('hero')
       return
     }
     navigate('/')
     window.setTimeout(() => scrollToSection('hero'), 120)
-  }, [location.pathname, navigate, scrollToSection])
+  }, [closeLoanMenu, location.pathname, navigate, scrollToSection])
 
-  const closeMenuAndGo = useCallback(
-    (sectionId) => {
-      setOpenMenu(null)
-      goToSection(sectionId)
-    },
-    [goToSection],
-  )
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
-  const megaPanelProps = {
-    baseId,
-    openMenu,
-    reduceMotion,
-    clearCloseTimer,
-    scheduleClose,
-  }
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        closeLoanMenu()
+        setMobileOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [closeLoanMenu])
 
-  const triggerBtn = (menuKey, label, opts = {}) => {
-    const { bare = false } = opts
-    const isOpen = openMenu === menuKey
-    const bareClasses = `nav-mega-trigger inline-flex h-10 shrink-0 items-center gap-1 rounded-xl px-3 text-[13px] font-semibold leading-none tracking-tight transition-all duration-200 ${
-      isOpen
-        ? 'bg-brand-primary/10 text-brand-primary shadow-[inset_0_0_0_1px_rgba(217,34,67,0.14)]'
-        : 'text-brand-text/65 hover:bg-black/[0.04] hover:text-brand-primary dark:text-white/60 dark:hover:text-white'
-    }`
-    const pillClasses = `nav-mega-trigger inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-3 text-[12px] font-semibold leading-none tracking-tight text-brand-text/65 transition-all duration-200 xl:gap-2 xl:px-4 xl:text-[13px] 2xl:px-5 ${
-      isOpen
-        ? 'bg-brand-primary/10 text-brand-primary shadow-[inset_0_0_0_1px_rgba(217,34,67,0.16)]'
-        : 'hover:bg-black/[0.05] hover:text-brand-primary'
-    }`
-    return (
-      <button
-        type="button"
-        className={bare ? bareClasses : pillClasses}
-        aria-expanded={isOpen}
-        aria-haspopup="true"
-        aria-controls={isOpen ? `${baseId}-${menuKey}-mega` : undefined}
-        id={`${baseId}-${menuKey}-trigger`}
-        onPointerEnter={() => {
-          clearCloseTimer()
-          setOpenMenu(menuKey)
-        }}
-        onPointerLeave={scheduleClose}
-        onClick={() => openOrToggle(menuKey)}
-      >
-        <span className="whitespace-nowrap">{label}</span>
-        <IconChevron
-          open={isOpen}
-          className={`text-brand-text/55 transition-[color,transform] duration-200 dark:text-white/55 ${isOpen ? 'text-brand-primary dark:text-brand-primary' : ''}`}
-        />
-      </button>
-    )
-  }
+  useEffect(() => {
+    if (!loanMenuOpen) return undefined
+    const onPointerDown = (event) => {
+      if (headerRef.current?.contains(event.target)) return
+      closeLoanMenu()
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [closeLoanMenu, loanMenuOpen])
+
+  useEffect(() => {
+    closeLoanMenu()
+    setMobileOpen(false)
+  }, [closeLoanMenu, location.pathname])
+
+  const loanMenuId = `${baseId}-loan-products-menu`
+  const mobileMenuId = `${baseId}-mobile-menu`
 
   return (
     <header
       ref={headerRef}
-      className={`sticky top-0 z-[60] w-full overflow-visible border-b transition-[box-shadow,background-color,border-color] duration-300 ${
+      className={`sticky top-0 z-[60] w-full border-b transition-all duration-300 ${
         scrolled
-          ? 'border-slate-200/80 bg-[#f8fafc]/92 shadow-[0_12px_40px_rgba(217,34,67,0.08)] backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1220]/94'
-          : 'border-slate-200/50 bg-[#f8fafc]/55 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1220]/90'
+          ? 'border-white/70 bg-white/82 shadow-[0_18px_60px_rgba(15,23,42,0.10)] backdrop-blur-2xl'
+          : 'border-white/55 bg-white/64 backdrop-blur-xl'
       }`}
     >
-      <motion.div className="app-container relative flex min-h-[3.25rem] items-center overflow-visible py-2 pt-[max(0.5rem,env(safe-area-inset-top,0px))] sm:min-h-[4.5rem] sm:py-3 lg:min-h-[5.5rem] lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-4 lg:py-5 xl:gap-6">
-        <motion.div className="relative z-30 flex min-w-0 items-center justify-self-start lg:col-start-1">
-        <button
-          type="button"
-          onClick={goHome}
-          className="group flex min-w-0 max-w-full items-center gap-2 rounded-2xl pr-0.5 text-left outline-none ring-brand-primary/0 transition hover:bg-black/[0.03] hover:ring-2 hover:ring-brand-primary/15 focus-visible:ring-2 focus-visible:ring-brand-primary/35 sm:max-w-[min(100%,17rem)] sm:gap-3 sm:pr-2 xl:gap-3.5 dark:hover:bg-white/[0.04]"
-        >
-          <span className="relative shrink-0 rounded-2xl bg-white p-0.5 shadow-sm ring-1 ring-black/[0.06] transition group-hover:shadow-md group-hover:ring-brand-primary/25 dark:bg-white/10 dark:ring-white/10">
-            <img
-              src="/amalgated-lending-logo.png"
-              alt="Amalgated Lending Inc."
-              width={48}
-              height={48}
-              decoding="async"
-              fetchPriority="high"
-              className="h-9 w-9 rounded-[0.875rem] object-contain sm:h-11 sm:w-11"
-            />
-          </span>
-          <span className="flex min-w-0 flex-col justify-center border-l border-black/[0.08] pl-2.5 leading-tight sm:pl-3 dark:border-white/10">
-            <span className="truncate font-display text-[0.8125rem] font-bold tracking-tight text-brand-text sm:text-[0.9375rem] dark:text-white">
-              Amalgated Lending Inc.
-            </span>
-            <span className="mt-0.5 hidden max-w-full items-center gap-1.5 truncate text-[10px] font-medium leading-snug text-brand-text/55 sm:inline-flex sm:text-[11px] dark:text-white/55">
-              <span className="h-1 w-1 shrink-0 rounded-full bg-brand-primary" aria-hidden />
-              <span className="truncate">Digital lending · Davao HQ, nationwide online</span>
-            </span>
-          </span>
-        </button>
-        </motion.div>
-
-        <motion.div className="relative z-30 ml-auto flex min-w-0 max-w-full items-center justify-end gap-1.5 overflow-visible sm:gap-2 lg:col-start-2 lg:ml-0 lg:max-w-none lg:justify-self-end lg:gap-2 xl:gap-3 2xl:gap-4">
-          <nav
-            className="relative z-40 mr-1 hidden min-w-0 flex-nowrap items-center justify-end gap-x-0.5 overflow-visible sm:gap-x-1 sm:mr-2 xl:gap-x-1.5 2xl:gap-x-2 lg:flex"
-            aria-label="Main navigation"
-          >
-            <div
-              className="relative z-30 flex h-10 shrink-0 items-center"
-              onPointerEnter={() => {
-                clearCloseTimer()
-                setOpenMenu('trust')
-              }}
-              onPointerLeave={scheduleClose}
-            >
-              {triggerBtn('trust', 'Trust')}
-              <HeaderMegaPanel {...megaPanelProps} menuKey="trust">
-                <div className="grid gap-6 sm:grid-cols-2">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">Security &amp; trust</p>
-                    <p className="mt-2 text-sm leading-relaxed text-brand-text/75 dark:text-white/75">
-                      Licensed operations, encrypted borrower portal, and transparent terms — scroll to our trust pillars on the
-                      homepage.
-                    </p>
-                    <button
-                      type="button"
-                      className="mt-4 inline-flex rounded-full bg-brand-primary px-4 py-2 text-xs font-semibold text-white hover:bg-brand-primary-hover"
-                      onClick={() => closeMenuAndGo('trust')}
-                    >
-                      View trust section
-                    </button>
-                  </div>
-                  <div className="rounded-xl bg-black/[0.03] p-4 dark:bg-white/5">
-                    <p className="text-xs font-semibold text-brand-text/60 dark:text-white/55">Also explore</p>
-                    <ul className="mt-2 space-y-2 text-sm">
-                      <li>
-                        <button
-                          type="button"
-                          className="font-medium text-brand-primary hover:underline"
-                          onClick={() => closeMenuAndGo('why-choose-us')}
-                        >
-                          Why choose us
-                        </button>
-                      </li>
-                      <li>
-                        <button
-                          type="button"
-                          className="font-medium text-brand-primary hover:underline"
-                          onClick={() => closeMenuAndGo('customer-feedback')}
-                        >
-                          Borrower testimonials
-                        </button>
-                      </li>
-                      <li>
-                        <Link to="/privacy-policy" className="font-medium text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
-                          Privacy &amp; data protection
-                        </Link>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </HeaderMegaPanel>
-            </div>
-
-            <div className="relative flex h-10 shrink-0 items-center" onPointerEnter={() => { clearCloseTimer(); setOpenMenu('calculator') }} onPointerLeave={scheduleClose}>
-            {triggerBtn('calculator', 'Calculator')}
-            <HeaderMegaPanel {...megaPanelProps} menuKey="calculator">
-              <div className="grid gap-6 sm:grid-cols-[1fr_220px]">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">Loan calculator</p>
-                  <p className="mt-2 text-sm text-brand-text/75 dark:text-white/75">
-                    Estimate monthly payments across products before you apply. On the homepage, the live calculator loads your
-                    current product mix from our API.
-                  </p>
-                  <button
-                    type="button"
-                    className="mt-4 inline-flex rounded-full border border-black/15 px-4 py-2 text-xs font-semibold hover:border-brand-primary/40 hover:bg-brand-primary/5 dark:border-white/20"
-                    onClick={() => closeMenuAndGo('calculator')}
-                  >
-                    Jump to homepage calculator
-                  </button>
-                  <Link
-                    to="/loan-products"
-                    className="mt-2 inline-flex text-xs font-semibold text-brand-primary hover:underline"
-                    onClick={() => setOpenMenu(null)}
-                  >
-                    Full calculator page →
-                  </Link>
-                </div>
-                <div className="flex flex-col justify-center rounded-xl border border-dashed border-black/15 p-4 text-center dark:border-white/15">
-                  <p className="text-xs text-brand-text/60 dark:text-white/55">Need a product-specific page?</p>
-                  <Link to="/loan-products" className="mt-2 text-sm font-semibold text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
-                    Loan products hub →
-                  </Link>
-                </div>
-              </div>
-            </HeaderMegaPanel>
+      <div className="app-container relative">
+        <div className="flex min-h-[72px] items-center gap-3 py-2.5 xl:grid xl:min-h-[86px] xl:grid-cols-[minmax(270px,0.72fr)_minmax(560px,1fr)_auto] xl:gap-4 2xl:min-h-[92px] 2xl:grid-cols-[minmax(320px,0.9fr)_minmax(650px,1.15fr)_auto] 2xl:gap-6">
+          <div className="min-w-0">
+            <BrandMark onClick={goHome} />
           </div>
 
-          <div className="relative flex h-10 shrink-0 items-center" onPointerEnter={() => { clearCloseTimer(); setOpenMenu('news') }} onPointerLeave={scheduleClose}>
-            {triggerBtn('news', 'News')}
-            <HeaderMegaPanel {...megaPanelProps} menuKey="news">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">News &amp; announcements</p>
-              <p className="mt-2 text-sm text-brand-text/75 dark:text-white/75">
-                Product updates, holiday advisories, and borrower reminders appear in our newsletter section.
-              </p>
-              <button
-                type="button"
-                className="mt-4 inline-flex rounded-full bg-brand-primary px-4 py-2 text-xs font-semibold text-white hover:bg-brand-primary-hover"
-                onClick={() => closeMenuAndGo('newsletter')}
-              >
-                Go to news section
-              </button>
-            </HeaderMegaPanel>
-          </div>
-
-          <div className="relative flex h-10 shrink-0 items-center" onPointerEnter={() => { clearCloseTimer(); setOpenMenu('loans') }} onPointerLeave={scheduleClose}>
-            {triggerBtn('loans', 'Loan products')}
-            <HeaderMegaPanel {...megaPanelProps} menuKey="loans" align="right" widthClass="w-[min(100vw-2rem,680px)] sm:w-[min(100vw-2rem,820px)]">
-              <div className="flex flex-wrap items-end justify-between gap-3 border-b border-black/[0.06] pb-4 dark:border-white/10">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">Loan products</p>
-                  <p className="mt-1 text-sm text-brand-text/70 dark:text-white/70">
-                    Choose a category — each link opens the product page with rates and requirements.
-                  </p>
-                </div>
-              </div>
-              <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {MEGA_LOAN_PRODUCTS.map((row) => (
-                  <li key={`${row.to}-${row.title}`}>
-                    <Link to={row.to} className={loanMegaCardClass} onClick={() => setOpenMenu(null)}>
-                      <span className="text-sm font-semibold text-brand-text group-hover:text-brand-primary dark:text-white">
-                        {row.title}
-                      </span>
-                      <span className="mt-2 block flex-1 text-xs leading-relaxed text-brand-text/65 dark:text-white/62">{row.desc}</span>
-                      <span className="mt-3 text-xs font-semibold text-brand-primary opacity-90 transition group-hover:opacity-100">
-                        Explore →
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-5 border-t border-black/[0.06] pt-4 dark:border-white/10">
-                <Link
-                  to="/loan-products"
-                  className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-brand px-4 py-3 text-sm font-bold text-white shadow-[0_8px_28px_rgba(217,34,67,0.32)] transition hover:brightness-105 sm:w-auto"
-                  onClick={() => setOpenMenu(null)}
-                >
-                  View all loan products
-                </Link>
-              </div>
-            </HeaderMegaPanel>
-          </div>
-
-          <div className="relative flex h-10 shrink-0 items-center" onPointerEnter={() => { clearCloseTimer(); setOpenMenu('resources') }} onPointerLeave={scheduleClose}>
-            {triggerBtn('resources', 'Resources')}
-            <HeaderMegaPanel {...megaPanelProps} menuKey="resources" align="right" widthClass="w-[min(100vw-2rem,700px)] sm:w-[min(100vw-2rem,900px)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">Resources</p>
-              <p className="mt-1.5 text-[13px] leading-snug text-brand-text/55 dark:text-white/55">
-                Guides, trust, and company — everything you need in one place.
-              </p>
-              <div className="mt-5 flex flex-col gap-5">
-                <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 lg:gap-4">
-                  <Link
-                    to="/application-flow"
-                    className={resourceNavCardClass}
-                    onClick={() => setOpenMenu(null)}
-                  >
-                    <span className="text-sm font-semibold tracking-tight text-brand-text group-hover:text-brand-primary dark:text-white">
-                      Application flow
-                    </span>
-                    <span className="mt-2 block text-xs leading-relaxed text-brand-text/65 dark:text-white/62">
-                      From eligibility to disbursement — know every step before you sign.
-                    </span>
-                    <span className="mt-auto pt-3 text-xs font-semibold text-brand-primary">Open guide →</span>
-                  </Link>
-                  <Link
-                    to="/privacy-policy"
-                    className={resourceNavCardClass}
-                    onClick={() => setOpenMenu(null)}
-                  >
-                    <span className="text-sm font-semibold tracking-tight text-brand-text group-hover:text-brand-primary dark:text-white">
-                      Privacy policy
-                    </span>
-                    <span className="mt-2 block text-xs leading-relaxed text-brand-text/65 dark:text-white/62">
-                      How we handle personal data, cookies, and your rights as a borrower.
-                    </span>
-                    <span className="mt-auto pt-3 text-xs font-semibold text-brand-primary">Read policy →</span>
-                  </Link>
-                  <button type="button" className={`${resourceNavCardClass} w-full text-left`} onClick={() => closeMenuAndGo('about-us')}>
-                    <span className="text-sm font-semibold tracking-tight text-brand-text group-hover:text-brand-primary dark:text-white">
-                      About us
-                    </span>
-                    <span className="mt-1.5 block text-xs font-medium leading-snug text-brand-primary/95 dark:text-brand-primary/90">
-                      Mission, governance, and how our Laravel-backed platform serves Mindanao and beyond.
-                    </span>
-                    <span className="mt-2 block text-xs leading-relaxed text-brand-text/65 dark:text-white/62">
-                      Licensed financial solutions focused on secure, transparent, and borrower-friendly services.
-                    </span>
-                    <span className="mt-auto pt-3 text-xs font-semibold text-brand-primary">Company profile →</span>
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-black/[0.06] pt-4 text-[13px] font-semibold dark:border-white/10">
-                  <Link to="/loan-products" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
-                    Eligibility
-                  </Link>
-                  <button type="button" className="text-brand-primary hover:underline" onClick={() => closeMenuAndGo('calculator')}>
-                    Calculator
-                  </button>
-                  <button type="button" className="text-brand-primary hover:underline" onClick={() => closeMenuAndGo('newsletter')}>
-                    News
-                  </button>
-                  <Link to="/contact" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
-                    Contact
-                  </Link>
-                  <Link to="/loan-products" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
-                    Personal loans
-                  </Link>
-                  <Link to="/features" className="text-brand-primary hover:underline" onClick={() => setOpenMenu(null)}>
-                    Business loans
-                  </Link>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:gap-4">
-                  <div className="flex min-h-[9.5rem] flex-col rounded-xl border border-brand-primary/20 bg-gradient-to-br from-brand-primary/[0.11] via-white to-white p-4 transition-colors duration-300 dark:border-brand-primary/25 dark:from-brand-primary/18 dark:via-[#111827] dark:to-[#0f172a]">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-primary">Why Amalgated</p>
-                    <p className="mt-2 text-sm font-semibold text-brand-text dark:text-white">Transparent lending for real life</p>
-                    <p className="mt-2 text-xs leading-relaxed text-brand-text/70 dark:text-white/68">
-                      Licensed operations, documented fees, and a secure borrower portal so you always know where you stand.
-                    </p>
-                  </div>
-                  <div className="flex min-h-[9.5rem] flex-col justify-between rounded-xl border border-black/[0.08] bg-black/[0.02] p-4 transition-colors duration-300 dark:border-white/10 dark:bg-white/[0.04]">
-                    <div>
-                      <p className="text-base font-semibold tracking-tight text-brand-text dark:text-white">Simple. Fast. Secure.</p>
-                      <p className="mt-2 text-xs leading-relaxed text-brand-text/65 dark:text-white/65">
-                        Apply online, upload requirements safely, and track status without guesswork.
-                      </p>
-                    </div>
-                    <Link
-                      to="/application-flow"
-                      className="mt-4 inline-flex w-fit items-center rounded-lg border border-brand-primary/35 bg-white px-3 py-2 text-xs font-semibold text-brand-primary shadow-sm transition duration-300 hover:bg-brand-primary/5 dark:bg-[#111827] dark:hover:bg-brand-primary/10"
-                      onClick={() => setOpenMenu(null)}
-                    >
-                      Learn more
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </HeaderMegaPanel>
-          </div>
-
-            <span className="mx-0.5 h-5 w-px shrink-0 self-center bg-gradient-to-b from-transparent via-black/15 to-transparent dark:via-white/20" aria-hidden />
-
-            <div className="relative flex h-10 shrink-0 items-center" onPointerEnter={() => { clearCloseTimer(); setOpenMenu('branches') }} onPointerLeave={scheduleClose}>
-            {triggerBtn('branches', 'Branches')}
-            <HeaderMegaPanel {...megaPanelProps} menuKey="branches" align="right">
-              <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-primary">Visit us</p>
-                  <p className="mt-2 text-sm font-medium text-brand-text dark:text-white">Main office — Davao</p>
-                  <p className="mt-1 text-xs leading-relaxed text-brand-text/70 dark:text-white/65">{MAIN_OFFICE}</p>
-                  <p className="mt-3 text-xs text-brand-text/60 dark:text-white/55">
-                    <span className="font-semibold text-brand-text dark:text-white">Hours:</span> Mon–Fri · 8:00 AM – 5:00 PM (PH)
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <a
-                      className="rounded-full bg-brand-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-primary-hover"
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(MAIN_OFFICE)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={() => setOpenMenu(null)}
-                    >
-                      Open in Google Maps
-                    </a>
-                    <Link to="/branches" className="rounded-full border border-black/15 px-3 py-1.5 text-xs font-semibold hover:bg-black/[0.04] dark:border-white/20" onClick={() => setOpenMenu(null)}>
-                      All branches
-                    </Link>
-                  </div>
-                </div>
-                <div className="overflow-hidden rounded-xl border border-black/10 dark:border-white/10">
-                  <iframe title="Amalgated Lending Inc. Davao office map" className="h-44 w-full border-0 sm:h-full sm:min-h-[200px]" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={MAP_EMBED_SRC} />
-                </div>
-              </div>
-            </HeaderMegaPanel>
-          </div>
-
-          </nav>
-
-          <Link
-            to="/borrower/login"
-            className="hidden h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-gradient-brand px-3.5 text-[12px] font-bold leading-none tracking-wide text-white shadow-[0_8px_28px_rgba(217,34,67,0.35)] transition hover:brightness-105 hover:shadow-[0_10px_32px_rgba(246,157,57,0.28)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary active:scale-[0.98] lg:inline-flex xl:px-4 xl:text-[13px] 2xl:px-5"
-          >
-            Borrower login
-          </Link>
-          <Link
-            to="/borrower/login"
-            className="touch-target inline-flex h-10 items-center justify-center rounded-lg bg-gradient-brand px-3 text-[11px] font-bold leading-none tracking-wide text-white shadow-[0_6px_22px_rgba(217,34,67,0.3)] transition hover:brightness-105 sm:rounded-xl sm:px-3.5 sm:text-xs sm:text-[13px] lg:hidden"
-          >
-            Log in
-          </Link>
-          <button
-            type="button"
-            className="flex h-10 min-w-[40px] shrink-0 items-center justify-center rounded-lg border border-black/10 bg-white/80 text-brand-text shadow-sm transition hover:border-brand-primary/25 hover:bg-brand-background-alt sm:h-11 sm:min-w-[44px] sm:rounded-xl lg:hidden dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
-            onClick={() => setMobileOpen((o) => !o)}
-            aria-expanded={mobileOpen}
-            aria-controls={`${baseId}-mobile-nav`}
-            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
-          >
-            {mobileOpen ? (
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            ) : (
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            )}
-          </button>
-        </motion.div>
-      </motion.div>
-
-      <AnimatePresence>
-        {mobileOpen ? (
-          <motion.nav
-            id={`${baseId}-mobile-nav`}
-            className="border-t border-black/10 bg-white/[0.97] backdrop-blur-xl lg:hidden dark:border-white/10 dark:bg-[#0b1220]/98"
-            initial={reduceMotion ? false : { opacity: 0, height: 0 }}
-            animate={reduceMotion ? {} : { opacity: 1, height: 'auto' }}
-            exit={reduceMotion ? {} : { opacity: 0, height: 0 }}
-            transition={{ duration: 0.22 }}
-            aria-label="Mobile"
-          >
-            <div className="app-container max-h-[min(80vh,640px)] space-y-1 overflow-y-auto py-4">
-              {[
-                { key: 'trust', title: 'Trust', body: 'Security, licensing, and testimonials on the homepage.', onGo: () => goToSection('trust') },
-                { key: 'calculator', title: 'Calculator', body: 'Live payment estimates for our loan products.', onGo: () => goToSection('calculator') },
-                { key: 'news', title: 'News', body: 'Announcements and newsletter signup.', onGo: () => goToSection('newsletter') },
-              ].map((sec) => {
-                const open = mobileAccordion === sec.key
+          <nav className="relative hidden items-center justify-center xl:flex" aria-label="Primary navigation">
+            <div className="inline-flex items-center gap-0.5 rounded-[1.4rem] border border-white/80 bg-white/58 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_30px_rgba(15,23,42,0.05)] ring-1 ring-slate-200/50 backdrop-blur-xl 2xl:gap-1">
+              {SECTION_NAV_ITEMS.map((item) => {
                 return (
-                  <div key={sec.key} className="rounded-xl border border-black/8 dark:border-white/10">
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between gap-2 px-3 py-3.5 text-left text-[13px] font-semibold tracking-wide text-brand-text dark:text-white"
-                      aria-expanded={open}
-                      onClick={() => setMobileAccordion(open ? null : sec.key)}
-                    >
-                      <span>{sec.title}</span>
-                      <IconChevron
-                        open={open}
-                        className={`text-brand-text/55 dark:text-white/55 ${open ? 'text-brand-primary dark:text-brand-primary' : ''}`}
-                      />
-                    </button>
-                    {open ? (
-                      <div className="border-t border-black/8 px-3 pb-3 pt-1 text-xs text-brand-text/75 dark:border-white/10 dark:text-white/70">
-                        <p>{sec.body}</p>
-                        <button type="button" className="mt-2 font-semibold text-brand-primary hover:underline" onClick={() => { sec.onGo(); setMobileOpen(false) }}>
-                          Go →
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
+                  <HeaderButton key={item.key} onClick={() => goToSection(item.sectionId)} aria-label={`Go to ${item.label}`}>
+                    <span>{item.label}</span>
+                  </HeaderButton>
                 )
               })}
 
-              <div className="rounded-xl border border-black/8 dark:border-white/10">
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between gap-2 px-3 py-3.5 text-left text-[13px] font-semibold tracking-wide text-brand-text dark:text-white"
-                  aria-expanded={mobileAccordion === 'loans'}
-                  onClick={() => setMobileAccordion(mobileAccordion === 'loans' ? null : 'loans')}
+              <div className="relative" onPointerEnter={openLoanMenu} onPointerLeave={scheduleClose}>
+                <HeaderButton
+                  aria-haspopup="true"
+                  aria-expanded={loanMenuOpen}
+                  aria-controls={loanMenuOpen ? loanMenuId : undefined}
+                  onClick={() => setLoanMenuOpen((open) => !open)}
+                  onFocus={openLoanMenu}
+                  className={loanMenuOpen ? 'bg-brand-primary/10 text-brand-primary' : ''}
                 >
-                  <span>Loan products</span>
-                  <IconChevron
-                    open={mobileAccordion === 'loans'}
-                    className={`text-brand-text/55 dark:text-white/55 ${mobileAccordion === 'loans' ? 'text-brand-primary dark:text-brand-primary' : ''}`}
-                  />
-                </button>
-                {mobileAccordion === 'loans' ? (
-                  <ul className="border-t border-black/8 px-2 py-2 dark:border-white/10">
-                    {MEGA_LOAN_PRODUCTS.map((row) => (
-                      <li key={`${row.to}-${row.title}`}>
-                        <Link to={row.to} className="block rounded-lg px-2 py-2.5 text-sm hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
-                          <span className="font-semibold">{row.title}</span>
-                          <span className="mt-0.5 block text-xs text-brand-text/65 dark:text-white/60">{row.desc}</span>
-                        </Link>
-                      </li>
-                    ))}
-                    <li className="mt-1 border-t border-black/8 pt-2 dark:border-white/10">
-                      <Link
-                        to="/loan-products"
-                        className="block rounded-lg bg-brand-primary px-2 py-2.5 text-center text-sm font-semibold text-white"
-                        onClick={() => setMobileOpen(false)}
-                      >
-                        View all loan products
-                      </Link>
-                    </li>
-                  </ul>
-                ) : null}
+                  <span>Loan Products</span>
+                  <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${loanMenuOpen ? 'rotate-180' : ''}`} />
+                </HeaderButton>
               </div>
 
-              <div className="rounded-xl border border-black/8 dark:border-white/10">
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between gap-2 px-3 py-3.5 text-left text-[13px] font-semibold tracking-wide text-brand-text dark:text-white"
-                  aria-expanded={mobileAccordion === 'resources'}
-                  onClick={() => setMobileAccordion(mobileAccordion === 'resources' ? null : 'resources')}
-                >
-                  <span>Resources</span>
-                  <IconChevron
-                    open={mobileAccordion === 'resources'}
-                    className={`text-brand-text/55 dark:text-white/55 ${mobileAccordion === 'resources' ? 'text-brand-primary dark:text-brand-primary' : ''}`}
-                  />
-                </button>
-                {mobileAccordion === 'resources' ? (
-                  <div className="border-t border-black/8 space-y-2.5 px-2 py-3 dark:border-white/10">
-                    <Link to="/application-flow" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
-                      Application flow
-                    </Link>
-                    <Link to="/privacy-policy" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
-                      Privacy policy
-                    </Link>
-                    <button
-                      type="button"
-                      className="block w-full rounded-lg px-2 py-2 text-left text-sm font-semibold hover:bg-brand-primary/10"
-                      onClick={() => {
-                        setMobileOpen(false)
-                        goToSection('about-us')
-                      }}
-                    >
-                      About us
-                    </button>
-                    <Link to="/loan-products" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
-                      Eligibility checker
-                    </Link>
-                    <button
-                      type="button"
-                      className="block w-full rounded-lg px-2 py-2 text-left text-sm font-semibold hover:bg-brand-primary/10"
-                      onClick={() => {
-                        setMobileOpen(false)
-                        goToSection('calculator')
-                      }}
-                    >
-                      Loan calculator
-                    </button>
-                    <button
-                      type="button"
-                      className="block w-full rounded-lg px-2 py-2 text-left text-sm font-semibold hover:bg-brand-primary/10"
-                      onClick={() => {
-                        setMobileOpen(false)
-                        goToSection('newsletter')
-                      }}
-                    >
-                      News &amp; newsletter
-                    </button>
-                    <Link to="/contact" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
-                      Contact us
-                    </Link>
-                    <Link to="/loan-products" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
-                      Personal loans hub
-                    </Link>
-                    <Link to="/features" className="block rounded-lg px-2 py-2 text-sm font-semibold hover:bg-brand-primary/10" onClick={() => setMobileOpen(false)}>
-                      Business &amp; collateral hub
-                    </Link>
-                    <p className="rounded-lg bg-brand-primary/10 px-2 py-2 text-xs leading-relaxed text-brand-text/80 dark:text-white/75">
-                      <span className="font-semibold text-brand-text dark:text-white">Simple. Fast. Secure.</span> Apply online and track your application in the borrower portal.
-                    </p>
-                    <Link to="/application-flow" className="block rounded-lg px-2 py-2 text-sm font-semibold text-brand-primary hover:underline" onClick={() => setMobileOpen(false)}>
-                      Learn more
-                    </Link>
-                  </div>
-                ) : null}
-              </div>
-
-              <Link to="/branches" className="block rounded-xl border border-black/8 px-3 py-3 text-sm font-semibold hover:bg-black/[0.04] dark:border-white/10 dark:hover:bg-white/5" onClick={() => setMobileOpen(false)}>
-                Branches &amp; maps
-              </Link>
-
-              <button type="button" className="block w-full rounded-lg px-3 py-2.5 text-left text-sm text-brand-text hover:bg-brand-primary/10 dark:text-white" onClick={() => { goHome(); setMobileOpen(false) }}>
-                Home
-              </button>
-              <Link
-                to="/borrower/register"
-                className="block w-full rounded-xl border border-black/10 py-3 text-center text-[13px] font-semibold text-brand-text transition hover:bg-black/[0.04] dark:border-white/15 dark:text-white dark:hover:bg-white/5"
-                onClick={() => setMobileOpen(false)}
-              >
-                Create account
-              </Link>
-              <Link
-                to="/borrower/login"
-                className="block w-full rounded-xl bg-gradient-brand py-3.5 text-center text-[13px] font-bold tracking-wide text-white shadow-[0_8px_28px_rgba(217,34,67,0.32)] transition hover:brightness-105"
-                onClick={() => setMobileOpen(false)}
-              >
-                Borrower login
-              </Link>
+              {RESOURCE_LINKS.map((item) => {
+                return (
+                  <HeaderLink
+                    key={item.to}
+                    to={item.to}
+                    active={isRouteActive(location.pathname, item.to)}
+                    onClick={closeLoanMenu}
+                  >
+                    <span>{item.label}</span>
+                  </HeaderLink>
+                )
+              })}
             </div>
-          </motion.nav>
-        ) : null}
-      </AnimatePresence>
+
+            <LoanMegaMenu
+              id={loanMenuId}
+              isOpen={loanMenuOpen}
+              reduceMotion={reduceMotion}
+              onClose={closeLoanMenu}
+              onEnter={openLoanMenu}
+              onLeave={scheduleClose}
+            />
+          </nav>
+
+          <div className="ml-auto flex items-center justify-end gap-2 xl:ml-0">
+            <Link
+              to="/borrower/login"
+              className="hidden min-h-11 items-center gap-2 rounded-2xl bg-gradient-to-r from-brand-primary via-red-600 to-orange-500 px-5 text-sm font-bold text-white shadow-[0_16px_36px_rgba(217,34,67,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(246,157,57,0.28)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary/35 sm:inline-flex"
+            >
+              <LogIn className="h-4 w-4" />
+              Borrower Login
+            </Link>
+            <button
+              type="button"
+              className="grid h-11 w-11 place-items-center rounded-2xl border border-slate-200/80 bg-white/78 text-slate-800 shadow-sm backdrop-blur transition hover:border-brand-primary/30 hover:text-brand-primary focus-visible:ring-2 focus-visible:ring-brand-primary/35 xl:hidden"
+              aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-controls={mobileMenuId}
+              aria-expanded={mobileOpen}
+              onClick={() => setMobileOpen((open) => !open)}
+            >
+              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <MobileDrawer
+        open={mobileOpen}
+        id={mobileMenuId}
+        reduceMotion={reduceMotion}
+        close={() => setMobileOpen(false)}
+        goToSection={goToSection}
+        goHome={goHome}
+      />
     </header>
   )
 }

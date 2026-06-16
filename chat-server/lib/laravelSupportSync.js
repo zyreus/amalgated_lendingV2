@@ -5,7 +5,7 @@
  * Header: X-Support-Sync-Secret → amalgated-lending-api `SUPPORT_CHAT_SYNC_SECRET`
  *
  * Env (chat-server `.env`):
- *   LARAVEL_CHAT_SYNC_URL=http://127.0.0.1:8001/api/v1
+ *   LARAVEL_CHAT_SYNC_URL=http://127.0.0.1:8000/api/v1
  *   LARAVEL_CHAT_SYNC_SECRET=<same secret as Laravel>
  */
 

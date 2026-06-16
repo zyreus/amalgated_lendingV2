@@ -3,9 +3,12 @@
 namespace App\Services;
 
 use App\Models\Loan;
+use App\Models\LoanApplication;
 use App\Models\Payment;
+use App\Models\TravelAssistanceDetail;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -75,6 +78,42 @@ class ReportSummaryService
             'loans_disbursed' => (clone $disbursed)->count(),
             'principal_disbursed' => round((float) (clone $disbursed)->sum('principal'), 2),
             'collections' => round((float) $collections->sum('amount_paid'), 2),
+            'travel_assistance' => $this->summarizeTravelAssistance($from, $to),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function summarizeTravelAssistance(Carbon $from, Carbon $to): array
+    {
+        $base = LoanApplication::query()
+            ->where('loan_type', LoanApplication::TYPE_TRAVEL_ASSISTANCE)
+            ->whereBetween('created_at', [$from, $to]);
+        $total = (clone $base)->count();
+        $approved = (clone $base)->whereIn('status', [LoanApplication::STATUS_APPROVED, LoanApplication::STATUS_PRE_APPROVED])->count();
+        $releasedLoanIds = (clone $base)->whereNotNull('loan_id')->pluck('loan_id');
+
+        return [
+            'total_applications' => $total,
+            'by_destination_country' => TravelAssistanceDetail::query()
+                ->whereHas('loanApplication', fn ($q) => $q->whereBetween('created_at', [$from, $to]))
+                ->select('destination_country', DB::raw('COUNT(*) as count'))
+                ->whereNotNull('destination_country')
+                ->groupBy('destination_country')
+                ->orderByDesc('count')
+                ->get(),
+            'ofw_applications' => TravelAssistanceDetail::query()
+                ->whereHas('loanApplication', fn ($q) => $q->whereBetween('created_at', [$from, $to]))
+                ->where('travel_purpose', 'OFW Deployment')
+                ->count(),
+            'tourist_applications' => TravelAssistanceDetail::query()
+                ->whereHas('loanApplication', fn ($q) => $q->whereBetween('created_at', [$from, $to]))
+                ->where('travel_purpose', 'Tourist Travel')
+                ->count(),
+            'approval_rate' => $total > 0 ? round(($approved / $total) * 100, 2) : 0.0,
+            'released_loan_amount' => round((float) Loan::query()->whereIn('id', $releasedLoanIds)->sum('principal'), 2),
+            'travel_loan_revenue' => round((float) Payment::query()->whereIn('loan_id', $releasedLoanIds)->sum('amount_paid'), 2),
         ];
     }
 }

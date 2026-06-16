@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Facades\URL;
+
 /**
  * Resolves public disk file paths to stable application URLs.
  *
@@ -11,6 +13,18 @@ namespace App\Support;
  */
 final class PublicStorageUrl
 {
+    /** @var list<string> */
+    private const SENSITIVE_PREFIXES = [
+        'borrower-documents/',
+        'borrower-selfies/',
+        'borrower-id-docs/',
+        'borrower-receipts/',
+        'documents/',
+        'signatures/',
+        'lead-chat/',
+        'loan-applications/',
+    ];
+
     public static function apiUrl(?string $stored): ?string
     {
         $rel = self::normalizeStoredPath($stored);
@@ -18,10 +32,45 @@ final class PublicStorageUrl
             return null;
         }
 
+        if (self::isSensitivePath($rel)) {
+            return self::signedApiUrl($rel);
+        }
+
         $segments = explode('/', $rel);
         $encoded = implode('/', array_map('rawurlencode', $segments));
 
         return '/api/v1/public-files/'.$encoded;
+    }
+
+    public static function isSensitivePath(?string $stored): bool
+    {
+        $rel = self::normalizeStoredPath($stored);
+        if ($rel === null || $rel === '') {
+            return false;
+        }
+
+        foreach (self::SENSITIVE_PREFIXES as $prefix) {
+            if (str_starts_with($rel, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function signedApiUrl(?string $stored, int $minutes = 45): ?string
+    {
+        $rel = self::normalizeStoredPath($stored);
+        if ($rel === null || $rel === '') {
+            return null;
+        }
+
+        return URL::temporarySignedRoute(
+            'api.public-files.show',
+            now()->addMinutes($minutes),
+            ['path' => $rel],
+            false,
+        );
     }
 
     public static function absoluteUrl(?string $stored): ?string

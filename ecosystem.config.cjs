@@ -12,8 +12,7 @@ module.exports = {
        */
       name: 'amalgated-frontend',
       cwd: 'C:/xampp/htdocs/amalgated_lendingV2',
-      script: 'C:/Windows/System32/cmd.exe',
-      args: '/d /s /c "npx vite preview --config frontend/vite.config.js --host 0.0.0.0 --port 6174 --strictPort"',
+      script: 'scripts/serve-frontend.cjs',
       windowsHide: true,
       env: {
         NODE_ENV: 'production',

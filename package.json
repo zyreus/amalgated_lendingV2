@@ -38,27 +38,27 @@
     "pm2:logs": "node scripts/pm2-run.cjs logs"
   },
   "dependencies": {
-    "@aws-amplify/ui-react": "6.15.2",
-    "@aws-amplify/ui-react-liveness": "^3.5.0",
+    "@aws-amplify/ui-react": "6.15.4",
+    "@aws-amplify/ui-react-liveness": "3.6.7",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.9",
     "@mui/material": "^7.3.9",
-    "aws-amplify": "^6.16.3",
+    "aws-amplify": "^6.18.0",
     "axios": "^1.16.0",
     "framer-motion": "^12.35.0",
     "gsap": "^3.14.2",
     "lucide-react": "^1.16.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^7.13.1",
+    "react-router-dom": "^7.17.0",
     "react-to-print": "^3.3.0",
     "recharts": "^3.8.0",
     "socket.io-client": "^4.8.3",
     "zod": "^3.25.17"
   },
   "overrides": {
-    "@aws-amplify/ui-react": "6.15.2",
+    "@aws-amplify/ui-react": "6.15.4",
     "react": "$react",
     "react-dom": "$react-dom"
   },

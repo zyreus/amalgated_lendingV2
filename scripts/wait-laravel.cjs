@@ -30,7 +30,7 @@ function healthOk(port) {
     const req = http.get(
       {
         hostname: host,
-        port: parseInt(port, 10) || 8001,
+        port: parseInt(port, 10) || 8000,
         path: '/api/v1/health',
         timeout: 3000,
         headers: { Accept: 'application/json' },

@@ -1429,7 +1429,7 @@ function getLaravelAdminVerifyCandidates() {
   add(process.env.LENDING_API_VERIFY_URL);
 
   // Local dev first, then production API host.
-  add('http://127.0.0.1:8001');
+  add('http://127.0.0.1:8000');
   add('https://api.amalgatedlending.com');
 
   return candidates;

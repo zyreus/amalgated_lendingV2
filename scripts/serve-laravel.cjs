@@ -71,7 +71,7 @@ async function main() {
   }
   const memoryLimit = process.env.LARAVEL_PHP_MEMORY_LIMIT || '256M'
   const runtimePhpFlags = ['-d', `memory_limit=${memoryLimit}`]
-  const preferred = Math.max(8001, parseInt(getLaravelPort(), 10) || 8001)
+  const preferred = Math.max(8000, parseInt(getLaravelPort(), 10) || 8000)
   const end = preferred + RANGE
 
   for (let p = preferred; p <= end; p++) {

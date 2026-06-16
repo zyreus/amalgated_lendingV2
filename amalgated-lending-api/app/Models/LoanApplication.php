@@ -186,6 +186,31 @@ class LoanApplication extends Model
         return $this->hasOne(TravelLoanWizardForm::class);
     }
 
+    public function salaryLoanDetail(): HasOne
+    {
+        return $this->hasOne(SalaryLoanDetail::class);
+    }
+
+    public function chattelMortgageDetail(): HasOne
+    {
+        return $this->hasOne(ChattelMortgageDetail::class);
+    }
+
+    public function realEstateDetail(): HasOne
+    {
+        return $this->hasOne(RealEstateDetail::class);
+    }
+
+    public function pensionLoanDetail(): HasOne
+    {
+        return $this->hasOne(PensionLoanDetail::class);
+    }
+
+    public function travelAssistanceDetail(): HasOne
+    {
+        return $this->hasOne(TravelAssistanceDetail::class, 'application_id');
+    }
+
     public function dependents(): HasMany
     {
         return $this->hasMany(LoanApplicationDependent::class);

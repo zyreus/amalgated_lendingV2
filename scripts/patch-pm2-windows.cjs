@@ -17,11 +17,16 @@ if (!fs.existsSync(pathsFile)) {
   process.exit(1)
 }
 
-if (fs.existsSync(marker)) {
+let src = fs.readFileSync(pathsFile, 'utf8')
+const patchedNeedle = `pm2-rpc-${id}`
+
+if (fs.existsSync(marker) && src.includes(patchedNeedle)) {
   return
 }
 
-let src = fs.readFileSync(pathsFile, 'utf8')
+if (fs.existsSync(marker) && !src.includes(patchedNeedle)) {
+  fs.unlinkSync(marker)
+}
 const needle = `  if (process.platform === 'win32' ||
       process.platform === 'win64') {
     //@todo instead of static unique rpc/pub file custom with PM2_HOME or UID

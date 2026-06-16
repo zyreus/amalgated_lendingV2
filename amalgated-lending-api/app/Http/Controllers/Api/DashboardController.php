@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Loan;
+use App\Models\LoanApplication;
 use App\Models\Payment;
+use App\Models\TravelAssistanceDetail;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
@@ -102,6 +105,34 @@ class DashboardController extends Controller
             'total_principal_released' => round($totalPrincipalReleased, 2),
             'total_revenue' => round($totalRevenue, 2),
             'overdue_loans' => $overdueLoans,
+            'travel_assistance' => $this->travelAssistanceAnalytics(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function travelAssistanceAnalytics(): array
+    {
+        $base = LoanApplication::query()->where('loan_type', LoanApplication::TYPE_TRAVEL_ASSISTANCE);
+        $total = (clone $base)->count();
+        $approved = (clone $base)->whereIn('status', [LoanApplication::STATUS_APPROVED, LoanApplication::STATUS_PRE_APPROVED])->count();
+        $releasedLoanIds = (clone $base)->whereNotNull('loan_id')->pluck('loan_id');
+
+        return [
+            'total_applications' => $total,
+            'by_destination_country' => TravelAssistanceDetail::query()
+                ->select('destination_country', DB::raw('COUNT(*) as count'))
+                ->whereNotNull('destination_country')
+                ->groupBy('destination_country')
+                ->orderByDesc('count')
+                ->limit(10)
+                ->get(),
+            'ofw_applications' => TravelAssistanceDetail::query()->where('travel_purpose', 'OFW Deployment')->count(),
+            'tourist_applications' => TravelAssistanceDetail::query()->where('travel_purpose', 'Tourist Travel')->count(),
+            'approval_rate' => $total > 0 ? round(($approved / $total) * 100, 2) : 0.0,
+            'released_loan_amount' => round((float) Loan::query()->whereIn('id', $releasedLoanIds)->sum('principal'), 2),
+            'travel_loan_revenue' => round((float) Payment::query()->whereIn('loan_id', $releasedLoanIds)->sum('amount_paid'), 2),
         ];
     }
 

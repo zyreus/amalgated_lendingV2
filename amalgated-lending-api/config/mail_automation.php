@@ -35,7 +35,7 @@ return [
     */
     'otp_enabled' => filter_var(env('MAIL_OTP_ENABLED', true), FILTER_VALIDATE_BOOL),
 
-    'otp_ttl_seconds' => max(120, (int) env('MAIL_OTP_TTL_SECONDS', 600)),
+    'otp_ttl_seconds' => max(120, (int) env('MAIL_OTP_TTL_SECONDS', 300)),
 
     'otp_cooldown_seconds' => max(30, (int) env('MAIL_OTP_COOLDOWN_SECONDS', 60)),
 
