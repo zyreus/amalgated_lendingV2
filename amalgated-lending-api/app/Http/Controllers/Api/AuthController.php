@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\AuthSecurityRecorder;
+use App\Support\AuthRateLimit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -51,6 +52,7 @@ class AuthController extends Controller
         $user = auth('api')->user();
         $logger->log($user, 'auth.login');
         $security->recordSuccess('api', $user);
+        AuthRateLimit::clearLogin($request, $login);
 
         return $this->respondWithToken($token, $user);
     }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ShieldCheck, Smartphone } from 'lucide-react'
+import { LoadingButton, FormLoadingOverlay } from '../../components/loading'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 
 function normalizeCode(value) {
@@ -91,6 +92,7 @@ export default function BorrowerVerifyOtpPage() {
             Enter the 6-digit code sent to your registered phone via SMS. If SMS is unavailable, check your email.
           </p>
 
+          <FormLoadingOverlay submitting={loading} label="Submitting...">
           <form onSubmit={onVerify} className="mt-6 space-y-4">
             <div className="relative">
               <Smartphone className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
@@ -114,19 +116,29 @@ export default function BorrowerVerifyOtpPage() {
             />
             {errorMsg ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{errorMsg}</p> : null}
             {message ? <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-200">{message}</p> : null}
-            <button disabled={loading} type="submit" className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white transition hover:bg-brand-primary-hover disabled:opacity-60">
-              {loading ? 'Verifying...' : 'Verify account'}
-            </button>
+            <LoadingButton
+              type="submit"
+              loading={loading}
+              loadingKey="submit"
+              minWidth="100%"
+              className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white transition hover:bg-brand-primary-hover"
+            >
+              Verify account
+            </LoadingButton>
           </form>
+          </FormLoadingOverlay>
 
-          <button
+          <LoadingButton
             type="button"
-            disabled={cooldown > 0 || resending}
+            loading={resending}
+            loadingKey="send"
+            disabled={cooldown > 0}
             onClick={onResend}
-            className="mt-4 w-full rounded-xl border border-gray-200 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#1F2937] dark:text-gray-200 dark:hover:bg-[#0F172A]"
+            minWidth="100%"
+            className="mt-4 w-full rounded-xl border border-gray-200 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-[#1F2937] dark:text-gray-200 dark:hover:bg-[#0F172A]"
           >
-            {resending ? 'Sending...' : cooldown > 0 ? `Resend OTP in ${cooldown}s` : 'Resend OTP'}
-          </button>
+            {cooldown > 0 ? `Resend OTP in ${cooldown}s` : 'Resend OTP'}
+          </LoadingButton>
 
           <p className="mt-5 text-center text-sm text-gray-500 dark:text-gray-400">
             <Link to="/borrower/login" className="text-brand-primary transition hover:text-brand-primary-hover hover:underline">

@@ -14,7 +14,16 @@ use Illuminate\Support\Str;
 
 class PaymentReceiptPdfService
 {
-    private const TEMPLATE_VERSION = 'v3';
+    public const TEMPLATE_VERSION = 'v12';
+
+    public static function isCurrentTemplatePdf(?string $path): bool
+    {
+        $path = trim((string) $path);
+
+        return $path !== ''
+            && str_contains(basename($path), '_'.self::TEMPLATE_VERSION)
+            && Storage::disk('public')->exists($path);
+    }
 
     public function __construct()
     {

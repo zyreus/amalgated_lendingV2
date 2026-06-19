@@ -18,7 +18,9 @@ export function normalizeNodeConversation(row) {
     lifecycle_status: status,
     visitor_type: row.mode === 'human' ? 'human' : 'ai',
     mode: row.mode || 'ai',
-    needs_human: row.mode === 'human',
+    ai_enabled: row.ai_enabled !== false && row.status !== 'human_assisted',
+    needs_human: row.status === 'human_assisted' || row.mode === 'human' || row.ai_enabled === false,
+    conversation_status: row.status || (row.mode === 'human' ? 'human_assisted' : 'ai_active'),
     assigned_to: row.assigned_to ?? null,
     last_handling: row.last_responder_type || null,
     last_message_at: row.updated_at || row.created_at,
@@ -27,6 +29,12 @@ export function normalizeNodeConversation(row) {
     admin_unread_count: Number(row.admin_unread_count) || 0,
     visitor_message_count: Number(row.visitor_message_count) || 0,
     last_message: row.last_message || null,
+    visitor_message_count: Number(row.visitor_message_count ?? row.consecutive_visitor_messages) || 0,
+    visitor_chat_locked: !!(row.visitor_chat_locked ?? row.visitor_send_locked),
+    first_agent_response_received: !!row.first_agent_response_received,
+    first_agent_response_at: row.first_agent_response_at || null,
+    visitor_send_locked: !!(row.visitor_chat_locked ?? row.visitor_send_locked),
+    consecutive_visitor_messages: Number(row.visitor_message_count ?? row.consecutive_visitor_messages) || 0,
   }
 }
 

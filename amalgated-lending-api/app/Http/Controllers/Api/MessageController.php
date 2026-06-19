@@ -74,7 +74,11 @@ class MessageController extends Controller
 
         Cache::forget($this->chatStatsCacheKey((int) $chat->owner_user_id));
 
-        if (! empty($validated['request_ai_reply'])) {
+        if ($senderType === Message::SENDER_AGENT) {
+            $metadata = is_array($chat->metadata) ? $chat->metadata : [];
+            $metadata['ai_disabled'] = true;
+            $chat->forceFill(['metadata' => $metadata])->saveQuietly();
+        } elseif (! empty($validated['request_ai_reply'])) {
             ProcessAiChatReply::dispatch($chat->id, $message->id, [
                 'requested_by_user_id' => $request->user()->id,
                 'stream_request_key' => $validated['stream_request_key'] ?? null,
@@ -90,6 +94,10 @@ class MessageController extends Controller
     public function streamAi(StreamAiMessageRequest $request, Chat $chat): StreamedResponse
     {
         $this->authorize('view', $chat);
+
+        if (data_get($chat->metadata, 'ai_disabled') === true) {
+            abort(403, 'AI assistance is disabled for this conversation.');
+        }
 
         $requestKey = $request->validated('stream_request_key');
         $prompt = trim((string) $request->validated('message'));

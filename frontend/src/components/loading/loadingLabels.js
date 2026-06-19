@@ -1,0 +1,21 @@
+/** Standard loading copy for buttons and overlays. */
+export const LOADING_LABELS = {
+  signIn: 'Signing In...',
+  signOut: 'Signing Out...',
+  save: 'Saving...',
+  update: 'Updating...',
+  delete: 'Deleting...',
+  upload: 'Uploading...',
+  download: 'Downloading...',
+  submit: 'Submitting...',
+  send: 'Sending...',
+  generate: 'Generating...',
+  export: 'Exporting...',
+  import: 'Importing...',
+  create: 'Creating...',
+  approve: 'Approving...',
+  reject: 'Rejecting...',
+  process: 'Processing...',
+  confirm: 'Confirming...',
+  load: 'Loading...',
+}

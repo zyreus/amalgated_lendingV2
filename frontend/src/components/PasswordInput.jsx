@@ -8,6 +8,7 @@ export default function PasswordInput({
   required,
   minLength,
   maxLength,
+  disabled = false,
   className = '',
   inputClassName = '',
 }) {
@@ -24,9 +25,10 @@ export default function PasswordInput({
         required={required}
         minLength={minLength}
         maxLength={maxLength}
+        disabled={disabled}
         placeholder={placeholder}
         autoComplete={autoComplete}
-        className={`w-full rounded-xl border border-gray-200 bg-white py-3 pl-4 pr-12 text-sm text-gray-900 outline-none transition-colors duration-300 placeholder:text-gray-500 focus:border-[#DC2626]/50 focus:ring-2 focus:ring-[#DC2626]/20 dark:border-[#1F2937] dark:bg-[#0F172A] dark:text-gray-100 dark:placeholder:text-gray-400 ${inputClassName}`}
+        className={`w-full rounded-xl border border-gray-200 bg-white py-3 pl-4 pr-12 text-sm text-gray-900 outline-none transition-colors duration-300 placeholder:text-gray-500 focus:border-[#DC2626]/50 focus:ring-2 focus:ring-[#DC2626]/20 disabled:opacity-60 dark:border-[#1F2937] dark:bg-[#0F172A] dark:text-gray-100 dark:placeholder:text-gray-400 ${inputClassName}`}
       />
       <button
         type="button"

@@ -16,16 +16,60 @@ import { downloadCsv } from '../admin/utils/export.js'
 import { chatOutgoingReceiptLabel, formatChatTime, formatCrmInboxDate, formatCrmLog, getResolvedDisplayTimeZone } from '../utils/timestamps.js'
 
 const STATUS_BADGE = {
+  ai_active: 'bg-emerald-500/15 text-emerald-900 ring-1 ring-emerald-500/25',
   open: 'bg-amber-500/15 text-[color:var(--admin-warn-text)] ring-1 ring-amber-500/25',
   in_progress: 'bg-red-50 text-red-900 ring-1 ring-red-200',
+  human_assisted: 'bg-amber-100 text-amber-950 ring-1 ring-amber-300',
+  closed: 'bg-emerald-500/15 text-[color:var(--admin-success-text)] ring-1 ring-emerald-500/25',
   resolved: 'bg-emerald-500/15 text-[color:var(--admin-success-text)] ring-1 ring-emerald-500/25',
   archived: 'bg-slate-500/15 text-[color:var(--admin-neutral-text)] ring-1 ring-slate-500/20',
 }
 const STATUS_LABEL = {
+  ai_active: 'AI Active',
   open: 'Open',
   in_progress: 'In Progress',
-  resolved: 'Resolved',
+  human_assisted: 'Human Assisted',
+  closed: 'Closed',
+  resolved: 'Closed',
   archived: 'Archived',
+}
+
+function isAiActiveConversation(c) {
+  if (!c) return false
+  const status = String(c.conversation_status || c.status || '').toLowerCase()
+  if (status === 'closed' || status === 'resolved' || status === 'archived') return false
+  return (
+    c.ai_enabled !== false &&
+    !c.assigned_agent_id &&
+    !c.assigned_to &&
+    status !== 'human_assisted' &&
+    (status === 'ai_active' || status === 'open' || status === 'in_progress' || c.mode === 'ai')
+  )
+}
+
+function isHumanAssistedConversation(c) {
+  if (!c) return false
+  const status = String(c.conversation_status || c.status || '').toLowerCase()
+  if (status === 'closed' || status === 'resolved' || status === 'archived') return false
+  if (status === 'human_assisted' || status === 'in_progress') return true
+  if (c.assigned_agent_id || c.assigned_to) return true
+  if (c.ai_enabled === false) return true
+  return c.mode === 'human'
+}
+
+/** CRM status chip: AI Active / Human Assisted / Closed / Archived */
+function conversationStatusDisplay(c) {
+  const status = String(c?.conversation_status || c?.status || '').toLowerCase()
+  if (status === 'archived') {
+    return { label: '📦 Archived', className: 'bg-slate-100 text-slate-800' }
+  }
+  if (status === 'closed' || status === 'resolved') {
+    return { label: '🔒 Closed', className: 'bg-emerald-100 text-emerald-900' }
+  }
+  if (isHumanAssistedConversation(c)) {
+    return { label: '👨 Human Assisted', className: 'bg-amber-100 text-amber-900' }
+  }
+  return { label: '🤖 AI Active', className: 'bg-emerald-100 text-emerald-900' }
 }
 /** Inbox lifecycle segments (archived threads remain visible under All). */
 const FILTERS = ['all', 'open', 'in_progress', 'resolved']
@@ -97,7 +141,7 @@ function responseTimeTextClass(ms) {
  * @param {Record<string, boolean>} presenceMap
  */
 function visitorAiConnectionDot(c, presenceMap) {
-  if (c.mode === 'human') {
+  if (isHumanAssistedConversation(c)) {
     return { title: 'Human agent (handoff)', className: 'bg-red-500' }
   }
   if (presenceMap[c.id]) {
@@ -183,7 +227,23 @@ function fmtChatTime(d) {
   })
 }
 
+function preferMessageRow(existing, incoming) {
+  const score = (m) => {
+    const id = String(m?.id ?? '')
+    if (/^\d+$/.test(id)) return 100
+    if (m?.dedupe_key || m?.dedupeKey) return 60
+    if (id.startsWith('laravel-')) return 40
+    if (id.startsWith('stream-')) return 15
+    if (id.startsWith('tmp-') || id.startsWith('t-')) return 10
+    return 25
+  }
+  return score(incoming) > score(existing) ? incoming : existing
+}
+
 function messageKey(msg) {
+  const dedupe = msg?.dedupe_key || msg?.dedupeKey
+  if (dedupe) return `dedupe:${dedupe}`
+
   const idStr = msg?.id != null && msg.id !== '' ? String(msg.id) : ''
   const volatilePrefix =
     idStr.startsWith('tmp-') ||
@@ -194,14 +254,30 @@ function messageKey(msg) {
     return `id:${idStr}`
   }
   const sid = msg?.conversation_id || msg?.session_id || ''
-  const body = String(msg?.content ?? msg?.message ?? '').slice(0, 240)
-  return `fp:${sid}|${String(msg?.sender || '')}|${body}|${String(msg?.created_at || '')}`
+  const sender = String(msg?.sender || '')
+  const body = String(msg?.content ?? msg?.message ?? '').trim().toLowerCase()
+  if (sender === 'user' && body) {
+    const ts = new Date(msg?.created_at || 0).getTime()
+    const bucket = Number.isFinite(ts) && ts > 0 ? Math.floor(ts / 30000) : 'na'
+    return `userfp:${sid}|${body}|${bucket}`
+  }
+  if ((sender === 'ai' || sender === 'assistant') && body) {
+    const ts = new Date(msg?.created_at || 0).getTime()
+    const bucket = Number.isFinite(ts) && ts > 0 ? Math.floor(ts / 120000) : 'na'
+    return `aifp:${sid}|${body.slice(0, 400)}|${bucket}`
+  }
+  const bodySlice = body.slice(0, 240)
+  return `fp:${sid}|${sender}|${bodySlice}|${String(msg?.created_at || '')}`
 }
 
 function mergeMessageRows(prev, incoming) {
   const all = [...(prev || []), ...(incoming || [])]
   const byKey = new Map()
-  all.forEach((m) => byKey.set(messageKey(m), m))
+  all.forEach((m) => {
+    const key = messageKey(m)
+    const existing = byKey.get(key)
+    byKey.set(key, existing ? preferMessageRow(existing, m) : m)
+  })
   return Array.from(byKey.values()).sort((a, b) => {
     const ta = new Date(a?.created_at || 0).getTime()
     const tb = new Date(b?.created_at || 0).getTime()
@@ -224,6 +300,25 @@ function conversationListSubtitle(c) {
   const ref = shortConversationRef(c.id)
   return ref ? `Guest · ${ref}` : 'Guest visitor'
 }
+
+function visitorFirstReplyBadges(c) {
+  if (!c) return []
+  if (c.first_agent_response_received) {
+    return [{
+      key: 'connected',
+      label: '🟢 Agent Connected',
+      className: 'bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200',
+    }]
+  }
+  return [{
+    key: 'waiting',
+    label: '🟡 Waiting For First Agent Response',
+    className: 'bg-amber-50 text-amber-950 ring-1 ring-amber-300',
+  }]
+}
+
+/** @deprecated Use visitorFirstReplyBadges — kept so stale bundles cannot crash CRM. */
+const visitorLimitBadges = visitorFirstReplyBadges
 
 function normalizeLead(lead) {
   const src = [lead.source, lead.source_page].filter((s) => s && String(s).trim())
@@ -888,17 +983,44 @@ export default function AdminChatDashboard({
       })
       socket.on('conversations:refresh', () => fetchConversationsRef.current())
       socket.on('conversation:updated', (convo) => {
-        if (!convo?.id) return
-        setConversations((prev) =>
-          sortConversationsByLastMessageDesc(prev.map((c) => (c.id === convo.id ? { ...c, ...convo } : c))),
-        )
-        if (activeIdRef.current === convo.id) setActiveConvo((c) => (c ? { ...c, ...convo } : c))
-      })
-      socket.on('conversation:modeChanged', ({ conversationId: cid, mode }) => {
+        const cid = convo?.id || convo?.conversationId || convo?.conversation_id
         if (!cid) return
-        setActiveConvo((c) => (c?.id === cid && c ? { ...c, mode } : c))
+        const patch = { ...convo, id: cid }
         setConversations((prev) =>
-          sortConversationsByLastMessageDesc(prev.map((c) => (c.id === cid ? { ...c, mode } : c))),
+          sortConversationsByLastMessageDesc(prev.map((c) => (c.id === cid ? { ...c, ...patch } : c))),
+        )
+        if (activeIdRef.current === cid) setActiveConvo((c) => (c ? { ...c, ...patch } : c))
+      })
+      socket.on('conversation:modeChanged', ({ conversationId: cid, mode, human_assisted: handoffFlag, ai_enabled: aiEnabled, status }) => {
+        if (!cid) return
+        const isHuman =
+          mode === 'human' || handoffFlag === true || aiEnabled === false || status === 'human_assisted'
+        const nextMode = isHuman ? 'human' : 'ai'
+        setActiveConvo((c) =>
+          c?.id === cid && c
+            ? {
+                ...c,
+                mode: nextMode,
+                ai_enabled: !isHuman,
+                status: isHuman ? 'human_assisted' : c.status === 'human_assisted' ? 'open' : c.status,
+                needs_human: isHuman,
+              }
+            : c,
+        )
+        setConversations((prev) =>
+          sortConversationsByLastMessageDesc(
+            prev.map((c) =>
+              c.id === cid
+                ? {
+                    ...c,
+                    mode: nextMode,
+                    ai_enabled: !isHuman,
+                    status: isHuman ? 'human_assisted' : c.status === 'human_assisted' ? 'open' : c.status,
+                    needs_human: isHuman,
+                  }
+                : c,
+            ),
+          ),
         )
       })
       socket.on('analytics:refresh', () => fetchAnalyticsRef.current())
@@ -923,11 +1045,7 @@ export default function AdminChatDashboard({
           const prevMax = Number(latestMessageIdByConversationRef.current.get(msgConvoId) || 0)
           if (msgId > prevMax) latestMessageIdByConversationRef.current.set(msgConvoId, msgId)
         }
-        const active = String(activeIdRef.current || '')
-        const relates =
-          (msg?.conversation_id && String(msg.conversation_id) === active) ||
-          (msg?.session_id && String(msg.session_id) === active)
-        setMessages((prev) => (relates ? mergeMessageRows(prev, [msg]) : prev))
+        // Message list updates come from chat:newMessage + HTTP fetch to avoid double-append.
       })
       socket.on('chat:newMessage', ({ conversationId, message }) => {
         const cid = String(conversationId || '')
@@ -994,15 +1112,16 @@ export default function AdminChatDashboard({
       })
       socket.on('chat:streamStart', ({ conversation_id: cid, stream_id: streamId, created_at }) => {
         if (!cid || !streamId || cid !== activeIdRef.current) return
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `stream-${streamId}`,
-            sender: 'ai',
-            content: '',
-            created_at: created_at || new Date().toISOString(),
-          },
-        ])
+        setMessages((prev) =>
+          mergeMessageRows(prev, [
+            {
+              id: `stream-${streamId}`,
+              sender: 'ai',
+              content: '',
+              created_at: created_at || new Date().toISOString(),
+            },
+          ]),
+        )
       })
       socket.on('chat:streamDelta', ({ conversation_id: cid, stream_id: streamId, delta }) => {
         if (!cid || !streamId || cid !== activeIdRef.current) return
@@ -1013,21 +1132,22 @@ export default function AdminChatDashboard({
           prev.map((m) => (m.id === messageId ? { ...m, content: `${m.content || ''}${chunk}` } : m)),
         )
       })
-      socket.on('chat:streamEnd', ({ conversation_id: cid, stream_id: streamId, content, created_at }) => {
+      socket.on('chat:streamEnd', ({ conversation_id: cid, stream_id: streamId, content, created_at, dedupe_key: dedupeKey, dedupeKey: dedupeKeyAlt }) => {
         if (!cid || !streamId || cid !== activeIdRef.current) return
         const messageId = `stream-${streamId}`
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId
-              ? {
-                  ...m,
-                  sender: 'ai',
-                  content: String(content || m.content || ''),
-                  created_at: created_at || m.created_at || new Date().toISOString(),
-                }
-              : m,
-          ),
-        )
+        const finalContent = String(content || '')
+        setMessages((prev) => {
+          const withoutStream = prev.filter((m) => m.id !== messageId)
+          return mergeMessageRows(withoutStream, [
+            {
+              id: messageId,
+              sender: 'ai',
+              content: finalContent,
+              created_at: created_at || new Date().toISOString(),
+              dedupe_key: dedupeKey || dedupeKeyAlt || null,
+            },
+          ])
+        })
       })
       socket.on('disconnect', () => setSocketConnected(false))
       socket.on('chat:error', (payload) => {
@@ -1215,7 +1335,14 @@ export default function AdminChatDashboard({
       fetchMessages(cid, {})
     }
     window.addEventListener('admin:focusChatConversation', onFocusRequest)
-    return () => window.removeEventListener('admin:focusChatConversation', onFocusRequest)
+    const onCrmInboxRefresh = () => {
+      fetchConversations()
+    }
+    window.addEventListener('admin:crmInboxRefresh', onCrmInboxRefresh)
+    return () => {
+      window.removeEventListener('admin:focusChatConversation', onFocusRequest)
+      window.removeEventListener('admin:crmInboxRefresh', onCrmInboxRefresh)
+    }
   }, [switchChatInbox, fetchConversations, fetchMessages])
 
   useEffect(() => {
@@ -1249,8 +1376,35 @@ export default function AdminChatDashboard({
       content: text,
       created_at: new Date().toISOString(),
     }
-    setMessages((prev) => [...prev, optimisticMessage])
+    setMessages((prev) => mergeMessageRows(prev, [optimisticMessage]))
     setInput('')
+    setActiveConvo((c) =>
+      c?.id === activeId
+        ? {
+            ...c,
+            mode: 'human',
+            ai_enabled: false,
+            status: 'human_assisted',
+            needs_human: true,
+          }
+        : c,
+    )
+    setConversations((prev) =>
+      sortConversationsByLastMessageDesc(
+        prev.map((c) =>
+          c.id === activeId
+            ? {
+                ...c,
+                mode: 'human',
+                ai_enabled: false,
+                status: 'human_assisted',
+                needs_human: true,
+              }
+            : c,
+        ),
+      ),
+    )
+    socketRef.current?.emit('admin:handoff', { conversationId: activeId })
     postCrmConversationMessage(activeId, text)
       .then((res) => {
         const serverMessage = res?.message || null
@@ -1262,7 +1416,12 @@ export default function AdminChatDashboard({
               Math.max(serverId, Number(latestMessageIdByConversationRef.current.get(activeId) || 0)),
             )
           }
-          setMessages((prev) => prev.map((m) => (m.id === tempId ? serverMessage : m)))
+          setMessages((prev) =>
+            mergeMessageRows(
+              prev.map((m) => (m.id === tempId ? serverMessage : m)),
+              [],
+            ),
+          )
         } else {
           const afterId = Number(latestMessageIdByConversationRef.current.get(activeId) || 0)
           fetchMessages(activeId, { afterId: afterId > 0 ? afterId : 0 })
@@ -1335,16 +1494,39 @@ export default function AdminChatDashboard({
 
   const toggleAIMode = async (id) => {
     const convo = conversations.find((c) => c.id === id) || activeConvo
-    const nextMode = convo?.mode === 'ai' ? 'human' : 'ai'
+    const resuming = isHumanAssistedConversation(convo)
+    const nextMode = resuming ? 'ai' : 'human'
+    const nextStatus = resuming ? 'ai_active' : 'human_assisted'
     try {
       const enc = encodeURIComponent(id)
       await adminApi(`/admin/chat/conversations/${enc}/warehouse-status`, {
         method: 'PATCH',
-        body: JSON.stringify({ mode: nextMode }),
+        body: JSON.stringify({
+          mode: nextMode,
+          status: nextStatus,
+          needs_human: nextMode === 'human',
+        }),
       })
       fetchConversations()
       if (id === activeId) {
-        setActiveConvo((c) => (c ? { ...c, mode: nextMode } : c))
+        setActiveConvo((c) =>
+          c
+            ? {
+                ...c,
+                mode: nextMode,
+                ai_enabled: nextMode === 'ai',
+                status: nextStatus,
+                needs_human: nextMode === 'human',
+                assigned_agent_id: nextMode === 'ai' ? null : c.assigned_agent_id,
+                assigned_to: nextMode === 'ai' ? null : c.assigned_to,
+              }
+            : c,
+        )
+      }
+      if (resuming && socketRef.current?.connected) {
+        socketRef.current.emit('admin:resumeAi', { conversationId: id })
+      } else if (!resuming && socketRef.current?.connected) {
+        socketRef.current.emit('admin:handoff', { conversationId: id })
       }
     } catch (error) {
       console.error('Failed to toggle AI:', error)
@@ -2370,6 +2552,14 @@ Amalgated Lending Inc. Team`
                                 New
                               </span>
                             ) : null}
+                            {visitorFirstReplyBadges(c).map((badge) => (
+                              <span
+                                key={badge.key}
+                                className={`ml-1 inline-flex rounded-md px-1 py-px text-[9px] font-semibold tracking-wide ${badge.className}`}
+                              >
+                                {badge.label}
+                              </span>
+                            ))}
                           </span>
                           <span
                             className={`shrink-0 rounded px-1.5 py-px text-[9px] font-semibold ${STATUS_BADGE[c.status]}`}
@@ -2388,13 +2578,9 @@ Amalgated Lending Inc. Team`
                           <span className="tabular-nums">{fmtInboxDate(c.last_message_at || c.updated_at)}</span>
                           <span className="text-slate-300">·</span>
                           <span
-                            className={`rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide ${
-                              c.mode === 'human'
-                                ? 'bg-amber-100 text-amber-900'
-                                : 'bg-emerald-100 text-emerald-900'
-                            }`}
+                            className={`rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide ${conversationStatusDisplay(c).className}`}
                           >
-                            {c.mode === 'human' ? 'Human' : 'AI'}
+                            {conversationStatusDisplay(c).label}
                           </span>
                         </div>
                       </div>
@@ -2747,7 +2933,21 @@ Amalgated Lending Inc. Team`
                   </p>
                   <p className="text-[11px] text-[color:var(--admin-muted-2)]">
                     {activeConvo.visitor_email || 'No email'}
+                    {' · '}
+                    {conversationStatusDisplay(activeConvo).label}
                   </p>
+                  {visitorFirstReplyBadges(activeConvo).length > 0 ? (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {visitorFirstReplyBadges(activeConvo).map((badge) => (
+                        <span
+                          key={badge.key}
+                          className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${badge.className}`}
+                        >
+                          {badge.label}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ) : (
@@ -2778,18 +2978,20 @@ Amalgated Lending Inc. Team`
                     type="button"
                     onClick={() => toggleAIMode(activeId)}
                     title={
-                      activeConvo.mode === 'ai'
-                        ? 'AI replies on. Click for human-only mode.'
-                        : 'Human-only. Click to let AI assist again.'
+                      isAiActiveConversation(activeConvo)
+                        ? 'AI replies on. Click to switch to human-only mode.'
+                        : 'Human agent is handling this thread. Click to resume AI Assistant.'
                     }
                     className={`rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide shadow-sm ring-1 transition ${
-                      activeConvo.mode === 'ai'
+                      isAiActiveConversation(activeConvo)
                         ? 'bg-[color:var(--admin-accent)] text-white ring-red-700/35 hover:opacity-95'
-                        : 'border border-[var(--admin-border)] bg-white text-[var(--admin-text)] hover:bg-[var(--admin-surface-2)]'
+                        : 'border border-emerald-300 bg-emerald-50 text-emerald-900 ring-emerald-500/25 hover:bg-emerald-100'
                     }`}
-                    aria-pressed={activeConvo.mode === 'ai'}
+                    aria-pressed={isAiActiveConversation(activeConvo)}
                   >
-                    {activeConvo.mode === 'ai' ? 'AI on' : 'Human'}
+                    {isAiActiveConversation(activeConvo)
+                      ? '🤖 AI Active'
+                      : 'Resume AI'}
                   </button>
                   <button
                     type="button"
@@ -4187,8 +4389,8 @@ Amalgated Lending Inc. Team`
                 {activeConvo.id != null ? shortConversationRef(activeConvo.id) : '—'}
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-800 ring-1 ring-amber-500/25">
-                  {activeConvo.mode === 'human' ? 'Human-handled' : 'AI-handled'}
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${conversationStatusDisplay(activeConvo).className}`}>
+                  {conversationStatusDisplay(activeConvo).label}
                 </span>
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${STATUS_BADGE[activeConvo.status]}`}

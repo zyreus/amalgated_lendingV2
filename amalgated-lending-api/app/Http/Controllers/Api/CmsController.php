@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\CmsContent;
 use App\Models\Lead;
 use App\Services\ActivityLogger;
+use App\Services\NewsletterBroadcastService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -72,6 +73,42 @@ class CmsController extends Controller
         $logger->log($request->user(), 'cms.upsert', $row, ['section' => $row->section_key]);
 
         return response()->json(['ok' => true, 'content' => $row]);
+    }
+
+    public function publishNewsletter(Request $request, NewsletterBroadcastService $broadcast, ActivityLogger $logger): JsonResponse
+    {
+        $data = $request->validate([
+            'locale' => 'required|string|max:8',
+            'news_body' => 'required|string',
+            'announcements_body' => 'required|string',
+        ]);
+
+        $result = $broadcast->publish(
+            (string) $data['locale'],
+            (string) $data['news_body'],
+            (string) $data['announcements_body'],
+            (int) $request->user()->id,
+        );
+
+        $logger->log($request->user(), 'cms.newsletter_publish', $result['news'], [
+            'announcements_section' => NewsletterBroadcastService::KEY_ANNOUNCEMENTS,
+            'notified' => $result['notified'],
+            'subscriber_count' => $result['subscriber_count'],
+            'emails_sent' => $result['emails_sent'],
+            'emails_failed' => $result['emails_failed'],
+            'changed' => $result['changed'],
+        ]);
+
+        return response()->json([
+            'ok' => true,
+            'changed' => $result['changed'],
+            'notified' => $result['notified'],
+            'subscriber_count' => $result['subscriber_count'],
+            'emails_sent' => $result['emails_sent'],
+            'emails_failed' => $result['emails_failed'],
+            'news' => $result['news'],
+            'announcements' => $result['announcements'],
+        ]);
     }
 
     public function newsletterSubscribers(Request $request): JsonResponse

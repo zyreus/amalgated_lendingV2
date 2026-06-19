@@ -72,10 +72,20 @@ final class BorrowerUploadedFilesManifest
 
         $loanApps = LoanApplication::query()
             ->where('user_id', $borrower->id)
-            ->select(['id', 'applicant_signature', 'spouse_signature', 'comaker_signature', 'updated_at'])
+            ->select(['id', 'loan_type', 'applicant_signature', 'spouse_signature', 'comaker_signature', 'documents', 'updated_at'])
             ->orderByDesc('id')
             ->limit(30)
             ->get();
+
+        $generalDocItems = self::generalLoanDocumentItems($loanApps);
+        if ($generalDocItems !== []) {
+            $sections[] = [
+                'section_key' => 'general_loan_documents',
+                'title' => 'General loan application documents',
+                'subtitle' => 'Files uploaded during salary, chattel, real estate, and other product wizards.',
+                'items' => $generalDocItems,
+            ];
+        }
 
         $sigItems = self::signatureItems($loanApps);
         if ($sigItems !== []) {
@@ -104,8 +114,8 @@ final class BorrowerUploadedFilesManifest
 
         $payments = Payment::query()
             ->whereHas('loan', fn ($q) => $q->where('borrower_id', $borrower->id))
-            ->select(['id', 'loan_id', 'installment_no', 'receipt_path', 'receipt_name', 'invoice_pdf_path', 'status', 'paid_at', 'submitted_at', 'updated_at', 'notes'])
-            ->with(['paymentReceipts' => fn ($q) => $q->select(['id', 'payment_id', 'receipt_number', 'pdf_path', 'created_at'])->orderByDesc('id')->limit(5)])
+            ->select(['id', 'loan_id', 'installment_no', 'receipt_path', 'receipt_name', 'receipt_pdf_path', 'invoice_pdf_path', 'official_receipt_number', 'status', 'paid_at', 'submitted_at', 'updated_at', 'notes'])
+            ->with(['paymentReceipts' => fn ($q) => $q->select(['id', 'payment_id', 'receipt_number', 'pdf_path', 'created_at'])->orderByDesc('id')->limit(1)])
             ->orderByDesc('id')
             ->limit(80)
             ->get();
@@ -177,6 +187,53 @@ final class BorrowerUploadedFilesManifest
                 histories: [],
                 meta: ['source_table' => 'users', 'source_column' => 'id_document_path'],
             );
+        }
+
+        return $items;
+    }
+
+    /**
+     * @param  Collection<int, LoanApplication>  $loanApps
+     * @return list<array<string, mixed>>
+     */
+    private static function generalLoanDocumentItems(Collection $loanApps): array
+    {
+        $items = [];
+        $docLabels = config('amalgated_loans.general_documents', []);
+
+        foreach ($loanApps as $la) {
+            $rawDocs = $la->getRawOriginal('documents');
+            $docs = is_string($rawDocs) ? json_decode($rawDocs, true) : $rawDocs;
+            if (! is_array($docs) || $docs === []) {
+                continue;
+            }
+
+            $typeLabels = is_array($docLabels[$la->loan_type] ?? null) ? $docLabels[$la->loan_type] : [];
+            $loanLabel = config('amalgated_loans.general_loan_types')[$la->loan_type] ?? $la->loan_type;
+
+            foreach ($docs as $docKey => $paths) {
+                $label = $typeLabels[$docKey]['label'] ?? str_replace('_', ' ', (string) $docKey);
+                $pathList = is_array($paths) ? $paths : [$paths];
+
+                foreach ($pathList as $idx => $path) {
+                    if (! is_string($path) || $path === '') {
+                        continue;
+                    }
+                    $suffix = count($pathList) > 1 ? ' #'.($idx + 1) : '';
+                    $items[] = self::fileItem(
+                        id: 'general-loan-'.$la->id.'-'.$docKey.'-'.$idx,
+                        category: $loanLabel.' · '.$label.$suffix,
+                        path: $path,
+                        originalName: basename($path),
+                        reviewStatus: null,
+                        remarks: null,
+                        uploadedAt: optional($la->updated_at)?->toIso8601String(),
+                        uploadedDocumentId: null,
+                        histories: [],
+                        meta: ['loan_application_id' => $la->id, 'document_key' => $docKey],
+                    );
+                }
+            }
         }
 
         return $items;
@@ -406,43 +463,56 @@ final class BorrowerUploadedFilesManifest
                     meta: ['payment_id' => $pay->id, 'loan_id' => $pay->loan_id, 'kind' => 'borrower_receipt'],
                 );
             }
-            if ($pay->invoice_pdf_path) {
-                $items[] = self::fileItem(
-                    id: 'payment-'.$pay->id.'-invoice',
-                    category: 'Invoice PDF — installment #'.(int) $pay->installment_no,
-                    path: $pay->invoice_pdf_path,
-                    originalName: basename($pay->invoice_pdf_path),
-                    reviewStatus: null,
-                    remarks: null,
-                    uploadedAt: optional($pay->updated_at)?->toIso8601String(),
-                    uploadedDocumentId: null,
-                    histories: [],
-                    meta: ['payment_id' => $pay->id, 'loan_id' => $pay->loan_id, 'kind' => 'invoice'],
-                );
+
+            $latestReceipt = $pay->paymentReceipts->first();
+            $officialPath = trim((string) ($pay->receipt_pdf_path ?: $pay->invoice_pdf_path ?: ''));
+            if ($officialPath === '') {
+                $officialPath = trim((string) ($latestReceipt?->pdf_path ?: ''));
             }
-            foreach ($pay->paymentReceipts as $pr) {
-                if (! $pr->pdf_path) {
-                    continue;
+
+            if (
+                $officialPath !== ''
+                && strtolower((string) ($pay->status ?? '')) === Payment::STATUS_PAID
+                && trim((string) ($pay->official_receipt_number ?? '')) !== ''
+                && ! PaymentReceiptPdfService::isCurrentTemplatePdf($officialPath)
+            ) {
+                $refreshed = app(PaymentReceiptPdfService::class)->ensureOfficialPdf($pay, null);
+                if ($refreshed) {
+                    $officialPath = $refreshed;
                 }
-                $items[] = self::fileItem(
-                    id: 'payment-receipt-'.$pr->id,
-                    category: 'Official receipt '.($pr->receipt_number ? '#'.$pr->receipt_number : ''),
-                    path: $pr->pdf_path,
-                    originalName: basename($pr->pdf_path),
-                    reviewStatus: null,
-                    remarks: null,
-                    uploadedAt: optional($pr->created_at)?->toIso8601String(),
-                    uploadedDocumentId: null,
-                    histories: [],
-                    meta: ['payment_id' => $pay->id, 'payment_receipt_id' => $pr->id, 'loan_id' => $pay->loan_id],
-                );
             }
+
+            if ($officialPath === '') {
+                continue;
+            }
+
+            $orNumber = trim((string) ($pay->official_receipt_number ?? ''));
+            if ($orNumber === '') {
+                $orNumber = trim((string) ($latestReceipt?->receipt_number ?? ''));
+            }
+
+            $category = $orNumber !== ''
+                ? 'Official receipt #'.$orNumber
+                : 'Official receipt — installment #'.(int) $pay->installment_no;
+
+            $items[] = self::fileItem(
+                id: 'payment-'.$pay->id.'-official-receipt',
+                category: $category,
+                path: $officialPath,
+                originalName: basename($officialPath),
+                reviewStatus: null,
+                remarks: null,
+                uploadedAt: optional($pay->paid_at ?? $pay->updated_at)?->toIso8601String(),
+                uploadedDocumentId: null,
+                histories: [],
+                meta: ['payment_id' => $pay->id, 'loan_id' => $pay->loan_id, 'kind' => 'official_receipt'],
+            );
         }
 
         return [
             'section_key' => 'payment_proofs',
             'title' => 'Payment proofs & receipts',
-            'subtitle' => 'Borrower-submitted receipts and system-generated invoices.',
+            'subtitle' => 'Borrower-submitted proofs and one official receipt PDF per posted payment.',
             'application_id' => null,
             'application_status' => null,
             'submitted_at' => null,

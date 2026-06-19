@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { LoadingButton, FormLoadingOverlay } from '../../components/loading'
 import PortalCard from '../../components/portal/PortalCard.jsx'
 import { BorrowerPageHeader } from '../../components/portal/BorrowerPageHeader.jsx'
 import { borrowerApi } from '../api/client.js'
@@ -86,6 +87,7 @@ export default function BorrowerTicketsPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <PortalCard title="New ticket" subtitle="Sent to CRM & Chat for admin follow-up.">
+          <FormLoadingOverlay submitting={submitting} label="Sending...">
           <form onSubmit={onSubmit} className="space-y-4">
             {error ? (
               <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
@@ -155,14 +157,17 @@ export default function BorrowerTicketsPage() {
                 placeholder="What happened? Include dates and amounts if relevant."
               />
             </div>
-            <button
+            <LoadingButton
               type="submit"
-              disabled={submitting || !subject.trim() || !body.trim()}
+              loading={submitting}
+              loadingKey="send"
+              disabled={!subject.trim() || !body.trim()}
               className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white shadow-brand-primary transition hover:bg-brand-primary-hover sm:w-auto sm:px-8"
             >
-              {submitting ? 'Submitting...' : 'Submit ticket'}
-            </button>
+              Submit ticket
+            </LoadingButton>
           </form>
+          </FormLoadingOverlay>
         </PortalCard>
 
         <PortalCard title="Your tickets" subtitle={rows.length ? `${rows.length} total` : 'No tickets yet'}>

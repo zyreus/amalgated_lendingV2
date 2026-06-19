@@ -21,6 +21,7 @@ class SupportChatPresenter
             'id' => $row->id,
             'session_id' => $row->session_id,
             'visitor_id' => $row->visitor_id,
+            'dedupe_key' => $row->dedupe_key,
             'content' => $row->message,
             'sender' => $sender,
             'sender_type' => $senderType,

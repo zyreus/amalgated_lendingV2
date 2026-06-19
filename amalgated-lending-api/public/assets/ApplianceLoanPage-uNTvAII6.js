@@ -1,0 +1,1 @@
+import{j as r}from"./vendor-YyKrDgRZ.js";import{P as t}from"./PublicLoanProductPage-tA1YXUj9.js";import{g as n}from"./publicLoanProductConfig-b94U3LzJ.js";import"./index-DRcw5g9W.js";function u(){const o=n("appliance");return o?r.jsx(t,{config:o}):null}export{u as default};

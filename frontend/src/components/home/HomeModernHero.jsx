@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import { fetchWebsiteTestimonials } from '../../utils/fetchWebsiteTestimonials.js'
+import heroWhyChooseUsImage from '../../assets/hero-why-choose-us.png'
 
 /**
  * Marketing hero — official crimson / orange / gold / cream brand system (`index.css` @theme).
  * Backend integration: primary apply flow stays on existing borrower portal route.
- * Swap `HERO_IMAGE_SRC` for a hosted asset under /public when you have brand photography.
  */
-const HERO_IMAGE_SRC = '/hero-why-choose-us.png'
+const HERO_IMAGE_SRC = heroWhyChooseUsImage
 const HERO_IMAGE_ALT =
   'Amalgated Lending — Why choose us: we prioritize transparency, guide you step by step, and process quickly.'
 

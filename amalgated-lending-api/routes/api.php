@@ -63,6 +63,7 @@ use App\Http\Controllers\Api\TravelAssistanceController;
 use App\Http\Controllers\Api\TravelLoanApplicationAdminController;
 use App\Http\Controllers\Api\TravelLoanWizardController;
 use App\Http\Controllers\Api\UserController;
+use App\Support\AuthRateLimit;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -72,18 +73,35 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     Route::get('/health', HealthCheckController::class);
 
-    Route::post('/admin/login', [AdminAuthController::class, 'login'])->middleware('throttle:auth-login');
-    Route::post('/borrower/login', [BorrowerAuthController::class, 'login'])->middleware('throttle:auth-login');
-    Route::post('/borrower/register', [BorrowerAuthController::class, 'register'])->middleware('throttle:auth-register');
-    Route::post('/borrower/otp/request', [BorrowerAuthController::class, 'requestOtp'])->middleware('throttle:auth-password-reset');
-    Route::post('/borrower/otp/verify', [BorrowerAuthController::class, 'verifyOtpLogin'])->middleware('throttle:auth-login');
-    Route::post('/borrower/verify-otp', [BorrowerAuthController::class, 'verifyOtpLogin'])->middleware('throttle:auth-login');
-    Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:auth-login');
-    Route::post('/borrower/forgot-password', [PasswordResetController::class, 'requestBorrower'])->middleware('throttle:auth-password-reset');
-    Route::post('/borrower/password/forgot-otp', [BorrowerAuthController::class, 'requestPasswordOtp'])->middleware('throttle:auth-password-reset');
-    Route::post('/borrower/reset-password', [BorrowerAuthController::class, 'resetPasswordWithOtp'])->middleware('throttle:auth-password-reset');
-    Route::post('/admin/forgot-password', [PasswordResetController::class, 'requestAdmin'])->middleware('throttle:auth-password-reset');
-    Route::post('/password/reset', [PasswordResetController::class, 'reset'])->middleware('throttle:auth-password-reset');
+    Route::middleware(['throttle:'.AuthRateLimit::ADMIN_LOGIN])->withoutMiddleware(['throttle:api'])->group(function () {
+        Route::post('/admin/login', [AdminAuthController::class, 'login']);
+    });
+
+    Route::middleware(['throttle:'.AuthRateLimit::BORROWER_LOGIN])->withoutMiddleware(['throttle:api'])->group(function () {
+        Route::post('/borrower/login', [BorrowerAuthController::class, 'login']);
+    });
+
+    Route::middleware(['throttle:'.AuthRateLimit::GENERIC_LOGIN])->withoutMiddleware(['throttle:api'])->group(function () {
+        Route::post('/auth/login', [AuthController::class, 'login']);
+    });
+
+    Route::middleware(['throttle:'.AuthRateLimit::REGISTER])->withoutMiddleware(['throttle:api'])->group(function () {
+        Route::post('/borrower/register', [BorrowerAuthController::class, 'register']);
+    });
+
+    Route::middleware(['throttle:'.AuthRateLimit::OTP_VERIFY])->withoutMiddleware(['throttle:api'])->group(function () {
+        Route::post('/borrower/otp/verify', [BorrowerAuthController::class, 'verifyOtpLogin']);
+        Route::post('/borrower/verify-otp', [BorrowerAuthController::class, 'verifyOtpLogin']);
+    });
+
+    Route::middleware(['throttle:'.AuthRateLimit::PASSWORD_RESET])->withoutMiddleware(['throttle:api'])->group(function () {
+        Route::post('/borrower/otp/request', [BorrowerAuthController::class, 'requestOtp']);
+        Route::post('/borrower/forgot-password', [PasswordResetController::class, 'requestBorrower']);
+        Route::post('/borrower/password/forgot-otp', [BorrowerAuthController::class, 'requestPasswordOtp']);
+        Route::post('/borrower/reset-password', [BorrowerAuthController::class, 'resetPasswordWithOtp']);
+        Route::post('/admin/forgot-password', [PasswordResetController::class, 'requestAdmin']);
+        Route::post('/password/reset', [PasswordResetController::class, 'reset']);
+    });
 
     /** Signed verification (SPA JSON + legacy query); browser inbox links use web routes. */
     Route::middleware(['throttle:72,1'])->group(function () {
@@ -134,10 +152,12 @@ Route::prefix('v1')->group(function () {
     Route::post('/public/inquiry', [PublicInquiryController::class, 'store'])->middleware('throttle:20,1');
     Route::get('/public/leads/{lead}/messages', [PublicLeadController::class, 'messages']);
     Route::post('/public/leads/{lead}/messages', [PublicLeadController::class, 'sendMessage']);
-    Route::post('/public/chat/messages', [PublicChatController::class, 'storeMessage']);
+    Route::post('/public/chat/messages', [PublicChatController::class, 'storeMessage'])->middleware('throttle:120,1');
     Route::get('/public/chat/messages/{sessionId}', [PublicChatController::class, 'messages']);
     /** Aliases aligned with unified support API naming */
-    Route::post('/public/chat/send', [PublicChatController::class, 'storeMessage'])->middleware('throttle:120,1');
+    Route::post('/public/chat/send', [PublicChatController::class, 'storeMessage'])
+        ->middleware('throttle:120,1')
+        ->withoutMiddleware(['throttle:api']);
     Route::get('/public/chat/history/{sessionId}', [PublicChatController::class, 'messages']);
     Route::get('/public/chat/conversation-meta/{sessionId}', [PublicChatController::class, 'conversationMeta']);
     Route::post('/public/chat/feedback', [PublicChatController::class, 'feedbackStore'])->middleware('throttle:45,1');
@@ -151,11 +171,17 @@ Route::prefix('v1')->group(function () {
     Route::post('/chatbot/feedback', [ChatbotFeedbackController::class, 'store'])->middleware('throttle:30,1');
 
     Route::post('/internal/support/sync/message', [SupportChatSyncController::class, 'syncMessage'])
-        ->middleware(['support.sync', 'throttle:600,1']);
+        ->middleware(['support.sync', 'throttle:600,1'])
+        ->withoutMiddleware(['throttle:api']);
     Route::post('/internal/support/sync/feedback', [SupportChatSyncController::class, 'syncFeedback'])
-        ->middleware(['support.sync', 'throttle:120,1']);
+        ->middleware(['support.sync', 'throttle:120,1'])
+        ->withoutMiddleware(['throttle:api']);
+    Route::get('/internal/support/sync/conversation/{sessionId}', [SupportChatSyncController::class, 'conversationState'])
+        ->middleware(['support.sync', 'throttle:600,1'])
+        ->withoutMiddleware(['throttle:api']);
     Route::post('/internal/chat/rag/context', [InternalChatRagController::class, 'context'])
-        ->middleware(['support.sync', 'throttle:120,1']);
+        ->middleware(['support.sync', 'throttle:120,1'])
+        ->withoutMiddleware(['throttle:api']);
 
     Route::middleware(['auth:api', 'active'])->group(function () {
         Route::get('/loan-applications/draft', [DocumentLoanApplicationController::class, 'currentDraft']);
@@ -303,6 +329,7 @@ Route::prefix('v1')->group(function () {
         Route::middleware('permission:cms.manage')->group(function () {
             Route::get('/cms', [CmsController::class, 'index']);
             Route::post('/cms', [CmsController::class, 'upsert']);
+            Route::post('/cms/newsletter-publish', [CmsController::class, 'publishNewsletter']);
             Route::get('/newsletter-subscribers', [CmsController::class, 'newsletterSubscribers']);
         });
 
@@ -343,11 +370,11 @@ Route::prefix('v1')->group(function () {
             Route::get('/notifications', [NotificationController::class, 'index']);
             Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
             Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead']);
-            Route::delete('/notifications/clear-all', [NotificationController::class, 'clearAll']);
-            Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
-            Route::post('/notifications/{notification}/unread', [NotificationController::class, 'markUnread']);
-            Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
             Route::post('/notifications/bulk-delete', [NotificationController::class, 'bulkDestroy']);
+            Route::match(['delete', 'post'], '/notifications/clear-all', [NotificationController::class, 'clearAll']);
+            Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->whereNumber('notification');
+            Route::post('/notifications/{notification}/unread', [NotificationController::class, 'markUnread'])->whereNumber('notification');
+            Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy'])->whereNumber('notification');
             Route::get('/notification-preferences', [NotificationPreferenceController::class, 'show']);
             Route::put('/notification-preferences', [NotificationPreferenceController::class, 'update']);
         });
@@ -494,12 +521,11 @@ Route::prefix('v1')->group(function () {
         Route::post('/notifications/read-all', [BorrowerNotificationController::class, 'markAllRead']);
         Route::post('/notifications/mark-all-read', [BorrowerNotificationController::class, 'markAllRead']);
         Route::post('/notifications/bulk-delete', [BorrowerNotificationController::class, 'bulkDestroy']);
-        Route::post('/notifications/clear-all', [BorrowerNotificationController::class, 'clearAll']);
-        Route::delete('/notifications/clear-all', [BorrowerNotificationController::class, 'clearAll']);
-        Route::delete('/notifications/{borrowerNotification}', [BorrowerNotificationController::class, 'destroy']);
-        Route::post('/notifications/{borrowerNotification}/read', [BorrowerNotificationController::class, 'markRead']);
-        Route::post('/notifications/{borrowerNotification}/unread', [BorrowerNotificationController::class, 'markUnread']);
-        Route::post('/notifications/{borrowerNotification}/archive', [BorrowerNotificationController::class, 'archive']);
+        Route::match(['delete', 'post'], '/notifications/clear-all', [BorrowerNotificationController::class, 'clearAll']);
+        Route::delete('/notifications/{borrowerNotification}', [BorrowerNotificationController::class, 'destroy'])->whereNumber('borrowerNotification');
+        Route::post('/notifications/{borrowerNotification}/read', [BorrowerNotificationController::class, 'markRead'])->whereNumber('borrowerNotification');
+        Route::post('/notifications/{borrowerNotification}/unread', [BorrowerNotificationController::class, 'markUnread'])->whereNumber('borrowerNotification');
+        Route::post('/notifications/{borrowerNotification}/archive', [BorrowerNotificationController::class, 'archive'])->whereNumber('borrowerNotification');
         Route::get('/notification-preferences', [NotificationPreferenceController::class, 'show']);
         Route::put('/notification-preferences', [NotificationPreferenceController::class, 'update']);
         Route::post('/profile', [BorrowerPortalController::class, 'updateProfile']);

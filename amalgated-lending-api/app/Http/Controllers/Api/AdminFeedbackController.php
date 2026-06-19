@@ -252,6 +252,15 @@ class AdminFeedbackController extends Controller
             $ticket->{$k} = $v;
         }
 
+        if (
+            strtolower(trim((string) ($ticket->publication_status ?? ''))) === 'approved'
+            && ($ticket->consent_public_display ?? false)
+            && ($ticket->website_visible ?? false)
+        ) {
+            $ticket->loadMissing('borrower:id,name,email');
+            $ticket->ensurePublicAuthorLabelForHomepage();
+        }
+
         $ticket->save();
 
         $this->audit($request, $ticket, 'ticket.update', ['before' => $before, 'after' => $ticket->only(array_keys($data))]);
@@ -259,6 +268,7 @@ class AdminFeedbackController extends Controller
         $invalidateKeys = [
             'website_visible', 'public_author_label', 'publication_status', 'featured',
             'consent_public_display', 'verified_borrower', 'loan_type', 'message', 'rating',
+            'full_name',
         ];
         $invalidatePublic = false;
         foreach ($invalidateKeys as $k) {
@@ -313,6 +323,7 @@ class AdminFeedbackController extends Controller
         $data = $request->validate([
             'consent_public_display' => 'sometimes|boolean',
             'featured' => 'sometimes|boolean',
+            'public_author_label' => 'sometimes|nullable|string|max:120',
         ]);
 
         if (($data['featured'] ?? false) === true) {
@@ -332,6 +343,14 @@ class AdminFeedbackController extends Controller
         if (array_key_exists('featured', $data)) {
             $ticket->featured = (bool) $data['featured'];
         }
+        if (array_key_exists('public_author_label', $data)) {
+            $label = trim((string) ($data['public_author_label'] ?? ''));
+            if ($label !== '') {
+                $ticket->public_author_label = $label;
+            }
+        }
+        $ticket->loadMissing('borrower:id,name,email');
+        $ticket->ensurePublicAuthorLabelForHomepage();
         $ticket->save();
 
         $this->audit($request, $ticket, 'publication.approve', $data);

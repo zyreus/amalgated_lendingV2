@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client.js'
 import { admin } from './AdminUi.jsx'
-import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
+import { resolvePublicFileUrl } from '../../utils/lendingLaravelApi.js'
 
 function displayUrl(previewUrl) {
   if (!previewUrl) return ''
-  return getLaravelStorageFileUrl(String(previewUrl))
+  return resolvePublicFileUrl(String(previewUrl))
 }
 
 function statusBadgeClass(status) {

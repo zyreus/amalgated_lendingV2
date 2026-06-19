@@ -63,21 +63,13 @@
     $termMonths = (int) ($loan->term_months ?? 0);
 
     $monthlyPrincipal = (float) ($breakdown['monthly_principal'] ?? ($scheduleRows[0]['principal'] ?? 0));
-    $monthlyInterest = (float) ($breakdown['monthly_interest'] ?? ($scheduleRows[0]['interest'] ?? 0));
     $monthlyAmortization = (float) ($breakdown['monthly_amortization'] ?? ($scheduleRows[0]['amortization'] ?? 0));
     $semiMonthlyPayment = (float) ($breakdown['semi_monthly_payment'] ?? ($monthlyAmortization / 2));
     $remainingPension = array_key_exists('remaining_pension', $breakdown) ? (float) $breakdown['remaining_pension'] : null;
     $pensionRetentionThreshold = array_key_exists('pension_retention_threshold', $breakdown) ? (float) $breakdown['pension_retention_threshold'] : null;
 
-    $serviceCharge = (float) ($breakdown['service_charge'] ?? 0);
-    $insurance = (float) ($breakdown['insurance'] ?? 0);
-    $docStamp = (float) ($breakdown['documentary_stamp'] ?? 0);
-    $notarialFee = (float) ($breakdown['notarial_fee'] ?? 0);
-    $mortgageFee = (float) ($breakdown['mortgage_fee'] ?? 0);
     $openingAccountFee = (float) ($breakdown['opening_account_fee'] ?? 0);
-    $totalMisc = (float) ($breakdown['total_miscellaneous_fees'] ?? 0);
     $netProceeds = (float) ($breakdown['net_proceeds'] ?? 0);
-    $miscDeducted = (bool) ($breakdown['miscellaneous_deducted_from_proceeds'] ?? true);
 
     $productName = (string) ($product['name'] ?? 'Loan');
 @endphp
@@ -125,10 +117,6 @@
         </div>
 
         <div>
-            <dt>Monthly Interest</dt>
-            <dd>{{ $money($monthlyInterest) }}</dd>
-        </div>
-        <div>
             <dt>Monthly Amortization</dt>
             <dd>{{ $money($monthlyAmortization) }}</dd>
         </div>
@@ -138,35 +126,8 @@
         </div>
 
         <div>
-            <dt>Service Charge</dt>
-            <dd>{{ $money($serviceCharge) }}</dd>
-        </div>
-        <div>
-            <dt>Insurance</dt>
-            <dd>{{ $money($insurance) }}</dd>
-        </div>
-
-        <div>
-            <dt>Documentary Stamp</dt>
-            <dd>{{ $money($docStamp) }}</dd>
-        </div>
-        <div>
-            <dt>Notarial Fee</dt>
-            <dd>{{ $money($notarialFee) }}</dd>
-        </div>
-
-        <div>
-            <dt>Mortgage/Product Fee</dt>
-            <dd>{{ $money($mortgageFee) }}</dd>
-        </div>
-        <div>
             <dt>Opening Account Fee (separate)</dt>
             <dd>{{ $openingAccountFee > 0 ? $money($openingAccountFee) : '—' }}</dd>
-        </div>
-
-        <div>
-            <dt>Total Miscellaneous Fees</dt>
-            <dd>{{ $money($totalMisc) }}</dd>
         </div>
         <div>
             <dt>Net Loan Proceeds</dt>
@@ -186,10 +147,11 @@
         @endif
     </dl>
 
+    @if ($openingAccountFee > 0)
     <p class="small" style="margin: 0 0 10px;">
-        Misc fees deducted from proceeds: <strong>{{ $miscDeducted ? 'Yes' : 'No' }}</strong>.
-        {{ $openingAccountFee > 0 ? 'Opening account fee is billed separately per policy.' : '' }}
+        Opening account fee is billed separately per policy.
     </p>
+    @endif
 
     <dl class="summary" style="margin-bottom: 8px;">
         <div>

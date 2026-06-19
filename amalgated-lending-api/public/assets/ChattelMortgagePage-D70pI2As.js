@@ -1,0 +1,1 @@
+import{j as o}from"./vendor-DjsjSLNV.js";import{P as r}from"./PublicLoanProductPage-CwWZ1HVi.js";import{g as a}from"./publicLoanProductConfig-DyAfGEPX.js";import"./index-AXRtuX4n.js";function u(){const t=a("chattel-mortgage");return t?o.jsx(r,{config:t}):null}export{u as default};

@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\AuthSecurityRecorder;
 use App\Services\BorrowerOtpService;
+use App\Support\AuthRateLimit;
 use App\Support\PublicStorageUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -171,6 +172,7 @@ class BorrowerAuthController extends Controller
         $authUser = auth('api')->user();
         $logger->log($authUser, 'auth.borrower_login');
         $security->recordSuccess('borrower_api', $authUser);
+        AuthRateLimit::clearBorrowerLogin($request, $login);
 
         return response()->json([
             'ok' => true,
@@ -262,6 +264,7 @@ class BorrowerAuthController extends Controller
         $authUser = auth('api')->user();
         $logger->log($authUser, 'auth.borrower_otp_login');
         $security->recordSuccess('borrower_otp', $authUser);
+        AuthRateLimit::clearOtpVerify($request, $data['username']);
 
         return response()->json([
             'ok' => true,

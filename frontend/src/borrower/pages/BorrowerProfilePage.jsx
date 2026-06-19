@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { LoadingButton, FormLoadingOverlay } from '../../components/loading'
 import { borrowerApi } from '../api/client.js'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 import { admin as ui } from '../../admin/components/AdminUi.jsx'
@@ -51,6 +52,7 @@ export default function BorrowerProfilePage() {
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Profile settings</h2>
         <p className={`mt-1 text-sm ${ui.textMuted}`}>Update your borrower profile and upload a valid ID.</p>
+        <FormLoadingOverlay submitting={loading} label="Saving...">
         <form onSubmit={saveProfile} className="mt-4 space-y-3">
           <input
             value={name}
@@ -65,13 +67,16 @@ export default function BorrowerProfilePage() {
             className={ui.input}
             placeholder="Phone number"
           />
-          <button
-            disabled={loading}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+          <LoadingButton
+            type="submit"
+            loading={loading}
+            loadingKey="save"
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
           >
-            {loading ? 'Saving...' : 'Save profile'}
-          </button>
+            Save profile
+          </LoadingButton>
         </form>
+        </FormLoadingOverlay>
         {msg ? (
           <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-green-500/10 dark:text-green-300">
             {msg}

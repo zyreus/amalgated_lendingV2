@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useBorrowerAuth } from './context/useBorrowerAuth.js'
+import { BorrowerDashboardSkeleton } from '../components/loading/SkeletonLoader.jsx'
 
 /**
  * Must render under BorrowerAuthProvider (see Root.jsx). Uses `<Outlet />` only — no `children` prop —
@@ -11,8 +12,10 @@ export default function BorrowerProtectedRoute() {
 
   if (booting) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100 text-gray-600 transition-colors duration-300 dark:bg-[#0F172A] dark:text-gray-400">
-        <p className="text-sm">Loading borrower session...</p>
+      <div className="portal-page portal-shell-bg min-h-screen p-4 sm:p-6 lg:pl-56">
+        <div className="mx-auto max-w-[min(100%,var(--width-content-standard))]">
+          <BorrowerDashboardSkeleton />
+        </div>
       </div>
     )
   }

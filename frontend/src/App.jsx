@@ -5,6 +5,7 @@ import './App.css'
 import Header from './components/Header.jsx'
 import Footer from './components/Footer.jsx'
 import SeoMeta from './components/SeoMeta.jsx'
+import { COMPANY_PHONES } from './config/companyContact.js'
 import HomeLoanCalculator from './components/home/HomeLoanCalculator.jsx'
 import HomeModernHero from './components/home/HomeModernHero.jsx'
 import AboutUsSection from './components/home/AboutUsSection.jsx'
@@ -46,7 +47,7 @@ function App() {
         addressLocality: 'Davao City',
         addressCountry: 'PH',
       },
-      telephone: '+63-919-067-5095',
+      telephone: COMPANY_PHONES.map((phone) => phone.href.replace('tel:', '')),
       serviceType: ['Personal Loan', 'Business Loan', 'Salary Loan', 'Travel Assistance Loan'],
     },
     {

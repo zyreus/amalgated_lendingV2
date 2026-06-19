@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { admin } from './AdminUi.jsx'
+import LoadingButton from '../../components/loading/LoadingButton.jsx'
+import { LOADING_LABELS } from '../../components/loading/loadingLabels.js'
 
 /**
  * Inline confirmation dialog (replaces window.confirm) — matches admin modal surfaces.
@@ -47,6 +49,9 @@ export default function ConfirmModal({
     }
   }
 
+  const deleting = busy && /delete/i.test(String(confirmLabel))
+  const confirmLoadingText = deleting ? LOADING_LABELS.delete : LOADING_LABELS.confirm
+
   const node = (
     <div
       className={admin.modalOverlay}
@@ -73,9 +78,16 @@ export default function ConfirmModal({
           <button type="button" className={admin.btnSecondary} onClick={onClose} disabled={busy}>
             {cancelLabel}
           </button>
-          <button type="button" className={confirmClass} onClick={() => void handleConfirm()} disabled={busy}>
-            {busy ? 'Please wait…' : confirmLabel}
-          </button>
+          <LoadingButton
+            type="button"
+            className={confirmClass}
+            loading={busy}
+            loadingText={confirmLoadingText}
+            minWidth="7.5rem"
+            onClick={() => void handleConfirm()}
+          >
+            {confirmLabel}
+          </LoadingButton>
         </div>
       </div>
     </div>

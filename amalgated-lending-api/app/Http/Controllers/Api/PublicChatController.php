@@ -10,6 +10,8 @@ use App\Models\SupportConversation;
 use App\Models\User;
 use App\Services\ChatMessageReceiptService;
 use App\Services\NotificationCenter;
+use App\Services\SupportConversationHandoffService;
+use App\Services\VisitorMessageLimitService;
 use App\Support\FeedbackSubmissionGuard;
 use App\Support\SupportChatPresenter;
 use Illuminate\Http\JsonResponse;
@@ -39,6 +41,7 @@ class PublicChatController extends Controller
                 'id',
                 'session_id',
                 'visitor_id',
+                'dedupe_key',
                 'sender_type',
                 'sender_name',
                 'rating',
@@ -109,9 +112,25 @@ class PublicChatController extends Controller
             [
                 'visitor_id' => $data['visitor_id'] ?? trim($data['session_id']),
                 'mode' => 'ai',
-                'status' => 'open',
+                'ai_enabled' => true,
+                'status' => SupportConversationHandoffService::STATUS_AI_ACTIVE,
             ],
         );
+
+        SupportConversationHandoffService::normalizeAiActiveIfEligible($conv);
+        $conv->refresh();
+
+        if (VisitorMessageLimitService::isLocked($conv)) {
+            return response()->json([
+                'ok' => false,
+                'locked' => true,
+                'message' => VisitorMessageLimitService::LOCK_MESSAGE,
+                'data' => array_merge(
+                    SupportConversationHandoffService::handoffPayload($conv),
+                    VisitorMessageLimitService::payload($conv),
+                ),
+            ], 429);
+        }
 
         if (! blank($data['visitor_id'] ?? null) && blank($conv->visitor_id)) {
             $conv->visitor_id = $data['visitor_id'];
@@ -142,30 +161,17 @@ class PublicChatController extends Controller
         }
         $conv->save();
 
+        VisitorMessageLimitService::recordVisitorMessage($conv);
+        $conv->refresh();
+
         $message->loadMissing('adminUser:id,name');
 
-        app(NotificationCenter::class)->notifyStaff(
-            NotificationCenter::CATEGORY_CRM_INQUIRY,
-            'visitor_chat_message',
-            'Visitor message — '.mb_substr($clean, 0, 72),
-            mb_substr($clean, 0, 500),
-            [
-                'session_id' => $conv->session_id,
-                'support_conversation_id' => $conv->id,
-                'chat_message_id' => $message->id,
-            ],
-            null,
-            [
-                'module' => NotificationCenter::MODULE_CRM,
-                'throttle_key' => 'chat:'.$conv->session_id,
-                'throttle_max' => 12,
-                'throttle_decay_seconds' => 3600,
-            ],
-        );
+        app(NotificationCenter::class)->notifyStaffWebsiteChatMessage($conv, $message, $clean);
 
         return response()->json([
             'ok' => true,
             'message' => SupportChatPresenter::message($message),
+            'visitor_limit' => VisitorMessageLimitService::payload($conv),
         ], 201);
     }
 
@@ -182,17 +188,16 @@ class PublicChatController extends Controller
 
         return response()->json([
             'ok' => true,
-            'data' => [
-                'session_id' => $conv->session_id,
-                'mode' => $conv->mode,
-                'status' => $conv->status,
-                'needs_human' => (bool) $conv->needs_human,
-                'assigned_to' => $conv->assigned_to,
-                'guest_name' => $conv->guest_name,
-                'guest_email' => $conv->guest_email,
-                'customer_rating' => $conv->customer_rating,
-                'updated_at' => optional($conv->updated_at)?->toIso8601String(),
-            ],
+            'data' => $conv ? array_merge(
+                SupportConversationHandoffService::handoffPayload($conv),
+                VisitorMessageLimitService::payload($conv),
+                [
+                    'guest_name' => $conv->guest_name,
+                    'guest_email' => $conv->guest_email,
+                    'customer_rating' => $conv->customer_rating,
+                    'updated_at' => optional($conv->updated_at)?->toIso8601String(),
+                ],
+            ) : null,
         ]);
     }
 

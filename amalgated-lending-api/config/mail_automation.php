@@ -41,4 +41,6 @@ return [
 
     'otp_length' => max(4, min(8, (int) env('MAIL_OTP_LENGTH', 6))),
 
+    'newsletter_broadcast_enabled' => filter_var(env('MAIL_NEWSLETTER_BROADCAST_ENABLED', true), FILTER_VALIDATE_BOOL),
+
 ];

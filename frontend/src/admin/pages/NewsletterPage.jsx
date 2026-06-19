@@ -286,29 +286,43 @@ export default function NewsletterPage() {
   const save = async () => {
     setSaving(true)
     try {
-      await Promise.all([
-        api('/cms', {
-          method: 'POST',
-          body: JSON.stringify({
-            section_key: KEY_NEWS,
-            locale: LOCALE,
-            title: 'News',
-            body: toBody(news),
-            meta: {},
-          }),
+      const res = await api('/cms/newsletter-publish', {
+        method: 'POST',
+        body: JSON.stringify({
+          locale: LOCALE,
+          news_body: toBody(news),
+          announcements_body: toBody(announcements),
         }),
-        api('/cms', {
-          method: 'POST',
-          body: JSON.stringify({
-            section_key: KEY_ANNOUNCEMENTS,
-            locale: LOCALE,
-            title: 'Announcements',
-            body: toBody(announcements),
-            meta: {},
-          }),
-        }),
-      ])
-      showToast('News and announcements saved.', 'success')
+      })
+      const payload = res ?? {}
+      const notified = Boolean(payload.notified)
+      const subscriberCount = Number(payload.subscriber_count ?? 0)
+      const emailsSent = Number(payload.emails_sent ?? 0)
+      const emailsFailed = Number(payload.emails_failed ?? 0)
+      const changed = payload.changed !== false
+
+      if (emailsSent > 0) {
+        showToast(
+          `Saved. Update email sent to ${emailsSent} subscriber${emailsSent === 1 ? '' : 's'}.`,
+          'success'
+        )
+      } else if (emailsFailed > 0) {
+        showToast(
+          `Saved, but ${emailsFailed} subscriber email${emailsFailed === 1 ? '' : 's'} failed to send. Check Admin → Email logs.`,
+          'error'
+        )
+      } else if (!changed) {
+        showToast('No changes to save.', 'success')
+      } else if (subscriberCount === 0) {
+        showToast('News and announcements saved. No subscribers to notify yet.', 'success')
+      } else if (notified) {
+        showToast(
+          `Saved. Update email queued for ${subscriberCount} subscriber${subscriberCount === 1 ? '' : 's'}.`,
+          'success'
+        )
+      } else {
+        showToast('News and announcements saved.', 'success')
+      }
     } catch (e) {
       showToast(e.message || 'Save failed.', 'error')
     } finally {
@@ -321,7 +335,7 @@ export default function NewsletterPage() {
       <div>
         <h1 className={admin.pageTitle}>News & Announcements</h1>
         <p className={admin.pageSubtitle}>
-          Manage news and announcements, and view people who subscribed from the website footer.
+          Manage news and announcements. Saving changes emails all footer newsletter subscribers when content is updated.
         </p>
       </div>
 

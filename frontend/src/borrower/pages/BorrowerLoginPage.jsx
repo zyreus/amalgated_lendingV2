@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Mail, Smartphone } from 'lucide-react'
+import { setAuthOverlay } from '../../utils/globalLoadingBus.js'
 import PasswordInput from '../../components/PasswordInput.jsx'
+import { LoadingButton, FormLoadingOverlay } from '../../components/loading'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 import PrivacyPolicyModal from '../../components/privacy/PrivacyPolicyModal.jsx'
 import { borrowerAuthHandoffSearchParams } from '../../utils/borrowerAuthApplyPath.js'
@@ -38,6 +40,7 @@ export default function BorrowerLoginPage() {
     }
     setLoading(true)
     setErrorMsg('')
+    setAuthOverlay('Signing In...')
     try {
       await login(loginIdentifier.trim(), password, rememberMe)
       const redirect = searchParams.get('redirect')
@@ -47,6 +50,7 @@ export default function BorrowerLoginPage() {
     } catch (err) {
       setErrorMsg(err.message || 'Invalid email/mobile number or password.')
     } finally {
+      setAuthOverlay(null)
       setLoading(false)
     }
   }
@@ -89,6 +93,7 @@ export default function BorrowerLoginPage() {
               </Link>
             </p>
           </div>
+          <FormLoadingOverlay submitting={loading} label="Signing In...">
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <div>
               <label htmlFor="login_identifier" className="text-sm font-medium text-gray-700 dark:text-gray-200">
@@ -183,14 +188,17 @@ export default function BorrowerLoginPage() {
                 {errorMsg}
               </p>
             ) : null}
-            <button
-              disabled={loading}
+            <LoadingButton
               type="submit"
-              className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+              loading={loading}
+              loadingKey="signIn"
+              minWidth="100%"
+              className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold text-white hover:bg-red-700"
             >
-              {loading ? 'Signing in...' : 'Sign in'}
-            </button>
+              Sign in
+            </LoadingButton>
           </form>
+          </FormLoadingOverlay>
           <p className="mt-5 text-center text-sm text-gray-500 transition-colors duration-300 dark:text-gray-400">
             <Link to="/" className="text-red-600 transition hover:text-red-700 hover:underline dark:text-red-400 dark:hover:text-red-300">
               Back to main page

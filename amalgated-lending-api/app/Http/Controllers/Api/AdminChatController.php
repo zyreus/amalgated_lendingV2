@@ -9,6 +9,8 @@ use App\Models\SupportChatFeedback;
 use App\Models\SupportConversation;
 use App\Services\ChatMessageReceiptService;
 use App\Services\NodeChatBroadcastService;
+use App\Services\SupportConversationHandoffService;
+use App\Services\VisitorMessageLimitService;
 use App\Support\SupportChatPresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -74,12 +76,18 @@ class AdminChatController extends Controller
                 });
                 break;
             case 'ai_handled':
-                $query->where('sc.mode', '=', 'ai')
+                $query->where('sc.status', '=', SupportConversationHandoffService::STATUS_AI_ACTIVE)
+                    ->where(function ($q) {
+                        $q->where('sc.ai_enabled', true)->orWhereNull('sc.ai_enabled');
+                    })
+                    ->whereNull('sc.assigned_to')
                     ->where('sc.last_responder_type', '=', 'ai');
                 break;
             case 'human_handled':
                 $query->where(function ($q) {
                     $q->where('sc.mode', '=', 'human')
+                        ->orWhere('sc.status', '=', SupportConversationHandoffService::STATUS_HUMAN_ASSISTED)
+                        ->orWhere('sc.ai_enabled', '=', 0)
                         ->orWhere('sc.last_responder_type', '=', 'admin');
                 });
                 break;
@@ -129,6 +137,12 @@ class AdminChatController extends Controller
                 'sc.unread_admin',
                 'sc.last_responder_type',
                 'sc.assigned_to',
+                'sc.ai_enabled as conv_ai_enabled',
+                'sc.human_takeover_at as conv_human_takeover_at',
+                'sc.visitor_message_count',
+                'sc.visitor_chat_locked',
+                'sc.first_agent_response_received',
+                'sc.first_agent_response_at',
                 DB::raw("{$convLastActivitySql} as conv_last_message_at"),
                 'sc.updated_at as conv_updated_at',
             ]);
@@ -158,6 +172,9 @@ class AdminChatController extends Controller
             $warehouseStatus = $row->conv_status ?: 'open';
             $lastActivity = $row->conv_last_message_at ?: $row->last_message_at;
             $visitorType = ($row->conv_mode ?? 'ai') === 'human' ? 'human' : 'ai';
+            $aiEnabled = isset($row->conv_ai_enabled)
+                ? (bool) $row->conv_ai_enabled
+                : $visitorType !== 'human';
 
             return [
                 'id' => $row->session_id,
@@ -165,12 +182,19 @@ class AdminChatController extends Controller
                 'visitor_id' => $row->visitor_id,
                 'visitor_name' => $row->guest_name ?: 'Website Visitor',
                 'visitor_email' => $row->guest_email,
-                'status' => $warehouseStatus,
-                'lifecycle_status' => SupportConversation::mapStatusToLifecycle($warehouseStatus),
+                'status' => $row->conv_status ?: SupportConversationHandoffService::STATUS_AI_ACTIVE,
+                'conversation_status' => $row->conv_status ?: SupportConversationHandoffService::STATUS_AI_ACTIVE,
+                'lifecycle_status' => SupportConversation::mapStatusToLifecycle(
+                    $row->conv_status ?: SupportConversationHandoffService::STATUS_AI_ACTIVE
+                ),
                 'visitor_type' => $visitorType,
                 'mode' => $row->conv_mode ?: 'ai',
+                'ai_enabled' => $aiEnabled,
                 'needs_human' => (bool) $row->conv_needs_human,
                 'assigned_to' => $row->assigned_to,
+                'assigned_agent_id' => $row->assigned_to,
+                'human_takeover_at' => $row->conv_human_takeover_at,
+                'taken_over_at' => $row->conv_human_takeover_at,
                 'last_handling' => $row->last_responder_type,
                 'last_message_at' => $lastActivity,
                 'updated_at' => $lastActivity,
@@ -179,6 +203,12 @@ class AdminChatController extends Controller
                 /** CRM UI historically used admin_unread_count */
                 'admin_unread_count' => $uc,
                 'visitor_message_count' => (int) $row->visitor_message_count,
+                'visitor_message_count' => (int) ($row->visitor_message_count ?? 0),
+                'visitor_chat_locked' => (bool) ($row->visitor_chat_locked ?? false),
+                'first_agent_response_received' => (bool) ($row->first_agent_response_received ?? false),
+                'first_agent_response_at' => $row->first_agent_response_at,
+                'visitor_send_locked' => (bool) ($row->visitor_chat_locked ?? false),
+                'consecutive_visitor_messages' => (int) ($row->visitor_message_count ?? 0),
                 'last_message' => $row->message_id ? SupportChatPresenter::message($latestChat) : null,
             ];
         });
@@ -295,6 +325,7 @@ class AdminChatController extends Controller
                 'id',
                 'session_id',
                 'visitor_id',
+                'dedupe_key',
                 'sender_type',
                 'sender_name',
                 'rating',
@@ -347,29 +378,38 @@ class AdminChatController extends Controller
 
         $conv = SupportConversation::query()->firstOrCreate(
             ['session_id' => trim($sessionId)],
-            ['mode' => 'human', 'status' => 'in_progress']
+            [
+                'mode' => 'human',
+                'ai_enabled' => false,
+                'status' => SupportConversationHandoffService::STATUS_HUMAN_ASSISTED,
+            ],
         );
+
+        /** @var \App\Models\User|null $agent */
+        $agent = $request->user();
 
         $message = ChatMessage::create([
             'support_conversation_id' => $conv->id,
             'session_id' => $conv->session_id,
             'message' => $clean,
             'sender_type' => 'admin',
-            'sender_name' => $request->user()?->name,
+            'sender_name' => $agent?->name,
             'is_from_visitor' => false,
             'is_from_admin' => true,
-            'admin_user_id' => $request->user()?->id,
+            'admin_user_id' => $agent?->id,
         ]);
 
-        $conv->mode = 'human';
-        $conv->status = 'in_progress';
+        SupportConversationHandoffService::applyHumanTakeover($conv, $agent?->id);
         $conv->last_responder_type = 'admin';
+        $conv->last_staff_message_at = now();
         $conv->unread_admin = 0;
+        VisitorMessageLimitService::recordAdminFirstReply($conv);
         $conv->save();
 
         $message->loadMissing('adminUser:id,name');
 
-        NodeChatBroadcastService::relayAdminReply($message);
+        NodeChatBroadcastService::relayAdminReply($message, handoff: true);
+        NodeChatBroadcastService::relayHandoff($conv->session_id, $agent?->id);
 
         return response()->json([
             'ok' => true,
@@ -397,37 +437,81 @@ class AdminChatController extends Controller
         $sid = trim($sessionId);
         $conv = SupportConversation::query()->firstOrCreate(
             ['session_id' => $sid],
-            ['mode' => 'ai', 'status' => 'open']
+            [
+                'mode' => 'ai',
+                'ai_enabled' => true,
+                'status' => SupportConversationHandoffService::STATUS_AI_ACTIVE,
+            ]
         );
 
         if (isset($data['status']) && $data['status'] !== '') {
             $normalized = SupportConversation::mapLifecycleToStatus(strtolower(trim((string) $data['status'])));
-            $allowed = ['open', 'in_progress', 'resolved', 'archived'];
+            $allowed = [
+                SupportConversationHandoffService::STATUS_AI_ACTIVE,
+                SupportConversationHandoffService::STATUS_HUMAN_ASSISTED,
+                SupportConversationHandoffService::STATUS_CLOSED,
+                SupportConversationHandoffService::STATUS_ARCHIVED,
+                'open',
+                'in_progress',
+                'resolved',
+            ];
             if (! in_array($normalized, $allowed, true)) {
                 return response()->json([
                     'message' => 'Invalid status.',
-                    'errors' => ['status' => ['Must be one of: '.implode(', ', $allowed).', active, pending, closed.']],
+                    'errors' => ['status' => ['Must be one of: '.implode(', ', $allowed).'.']],
                 ], 422);
             }
-            $conv->status = $normalized;
-            if ($conv->status === 'resolved') {
-                $conv->resolved_at = now();
+            if ($normalized === SupportConversationHandoffService::STATUS_AI_ACTIVE) {
+                $user = $request->user();
+                if (! $user || ! $user->canAccessAdminPortal()) {
+                    return response()->json(['message' => 'Only admin staff may resume AI assistance.'], 403);
+                }
+                SupportConversationHandoffService::resumeAi($conv);
+            } elseif ($normalized === SupportConversationHandoffService::STATUS_HUMAN_ASSISTED) {
+                SupportConversationHandoffService::applyHumanTakeover($conv, $request->user()?->id);
+            } else {
+                $conv->status = $normalized;
+                if ($conv->status === SupportConversationHandoffService::STATUS_CLOSED) {
+                    $conv->resolved_at = now();
+                }
             }
         }
         if ($request->has('needs_human')) {
             $conv->needs_human = (bool) $data['needs_human'];
         }
         if (isset($data['mode']) && $data['mode'] !== '') {
-            $conv->mode = strtolower((string) $data['mode']);
+            $incomingMode = strtolower((string) $data['mode']);
+            if ($incomingMode === 'ai') {
+                $user = $request->user();
+                if (! $user || ! $user->canAccessAdminPortal()) {
+                    return response()->json(['message' => 'Only admin staff may resume AI assistance.'], 403);
+                }
+                SupportConversationHandoffService::resumeAi($conv);
+            } else {
+                SupportConversationHandoffService::applyHumanTakeover($conv, $request->user()?->id);
+            }
         }
         if ($hasUnread) {
             $conv->unread_admin = (int) $data['unread_admin'];
         }
         $conv->save();
 
-        return response()->json(['ok' => true, 'data' => $conv->only([
-            'session_id', 'mode', 'status', 'needs_human', 'assigned_to', 'unread_admin',
-        ])]);
+        if (isset($data['mode']) && $data['mode'] !== '') {
+            NodeChatBroadcastService::relayModeChange($sid, (string) $conv->mode);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'data' => array_merge(
+                $conv->only([
+                    'session_id', 'mode', 'ai_enabled', 'status', 'needs_human', 'assigned_to', 'human_takeover_at', 'unread_admin',
+                ]),
+                [
+                    'assigned_agent_id' => $conv->assigned_to,
+                    'taken_over_at' => optional($conv->human_takeover_at)?->toIso8601String(),
+                ],
+            ),
+        ]);
     }
 
     public function assignConversation(Request $request, string $sessionId): JsonResponse

@@ -5,9 +5,14 @@
 
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_KNOWLEDGE_PATH = path.join(__dirname, 'amalgated-lending-knowledge.txt');
 
 /** Official public contact — aligned with amalgatedlending.com Contact page */
-export const LENDING_PHONE = '09190675095';
+export const LENDING_PHONES = ['09565686044', '09190675781'];
+export const LENDING_PHONE = LENDING_PHONES.join(' / ');
 export const LENDING_EMAIL = 'support@amalgatedlending.com';
 /** Main office VisMin (corporate) — same copy as `ContactPage.jsx` / `BranchesPage.jsx` */
 export const LENDING_OFFICE =
@@ -15,11 +20,26 @@ export const LENDING_OFFICE =
 /** Main office Luzon — same copy as Contact + Branches pages */
 export const LENDING_OFFICE_LUZON = '1220 Pedro Gil Street, Paco, Manila';
 
+/** Branch cities from verified company knowledge base. */
+export const LENDING_BRANCH_CITIES =
+  'Davao City, Kidapawan, Mangagoy, General Santos, San Francisco (Agusan del Sur), Manila';
+
+/** Official loan products from verified company knowledge base. */
+export const LENDING_LOAN_PRODUCTS = [
+  'Real Estate Mortgage Loan',
+  'SSS Loan',
+  'GSIS Loan',
+  'Pension Loan',
+  'In-House Salary Loan',
+  'Travel Assistance Loan',
+  'Home Appliance Loan',
+];
 /** Branch rows as shown on public `/branches` (keep in sync with `BranchesPage.jsx`). */
 export const LENDING_PUBLIC_BRANCHES_LINES = [
   'Kidapawan: A & S Landing Commercial Bldg., Brgy. Sudapin, Kidapawan City',
   'Mangagoy: M.Conpinco Building Espiritu St. Mangagoy, Bislig City Surigao Del Sur 8311',
   'Lagao (General Santos): Aradaza st. General Santos City',
+  'San Francisco, Agusan del Sur — contact main office for branch details',
 ].join('\n');
 
 /**
@@ -45,7 +65,8 @@ PUBLIC WEBSITE (canonical — match amalgatedlending.com SPA; paths are on-site 
 - This chat widget: quick actions include “How to apply?”, “Ask about rates”, “Loan products”, and “Talk to an agent” / “Human agent” for escalation; the UI states users may escalate to a human anytime. A footer notes AI answers can be inaccurate—if asked, acknowledge briefly and offer phone (${LENDING_PHONE}) or agent handoff for verified details.
 
 CORE RULES (compliance — never break)
-- Do not quote specific interest rates, APRs, monthly amortization amounts, fees, or approval percentages. Say they depend on product, amount, term, and credit assessment; direct to Apply or ${LENDING_PHONE}.
+- Use ONLY verified company information from this prompt and "Verified knowledge excerpts". If unavailable, say: "I don't have verified information about that. Please contact Amalgated Lending support for assistance."
+- Published interest range from company materials: 3.88% – 5.88% per month — always note exact rate depends on product, amount, term, and credit assessment; never guarantee a specific rate for an individual without underwriting.
 - Do not approve or decline loans, predict outcomes, or give personalized financial or legal advice.
 - Do not promise processing or approval timelines as guarantees. If asked about timing, say timing varies; only underwriting can confirm after a complete file.
 - Account-specific data (balance, schedule, approval status, disputes): direct the borrower to the Borrower portal or ${LENDING_PHONE} / ${LENDING_EMAIL}. Never guess.
@@ -76,9 +97,11 @@ FAQ TOPICS (answer in the user’s language; stay within CORE RULES above):
 
 • Apply & documents — Online Apply; typically valid ID, proof of income, proof of address; extras per product (e.g. collateral docs). Final list is confirmed in review.
 
-• Products — Summarize from Loan Products and /loans/* pages (salary, chattel, real estate, travel, SSS/GSIS-style, business/personal as shown). No unpublished rate sheets.
+• Products — Official portfolio: ${LENDING_LOAN_PRODUCTS.join('; ')}. Summarize from Loan Products and /loans/* pages. Do not invent unpublished products.
 
-• Rates & fees — Only general: depend on assessment; exact figures via application or ${LENDING_PHONE}.
+• Apply workflow — (1) Submit application, (2) Verification, (3) Credit review, (4) Approval, (5) Loan release — as documented in company materials.
+
+• Rates & fees — Published range 3.88% – 5.88% per month from company materials; exact figure depends on assessment; personalized quote via Apply or ${LENDING_PHONE}.
 
 • Eligibility — Income, credit history, obligations, documents; underwriting decides; no chat guarantees.
 
@@ -106,14 +129,13 @@ FAQ TOPICS (answer in the user’s language; stay within CORE RULES above):
 
 • Widget shortcuts — "How to apply" → steps + documents (no rate numbers). "Ask about rates" → depends on assessment + Apply/phone. "Loan products" → categories + site sections. "Talk to an agent" / "Human agent" → human handoff / phone as above.
 
-• Locations — Always mention both main offices (Davao VisMin + Manila Luzon) when answering “where are you / office / branch”; then summarize branch cities or send users to /branches and /contact. Do not invent extra branches.
+• Locations — Branch cities: ${LENDING_BRANCH_CITIES}. Always mention both main offices (Davao VisMin + Manila Luzon); then branch network or /branches. Do not invent extra branches.
 
 • Admin portal — Generic staff workflows only; no secrets or individual borrower data.
 `.trim();
 
 function loadOptionalFaqOverlay() {
-  const raw = (process.env.LENDING_AI_FAQ_PATH || '').trim();
-  if (!raw) return '';
+  const raw = (process.env.LENDING_AI_FAQ_PATH || '').trim() || DEFAULT_KNOWLEDGE_PATH;
   const resolved = path.isAbsolute(raw) ? raw : path.join(process.cwd(), raw);
   try {
     if (!fs.existsSync(resolved)) {
@@ -134,11 +156,14 @@ export const LENDING_CUSTOMER_FAQ = (LENDING_CUSTOMER_FAQ_BASE + loadOptionalFaq
 
 /** User wants a human — match before other intents to avoid partial answers. */
 const ESCALATION_EN =
-  /\b(talk to an agent|talk to a human|live agent|human agent|real person|speak to (?:a )?(?:human|person|agent)|connect me to (?:someone|an agent|support)|transfer me to|escalat|loan officer|callback please|call me back|have someone call|representative please|customer service rep|speak with staff)\b/i;
+  /\b(talk to an agent|talk to a human|live agent|human agent|real person|speak to (?:a )?(?:human|person|agent|staff)|connect me to (?:someone|an agent|support|staff)|transfer me to|escalat|loan officer|callback please|call me back|have someone call|representative please|customer service rep|speak with staff|need (?:a |an )?(?:agent|staff)|support agent)\b/i;
 const ESCALATION_FIL =
   /\b(agent|humano|tao|staff|representat|kausap(?:in)?\s+(?:ang\s+)?(?:agent|tao|staff)|makipag-ugnay\s+sa\s+(?:agent|tao)|gusto\s+ko\s+(?:ng\s+)?(?:tao|agent|tawag)|pakiusap\s+(?:tawag|agent)|maghanap\s+ng\s+(?:agent|tao)|live\s+person|talk\s+to\s+an?\s+agent)\b/i;
 const ESCALATION_ES =
   /\b(agente|humano|persona|representante|hablar con (?:un )?(?:agente|persona)|transferir|escalar)\b/i;
+
+const ACCOUNT_SPECIFIC_EN =
+  /\b(my (?:loan|account|balance|payment|schedule|status)|loan status|payment history|account number|remaining balance|how much (?:do i|i) owe|confidential|sss number|gsis number|pension number)\b/i;
 
 function normalizeLang(input) {
   const raw = String(input || '').toLowerCase().trim();
@@ -157,15 +182,29 @@ function wantsEscalation(message, lang) {
   return ESCALATION_FIL.test(m) || ESCALATION_ES.test(m);
 }
 
-function escalationReply(lang) {
+/** Triggers automatic human handoff (AI off + CRM notify). */
+export function shouldTriggerHumanEscalation(message, lang, options = {}) {
+  if (wantsEscalation(message, lang)) return true;
+  if (ACCOUNT_SPECIFIC_EN.test(String(message || ''))) return true;
+  if (options?.repeatComplaint === true) return true;
+  return false;
+}
+
+export { wantsEscalation };
+
+export function escalationHandoffReply(lang) {
   const l = normalizeLang(lang);
   if (l === 'fil') {
-    return `Naiintindihan namin na gusto mong makausap ang aming team. Pakipindot ang **Talk to an agent** o **Human agent** sa chat kung available, o tumawag sa ${LENDING_PHONE} (mobile) o mag-email sa ${LENDING_EMAIL}. Hindi namin mabibigay ang account-specific na detalye dito sa chat para manatiling secure ang impormasyon mo.`;
+    return 'Ikokonekta ka namin sa isang Support Agent. Pakihintay.';
   }
   if (l === 'es') {
-    return `Podemos pasarle con nuestro equipo. Use **Talk to an agent** / **Human agent** en el chat si está disponible, o llame al ${LENDING_PHONE} (móvil) o escriba a ${LENDING_EMAIL}. Por seguridad, no compartimos datos específicos de su cuenta aquí.`;
+    return 'Le conectaremos con un agente de soporte. Por favor espere.';
   }
-  return `I’ll connect you with our team. Please tap **Talk to an agent** or **Human agent** in this chat if you see it, or call ${LENDING_PHONE} (mobile) or email ${LENDING_EMAIL}. For your security, we can’t discuss account-specific details in this automated chat.`;
+  return "I'll connect you with a Support Agent. Please wait.";
+}
+
+function escalationReply(lang) {
+  return escalationHandoffReply(lang);
 }
 
 /** Office + branch summary — keep aligned with `ContactPage.jsx` and `BranchesPage.jsx`. */
@@ -173,12 +212,12 @@ function publicLocationFallbackReply(lang) {
   const l = normalizeLang(lang);
   const site = 'https://amalgatedlending.com';
   if (l === 'fil') {
-    return `Ayon sa pampublikong website ng Amalgated Lending Inc.: **Main office VisMin (corporate):** ${LENDING_OFFICE} **Main office Luzon:** ${LENDING_OFFICE_LUZON}. May branch network sa Kidapawan, Mangagoy (Bislig), at General Santos (Lagao)—buong address sa ${site}/branches. Mobile: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}. Inquiry: ${site}/contact.`;
+    return `Ayon sa pampublikong website ng Amalgated Lending Inc.: **Main office VisMin (corporate):** ${LENDING_OFFICE} **Main office Luzon:** ${LENDING_OFFICE_LUZON}. May branch network sa ${LENDING_BRANCH_CITIES} — buong address sa ${site}/branches. Mobile: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}. Inquiry: ${site}/contact.`;
   }
   if (l === 'es') {
-    return `Según el sitio público de Amalgated Lending Inc.: **Oficina principal VisMin:** ${LENDING_OFFICE} **Oficina principal Luzón:** ${LENDING_OFFICE_LUZON}. Red en Kidapawan, Mangagoy (Bislig) y General Santos (Lagao)—direcciones en ${site}/branches. Móvil: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}. Contacto: ${site}/contact.`;
+    return `Según el sitio público de Amalgated Lending Inc.: **Oficina principal VisMin:** ${LENDING_OFFICE} **Oficina principal Luzón:** ${LENDING_OFFICE_LUZON}. Red en ${LENDING_BRANCH_CITIES} — direcciones en ${site}/branches. Móvil: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}. Contacto: ${site}/contact.`;
   }
-  return `Amalgated Lending Inc. lists two main offices on amalgatedlending.com: **VisMin (corporate):** ${LENDING_OFFICE} **Luzon:** ${LENDING_OFFICE_LUZON}. Published branches include Kidapawan, Mangagoy (Bislig), and General Santos (Lagao)—full addresses on ${site}/branches. Mobile: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}. Contact & inquiry: ${site}/contact. Explore Loan Products and Apply there too.`;
+  return `Amalgated Lending Inc. lists two main offices on amalgatedlending.com: **VisMin (corporate):** ${LENDING_OFFICE} **Luzon:** ${LENDING_OFFICE_LUZON}. Published branch cities include ${LENDING_BRANCH_CITIES} — full addresses on ${site}/branches. Mobile: ${LENDING_PHONE}. Email: ${LENDING_EMAIL}. Contact & inquiry: ${site}/contact.`;
 }
 
 /** Rule-based replies when Groq is unavailable or errors. */
@@ -187,7 +226,15 @@ export function getLendingFallbackReply(userMessage, lang) {
   const l = normalizeLang(lang);
 
   if (wantsEscalation(userMessage, lang)) {
-    return escalationReply(l);
+    return escalationHandoffReply(l);
+  }
+
+  if (/loan product|what loan|offer|products do you|ano ang loan|mga loan/i.test(m)) {
+    return `Amalgated Lending Inc. offers: ${LENDING_LOAN_PRODUCTS.join('; ')}. Mission: empowering borrowers through accessible and trustworthy financial services. Published interest range: 3.88% – 5.88% per month (exact rate depends on product, amount, term, and credit assessment). Apply on amalgatedlending.com or call ${LENDING_PHONE}.`;
+  }
+
+  if (/how (?:do i|to) apply|application (?:process|steps|workflow)/i.test(m)) {
+    return `To apply with Amalgated Lending Inc.: (1) Submit application online or at a branch, (2) Verification of your details and documents, (3) Credit review by underwriting, (4) Approval decision, (5) Loan release after requirements are complete. Start at amalgatedlending.com Apply or call ${LENDING_PHONE}.`;
   }
 
   if (l === 'fil') {
@@ -306,5 +353,5 @@ export function getLendingFallbackReply(userMessage, lang) {
   if (/thank|thanks|salamat/i.test(m)) {
     return `You’re welcome! If you need anything else about loans or applying, just ask.`;
   }
-  return `Thanks for your message. For loan questions, assessed rates and terms, or applications, contact ${LENDING_EMAIL} or call ${LENDING_PHONE}, or use the Apply page on the Amalgated Lending Inc. website.`;
+  return `I don't have verified information about that. Please contact Amalgated Lending support for assistance at ${LENDING_PHONE} or ${LENDING_EMAIL}.`;
 }

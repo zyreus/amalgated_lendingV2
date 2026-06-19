@@ -1,6 +1,15 @@
 @php
   $legalName = (string) config('company.print_legal_name', $companyName ?? config('app.name', 'Amalgated Lending Inc.'));
   $tagline = (string) config('company.print_tagline', 'Lending Hope, Building Futures.');
+  $addressLines = config('company.print_address_lines', []);
+  if ($addressLines === [] || $addressLines === null) {
+      $addressLines = [
+          'ACI IT and Corporate Centre',
+          'Doña Carolina Uykimpang Building',
+          'JP Laurel Ave, Bajada, Davao City 8000',
+      ];
+  }
+  $receiptDate = $paidAt ?? $confirmationDate ?? $generatedAt ?? now()->format('F j, Y');
 @endphp
 <!DOCTYPE html>
 <html lang="en">
@@ -9,449 +18,370 @@
   <title>Official receipt {{ $officialOr }}</title>
   <style>
     * { box-sizing: border-box; }
-    @page { margin: 24px; }
+    html, body { width: 100%; margin: 0; padding: 0; }
+    @page { margin: 28px 32px 32px 32px; size: A4 portrait; }
     body {
       font-family: DejaVu Sans, Arial, sans-serif;
-      font-size: 11px;
-      color: #111827;
-      margin: 0;
-      padding: 0;
-      background: #ffffff;
-      line-height: 1.35;
-    }
-    .receipt-shell {
-      width: 100%;
-      border: 1px solid #d8dee8;
-      border-radius: 10px;
-      padding: 18px 20px 14px;
-      background: #ffffff;
-    }
-    .header-table,
-    .brand-table,
-    .meta-table,
-    .summary-table,
-    .data {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    .header-table td,
-    .brand-table td,
-    .meta-table td,
-    .summary-table td {
-      border: 0;
-      padding: 0;
-      vertical-align: top;
-    }
-    .brand-cell { width: 62%; padding-right: 16px; }
-    .meta-cell { width: 38%; }
-    .logo-wrap {
-      width: 62px;
-      height: 62px;
-      border: 2px solid #b91c1c;
-      border-radius: 999px;
-      text-align: center;
-      padding: 5px;
-      background: #ffffff;
-    }
-    .logo-wrap img {
-      width: 48px;
-      height: 48px;
-      object-fit: contain;
-    }
-    .logo-fallback {
-      font-size: 17px;
-      font-weight: 800;
-      color: #b91c1c;
-      line-height: 48px;
-      letter-spacing: 0.04em;
-    }
-    .brand-copy { padding-left: 12px; vertical-align: middle !important; }
-    .company-name {
-      margin: 2px 0 4px;
-      font-size: 18px;
-      font-weight: 800;
-      color: #111827;
-      text-transform: uppercase;
-      letter-spacing: 0.045em;
-      line-height: 1.12;
-    }
-    .tagline {
-      margin: 0;
       font-size: 10.5px;
-      color: #64748b;
-      font-style: italic;
+      color: #000000;
+      background: #ffffff;
+      line-height: 1.45;
     }
-    .document-title {
-      margin: 12px 0 0;
-      font-size: 12px;
+    .page-wrap { width: 100%; border-collapse: collapse; }
+    .page-wrap td { border: 0; padding: 0; vertical-align: top; }
+    .sheet {
+      width: 100%;
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 0;
+      text-align: left;
+    }
+    .brand { color: #991b1b; }
+    .muted { color: #333333; }
+    .light { color: #555555; font-size: 9.5px; }
+
+    /* Header */
+    .header-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 22px; }
+    .header-table td { border: 0; padding: 0; vertical-align: top; }
+    .company-block { width: 54%; padding-right: 16px; }
+    .receipt-block { width: 46%; text-align: right; vertical-align: top; }
+    .logo-row { width: 100%; border-collapse: collapse; }
+    .logo-row td { border: 0; padding: 0; vertical-align: middle; }
+    .logo-cell { width: 50px; padding-right: 10px; }
+    .logo-wrap img { width: 44px; height: 44px; object-fit: contain; display: block; }
+    .logo-fallback {
+      width: 44px; height: 44px; line-height: 44px; text-align: center;
+      font-size: 11px; font-weight: 800; color: #991b1b;
+    }
+    .company-name {
+      margin: 0 0 3px;
+      font-size: 13px;
       font-weight: 800;
       color: #991b1b;
       text-transform: uppercase;
-      letter-spacing: 0.09em;
+      letter-spacing: 0.04em;
+      line-height: 1.2;
     }
-    .receipt-card {
-      border: 1px solid #dbe3ee;
-      border-radius: 8px;
-      background: #f8fafc;
-      padding: 10px 11px;
-    }
-    .meta-table td {
-      padding: 2px 0 5px;
-      font-size: 10px;
-      color: #64748b;
-    }
-    .meta-table .meta-label {
-      width: 40%;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.045em;
-    }
-    .meta-table .meta-value {
-      width: 60%;
-      text-align: right;
-      color: #0f172a;
-      font-weight: 700;
-    }
-    .badge {
-      display: inline-block;
-      margin-top: 3px;
-      padding: 5px 14px;
-      background: #16a34a;
-      color: #ffffff;
-      border-radius: 999px;
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-    .divider {
-      height: 1px;
-      background: #cbd5e1;
-      margin: 14px 0 12px;
-    }
-    .summary-table { margin-bottom: 12px; }
-    .summary-copy {
-      width: 65%;
-      padding-right: 18px !important;
-      color: #475569;
-    }
-    .summary-copy .label {
-      margin: 0 0 5px;
-      font-size: 10px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #64748b;
-    }
-    .summary-copy .headline {
-      margin: 0 0 4px;
-      font-size: 15px;
-      font-weight: 800;
-      color: #111827;
-    }
-    .summary-copy .subtext {
-      margin: 0;
-      font-size: 10.5px;
-      color: #64748b;
-      line-height: 1.45;
-    }
-    .qr-cell {
-      width: 35%;
-      text-align: right;
-    }
-    .qr-box {
-      display: inline-block;
-      width: 128px;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      padding: 7px;
-      text-align: center;
-      background: #ffffff;
-    }
-    .qr-box img {
-      width: 88px;
-      height: 88px;
-      display: block;
-      margin: 0 auto 4px;
-    }
-    .qr-label {
-      font-size: 9px;
-      font-weight: 800;
-      color: #475569;
-      text-transform: uppercase;
-      letter-spacing: 0.07em;
-    }
-    .qr-note {
-      margin-top: 2px;
-      font-size: 8px;
-      color: #94a3b8;
-    }
-    table.data {
-      border: 1px solid #dbe3ee;
-      border-radius: 8px;
-      overflow: hidden;
-      margin: 0;
-      table-layout: fixed;
-    }
-    table.data th,
-    table.data td {
-      border: 1px solid #e3e8ef;
-      padding: 7px 9px;
-      text-align: left;
-      vertical-align: middle;
-    }
-    table.data th {
-      width: 25%;
-      background: #f1f5f9;
-      color: #475569;
+    .company-tagline {
+      margin: 0 0 8px;
       font-size: 9.5px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.045em;
+      color: #333333;
+      font-style: italic;
     }
-    table.data td {
-      width: 25%;
-      color: #111827;
-      font-size: 10.5px;
+    .company-address {
+      margin: 8px 0 0;
+      padding: 0;
+      list-style: none;
+      font-size: 9.5px;
+      color: #333333;
+      line-height: 1.5;
+    }
+    .receipt-title {
+      margin: 0;
+      padding: 10px 0 0;
+      font-size: 28px;
+      font-weight: 800;
+      color: #991b1b;
+      letter-spacing: 0.06em;
+      line-height: 1;
+      text-align: right;
+    }
+    .receipt-title-row td { padding-bottom: 10px; }
+    .header-details-row .company-address { margin-top: 0; }
+    .header-details-row .meta-block { padding-top: 2px; }
+    .meta-block { text-align: right; }
+    .meta-table { width: 100%; border-collapse: collapse; margin-left: auto; }
+    .meta-table td {
+      border: 0;
+      padding: 3px 0;
+      font-size: 9.5px;
+      vertical-align: top;
+    }
+    .meta-label {
+      width: 42%;
+      text-align: left;
+      color: #991b1b;
+      font-weight: 700;
+      padding-right: 8px;
+    }
+    .meta-value {
+      width: 58%;
+      text-align: right;
+      color: #000000;
       font-weight: 600;
     }
-    table.data tr.alt th,
-    table.data tr.alt td {
-      background: #fbfdff;
+    .status-paid {
+      margin-top: 6px;
+      font-size: 10px;
+      font-weight: 800;
+      color: #991b1b;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      text-align: right;
     }
-    table.data .section-row td {
-      padding: 6px 9px;
+    .qr-inline {
+      margin-top: 10px;
+      text-align: right;
+    }
+    .qr-inline img { width: 64px; height: 64px; display: inline-block; }
+    .qr-caption { font-size: 7.5px; color: #555555; margin-top: 2px; text-align: right; }
+
+    /* Billed To */
+    .section-heading {
+      margin: 0 0 6px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #991b1b;
+      letter-spacing: 0.02em;
+    }
+    .billed-block { margin-bottom: 20px; text-align: left; }
+    .billed-name {
+      margin: 0 0 6px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #000000;
+    }
+    .billed-meta {
+      margin: 0;
+      padding: 0;
+      font-size: 9.5px;
+      color: #333333;
+      line-height: 1.55;
+    }
+
+    /* Line items */
+    table.items {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 18px;
+      table-layout: fixed;
+    }
+    table.items thead th {
       background: #991b1b;
       color: #ffffff;
-      font-size: 9.5px;
+      font-size: 9px;
       font-weight: 800;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.06em;
+      padding: 8px 10px;
+      text-align: left;
+      border: 0;
     }
-    table.data .amount-label {
-      background: #f8fafc;
+    table.items thead th.col-amount { text-align: right; }
+    table.items tbody td {
+      padding: 9px 10px;
       font-size: 10px;
-      color: #334155;
+      color: #000000;
+      border: 0;
+      border-bottom: 1px solid #d4d4d4;
+      vertical-align: top;
     }
-    table.data .money {
+    table.items tbody td.col-installment { width: 14%; color: #333333; font-weight: 600; }
+    table.items tbody td.col-desc { width: 56%; }
+    table.items tbody td.col-amount {
+      width: 30%;
       text-align: right;
-      font-weight: 800;
-      font-size: 11px;
+      font-weight: 700;
       white-space: nowrap;
     }
-    table.data .highlight th,
-    table.data .highlight td {
-      background: #f0fdf4;
-      border-color: #bbf7d0;
-    }
-    table.data .highlight .money {
-      color: #047857;
-      font-size: 12px;
-    }
-    table.data .balance th,
-    table.data .balance td {
-      background: #fff7ed;
-      border-color: #fed7aa;
-    }
-    table.data .balance .money {
-      color: #9a3412;
-      font-size: 12px;
-    }
-    .footer {
-      margin-top: 13px;
-      padding-top: 9px;
-      border-top: 1px solid #cbd5e1;
-      font-size: 8.8px;
-      color: #64748b;
-      line-height: 1.45;
-    }
-    .footer-table {
+
+    /* Totals */
+    .totals-wrap { width: 100%; border-collapse: collapse; margin-bottom: 22px; }
+    .totals-wrap td { border: 0; padding: 0; vertical-align: top; }
+    .totals-spacer { width: 60%; }
+    .totals-panel { width: 40%; }
+    table.totals {
       width: 100%;
       border-collapse: collapse;
     }
-    .footer-table td {
+    table.totals td {
       border: 0;
-      padding: 0;
+      padding: 5px 0;
+      font-size: 10px;
       vertical-align: top;
     }
-    .footer-left { width: 55%; }
-    .footer-right {
-      width: 45%;
-      text-align: right;
-      color: #94a3b8;
+    table.totals .t-label { color: #333333; text-align: left; padding-right: 12px; }
+    table.totals .t-value { text-align: right; font-weight: 600; color: #000000; white-space: nowrap; }
+    table.totals tr.row-paid td {
+      padding-top: 8px;
+      padding-bottom: 8px;
+      border-top: 2px solid #991b1b;
+      border-bottom: 2px solid #991b1b;
     }
-    .signature {
-      margin-top: 14px;
-      text-align: right;
-      color: #0f172a;
-    }
-    .signature .line {
-      display: inline-block;
-      min-width: 210px;
-      border-top: 1px solid #334155;
-      padding-top: 5px;
+    table.totals tr.row-paid .t-label,
+    table.totals tr.row-paid .t-value {
+      font-size: 11px;
       font-weight: 800;
+      color: #991b1b;
     }
-    .signature .role {
-      color: #64748b;
-      font-size: 9.5px;
-      font-weight: 600;
+    table.totals tr.row-balance .t-value {
+      color: #991b1b;
+      font-weight: 800;
+      font-size: 11px;
     }
+    table.totals tr.row-balance .t-label { color: #000000; font-weight: 700; }
+
+    /* Notes footer */
+    .notes-block {
+      margin-top: 8px;
+      padding-top: 14px;
+      border-top: 1px solid #d4d4d4;
+    }
+    .notes-block .section-heading { margin-bottom: 8px; }
+    .notes-body {
+      margin: 0;
+      font-size: 9px;
+      color: #333333;
+      line-height: 1.55;
+    }
+    .notes-body strong { color: #000000; font-weight: 700; }
   </style>
 </head>
 <body>
-  <div class="receipt-shell">
-    <table class="header-table" cellpadding="0" cellspacing="0" role="presentation">
-      <tr>
-        <td class="brand-cell">
-          <table class="brand-table" cellpadding="0" cellspacing="0" role="presentation">
-            <tr>
-              <td style="width:66px;">
-                <div class="logo-wrap">
-                  @if(!empty($logoDataUri))
-                    <img src="{{ $logoDataUri }}" alt="{{ $legalName }}">
-                  @else
-                    <div class="logo-fallback">ALI</div>
-                  @endif
+  <table class="page-wrap" cellpadding="0" cellspacing="0" role="presentation">
+    <tr>
+      <td align="center">
+        <div class="sheet">
+
+          {{-- Header --}}
+          <table class="header-table" cellpadding="0" cellspacing="0">
+            <tr class="receipt-title-row">
+              <td class="company-block" valign="top">
+                <table class="logo-row" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td class="logo-cell" valign="top">
+                      @if(!empty($logoDataUri))
+                        <div class="logo-wrap"><img src="{{ $logoDataUri }}" alt="{{ $legalName }}"></div>
+                      @else
+                        <div class="logo-fallback">ALI</div>
+                      @endif
+                    </td>
+                    <td valign="top">
+                      <p class="company-name">{{ $legalName }}</p>
+                      <p class="company-tagline">{{ $tagline }}</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+              <td class="receipt-block" valign="top" align="right">
+                <p class="receipt-title">RECEIPT</p>
+              </td>
+            </tr>
+            <tr class="header-details-row">
+              <td class="company-block" valign="top">
+                <div class="company-address">
+                  {!! implode('<br>', array_map('e', $addressLines)) !!}
                 </div>
               </td>
-              <td class="brand-copy">
-                <p class="company-name">{{ $legalName }}</p>
-                <p class="tagline">{{ $tagline }}</p>
-                <p class="document-title">Official Payment Receipt / Invoice</p>
+              <td class="receipt-block meta-block" valign="top" align="right">
+                <table class="meta-table" cellpadding="0" cellspacing="0" align="right">
+                  <tr>
+                    <td class="meta-label">Receipt No.</td>
+                    <td class="meta-value">{{ $officialOr !== '' ? $officialOr : '—' }}</td>
+                  </tr>
+                  <tr>
+                    <td class="meta-label">AR No.</td>
+                    <td class="meta-value">{{ ($acknowledgementAr ?? '') !== '' ? $acknowledgementAr : '—' }}</td>
+                  </tr>
+                  <tr>
+                    <td class="meta-label">Invoice Ref.</td>
+                    <td class="meta-value">{{ $invoiceNumber }}</td>
+                  </tr>
+                  <tr>
+                    <td class="meta-label">Receipt date</td>
+                    <td class="meta-value">{{ $receiptDate }}</td>
+                  </tr>
+                </table>
+                <div class="status-paid">Paid</div>
+                @if(!empty($receiptQrDataUri))
+                  <div class="qr-inline">
+                    <img src="{{ $receiptQrDataUri }}" alt="Verification QR">
+                    <div class="qr-caption">Scan to verify · OR / AR reference</div>
+                  </div>
+                @endif
               </td>
             </tr>
           </table>
-        </td>
-        <td class="meta-cell">
-          <div class="receipt-card">
-            <table class="meta-table" cellpadding="0" cellspacing="0" role="presentation">
-              <tr>
-                <td class="meta-label">Receipt No.</td>
-                <td class="meta-value">{{ $officialOr !== '' ? $officialOr : '—' }}</td>
-              </tr>
-              <tr>
-                <td class="meta-label">AR No.</td>
-                <td class="meta-value">{{ ($acknowledgementAr ?? '') !== '' ? $acknowledgementAr : '—' }}</td>
-              </tr>
-              <tr>
-                <td class="meta-label">Invoice Ref.</td>
-                <td class="meta-value">{{ $invoiceNumber }}</td>
-              </tr>
-              <tr>
-                <td class="meta-label">Status</td>
-                <td class="meta-value"><span class="badge">Paid</span></td>
-              </tr>
-            </table>
+
+          {{-- Billed To --}}
+          <div class="billed-block">
+            <p class="section-heading">Billed To</p>
+            <p class="billed-name">{{ $borrowerName }}</p>
+            <p class="billed-meta">
+              Loan Reference: {{ $loanNumber }},
+              {{ $paymentMethod }}@if($referenceNumber !== ''),
+              Trace No. {{ $referenceNumber }}@endif
+            </p>
+            <p class="billed-meta light" style="margin-top:4px;">
+              Installment #{{ $installmentNo }} · Posted {{ $paidAt }} · Confirmed {{ $confirmationDate }}
+            </p>
           </div>
-        </td>
-      </tr>
-    </table>
 
-    <div class="divider"></div>
+          {{-- Line items --}}
+          <table class="items" cellpadding="0" cellspacing="0">
+            <thead>
+              <tr>
+                <th style="width:14%;">Installment</th>
+                <th style="width:56%;">Description</th>
+                <th class="col-amount" style="width:30%;">Allocation Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="col-installment">#{{ $installmentNo }}</td>
+                <td class="col-desc">Principal allocation</td>
+                <td class="col-amount">₱ {{ $principalPortion }}</td>
+              </tr>
+              <tr>
+                <td class="col-installment">#{{ $installmentNo }}</td>
+                <td class="col-desc">Interest / charges</td>
+                <td class="col-amount">₱ {{ $interestPortion }}</td>
+              </tr>
+            </tbody>
+          </table>
 
-    <table class="summary-table" cellpadding="0" cellspacing="0" role="presentation">
-      <tr>
-        <td class="summary-copy">
-          <p class="label">Payment Confirmation</p>
-          <p class="headline">Payment received for loan {{ $loanNumber }}</p>
-          <p class="subtext">
-            This receipt confirms that the posted installment payment below has been credited to the borrower ledger.
-            Please retain this document for account verification and audit reference.
-          </p>
-        </td>
-        <td class="qr-cell">
-          @if(!empty($receiptQrDataUri))
-            <div class="qr-box">
-              <img src="{{ $receiptQrDataUri }}" alt="Verification QR">
-              <div class="qr-label">Scan to Verify</div>
-              <div class="qr-note">OR / AR reference</div>
-            </div>
-          @endif
-        </td>
-      </tr>
-    </table>
+          {{-- Totals (right-aligned panel) --}}
+          <table class="totals-wrap" cellpadding="0" cellspacing="0">
+            <tr>
+              <td class="totals-spacer">&nbsp;</td>
+              <td class="totals-panel">
+                <table class="totals" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td class="t-label">Scheduled Amount (PHP)</td>
+                    <td class="t-value">₱ {{ $amountDue }}</td>
+                  </tr>
+                  <tr class="row-paid">
+                    <td class="t-label">Amount Paid (PHP)</td>
+                    <td class="t-value">₱ {{ $amountPaid }}</td>
+                  </tr>
+                  <tr class="row-balance">
+                    <td class="t-label">Remaining Balance (PHP)*</td>
+                    <td class="t-value">₱ {{ $remainingBalance }}</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
 
-    <table class="data" cellpadding="0" cellspacing="0">
-      <tr class="section-row">
-        <td colspan="4">Receipt Details</td>
-      </tr>
-      <tr>
-        <th>Official receipt (OR)</th>
-        <td>{{ $officialOr !== '' ? $officialOr : '—' }}</td>
-        <th>Acknowledgement receipt (AR)</th>
-        <td>{{ ($acknowledgementAr ?? '') !== '' ? $acknowledgementAr : '—' }}</td>
-      </tr>
-      <tr class="alt">
-        <th>Borrower</th>
-        <td>{{ $borrowerName }}</td>
-        <th>Loan reference</th>
-        <td>{{ $loanNumber }}</td>
-      </tr>
-      <tr>
-        <th>Installment</th>
-        <td>#{{ $installmentNo }}</td>
-        <th>Payment method</th>
-        <td>{{ $paymentMethod }}</td>
-      </tr>
-      <tr class="alt">
-        <th>Payment date (posted)</th>
-        <td>{{ $paidAt }}</td>
-        <th>Confirmed</th>
-        <td>{{ $confirmationDate }}</td>
-      </tr>
-      @if($referenceNumber !== '')
-      <tr>
-        <th>Reference / trace No.</th>
-        <td colspan="3">{{ $referenceNumber }}</td>
-      </tr>
-      @endif
-      <tr class="section-row">
-        <td colspan="4">Financial Summary</td>
-      </tr>
-      <tr class="highlight">
-        <th colspan="3" class="amount-label">Amount Paid</th>
-        <td class="money">₱ {{ $amountPaid }}</td>
-      </tr>
-      <tr class="alt">
-        <th colspan="3" class="amount-label">Scheduled Amount</th>
-        <td class="money">₱ {{ $amountDue }}</td>
-      </tr>
-      <tr>
-        <th colspan="3" class="amount-label">Principal Allocation</th>
-        <td class="money">₱ {{ $principalPortion }}</td>
-      </tr>
-      <tr class="alt">
-        <th colspan="3" class="amount-label">Interest / Charges</th>
-        <td class="money">₱ {{ $interestPortion }}</td>
-      </tr>
-      <tr class="balance">
-        <th colspan="3" class="amount-label">Remaining Scheduled Balance*</th>
-        <td class="money">₱ {{ $remainingBalance }}</td>
-      </tr>
-    </table>
+          {{-- Notes --}}
+          <div class="notes-block">
+            <p class="section-heading">Notes</p>
+            <p class="notes-body">
+              This official payment receipt confirms that installment #{{ $installmentNo }} for loan
+              <strong>{{ $loanNumber }}</strong> has been posted to the borrower ledger.
+              Processed by <strong>{{ $processedByName ?? 'Authorized representative' }}</strong>@if(!empty($processedByRole))
+              ({{ $processedByRole }})@endif.
+              Generated {{ $generatedAt }} by {{ $companyName }}.
+              *Remaining balance reflects unpaid scheduled installments and may change with penalties or approved adjustments.
+              For verification, quote receipt <strong>{{ $officialOr !== '' ? $officialOr : '—' }}</strong>
+              or acknowledgement <strong>{{ ($acknowledgementAr ?? '') !== '' ? $acknowledgementAr : '—' }}</strong>
+              when contacting the company.
+            </p>
+          </div>
 
-    <div class="signature">
-      <div style="margin-bottom:18px; color:#64748b; font-size:9.5px;">Processed By</div>
-      <div class="line">{{ $processedByName ?? 'Authorized representative' }}</div>
-      @if(!empty($processedByRole))
-        <div class="role">{{ $processedByRole }}</div>
-      @endif
-    </div>
-
-    <div class="footer">
-      <table class="footer-table" cellpadding="0" cellspacing="0" role="presentation">
-        <tr>
-          <td class="footer-left">
-            Generated {{ $generatedAt }} by {{ $companyName }}.<br>
-            *Remaining balance is based on unpaid scheduled installments and may change with penalties or approved adjustments.
-          </td>
-          <td class="footer-right">
-            Verification note: scan the QR code or quote the OR / AR number when contacting the company.
-          </td>
-        </tr>
-      </table>
-    </div>
-  </div>
+        </div>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>

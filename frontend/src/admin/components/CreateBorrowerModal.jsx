@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { api } from '../api/client.js'
 import { useToast } from '../context/ToastContext.jsx'
 import { admin } from './AdminUi.jsx'
+import { LoadingButton } from '../../components/loading'
 
 const employmentStatusOptions = ['Employed', 'Self-Employed', 'Unemployed', 'Student', 'Retired', 'Other']
 
@@ -375,9 +376,9 @@ export default function CreateBorrowerModal({ open, onClose, onCreated }) {
             </div>
           ) : (
             <div className="flex flex-wrap gap-2 pt-2">
-              <button type="submit" disabled={submitting || !!createdTempPassword} className={`${admin.btnPrimary} disabled:opacity-50`}>
-                {submitting ? 'Creating…' : 'Create Borrower'}
-              </button>
+              <LoadingButton type="submit" loading={submitting} loadingKey="create" disabled={!!createdTempPassword} className={admin.btnPrimary} minWidth="9.5rem">
+                Create Borrower
+              </LoadingButton>
               <button type="button" onClick={closeAndReset} className={admin.btnSecondary} disabled={submitting}>
                 Cancel
               </button>

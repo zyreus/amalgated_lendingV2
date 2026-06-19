@@ -4,7 +4,37 @@ import { api } from '../api/client.js'
 import { useToast } from '../context/ToastContext.jsx'
 import { useAdminApiAuth } from '../context/useAdminApiAuth.js'
 import { admin, TableSkeletonRows, EmptyTableRow } from '../components/AdminUi.jsx'
+import { LoadingButton } from '../../components/loading'
+import ConfirmModal from '../components/ConfirmModal.jsx'
 import { ADMIN_ROLE_BADGE, ADMIN_ROLE_BADGE_FALLBACK } from '../utils/roleBadges.js'
+
+function UserActiveToggle({ active, disabled, loading, onToggleRequest }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={active}
+        aria-label={active ? 'Account active' : 'Account inactive'}
+        aria-busy={loading || undefined}
+        disabled={disabled || loading}
+        onClick={() => onToggleRequest(!active)}
+        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${
+          active ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform duration-200 ${
+            active ? 'left-[calc(100%-1.6rem)]' : 'left-0.5'
+          }`}
+        />
+      </button>
+      <span className={`min-w-[3.5rem] text-xs font-medium ${active ? 'text-emerald-700 dark:text-emerald-300' : 'text-gray-500 dark:text-gray-400'}`}>
+        {loading ? 'Updating…' : active ? 'Active' : 'Inactive'}
+      </span>
+    </div>
+  )
+}
 
 function initials(name) {
   const parts = String(name || '')
@@ -31,6 +61,8 @@ export default function UsersPage() {
   const [resetForm, setResetForm] = useState({ password: '', confirmPassword: '' })
   const [resetting, setResetting] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
+  const [confirmAction, setConfirmAction] = useState(null)
+  const [togglingStatusId, setTogglingStatusId] = useState(null)
   const [actionOpenId, setActionOpenId] = useState(null)
   const [roles, setRoles] = useState([])
   const [editingUser, setEditingUser] = useState(null)
@@ -102,23 +134,81 @@ export default function UsersPage() {
     }))
   }
 
-  const confirmDelete = async (u) => {
+  const promptDelete = (u) => {
     if (!canDeleteUsers || !u?.id) return
     if (adminUser?.id != null && Number(u.id) === Number(adminUser.id)) {
       showToast('You cannot delete your own account.', 'error')
       return
     }
-    if (!window.confirm(`Permanently delete ${u.name} (${u.email})? This cannot be undone.`)) return
-    setDeletingId(u.id)
+    setConfirmAction({ type: 'delete', user: u })
+    setActionOpenId(null)
+  }
+
+  const promptStatusChange = (u, nextActive) => {
+    if (!can('users.manage')) return
+    if (adminUser?.id != null && Number(u.id) === Number(adminUser.id) && !nextActive) {
+      showToast('You cannot deactivate your own account.', 'error')
+      return
+    }
+    setConfirmAction({ type: 'status', user: u, nextActive })
+  }
+
+  const confirmTitle = !confirmAction
+    ? ''
+    : confirmAction.type === 'delete'
+      ? 'Permanently delete user?'
+      : confirmAction.nextActive
+        ? 'Activate account?'
+        : 'Disable account?'
+
+  const confirmDescription = !confirmAction?.user
+    ? ''
+    : confirmAction.type === 'delete'
+      ? `This will permanently delete ${confirmAction.user.name} (${confirmAction.user.email}). This cannot be undone.`
+      : confirmAction.nextActive
+        ? `Activate ${confirmAction.user.name}'s account? They will be able to sign in again.`
+        : `Disable ${confirmAction.user.name}'s account? They will not be able to sign in until reactivated.`
+
+  const confirmLabel = !confirmAction
+    ? 'Confirm'
+    : confirmAction.type === 'delete'
+      ? 'Delete user'
+      : confirmAction.nextActive
+        ? 'Activate account'
+        : 'Disable account'
+
+  const handleConfirmAction = async () => {
+    if (!confirmAction?.user?.id) return
+    const u = confirmAction.user
+    if (confirmAction.type === 'delete') {
+      setDeletingId(u.id)
+      try {
+        await api(`/users/${u.id}`, { method: 'DELETE' })
+        showToast('User account deleted.', 'success')
+        setConfirmAction(null)
+        load(data?.current_page || 1)
+      } catch (err) {
+        showToast(err.message || 'Failed to delete user.', 'error')
+        throw err
+      } finally {
+        setDeletingId(null)
+        setActionOpenId(null)
+      }
+      return
+    }
+
+    setTogglingStatusId(u.id)
     try {
-      await api(`/users/${u.id}`, { method: 'DELETE' })
-      showToast('User account deleted.', 'success')
-      load(data?.current_page || 1)
-    } catch (err) {
-      showToast(err.message || 'Failed to delete user.', 'error')
-    } finally {
-      setDeletingId(null)
+      await api(`/users/${u.id}`, { method: 'PUT', body: JSON.stringify({ is_active: confirmAction.nextActive }) })
+      showToast(confirmAction.nextActive ? 'Account activated.' : 'Account disabled.', 'success')
+      setConfirmAction(null)
       setActionOpenId(null)
+      load(data?.current_page || 1)
+    } catch (e) {
+      showToast(e.message || 'Failed to update account status.', 'error')
+      throw e
+    } finally {
+      setTogglingStatusId(null)
     }
   }
 
@@ -226,17 +316,6 @@ export default function UsersPage() {
     }
   }
 
-  const toggleActivation = async (u, nextActive) => {
-    try {
-      await api(`/users/${u.id}`, { method: 'PUT', body: JSON.stringify({ is_active: nextActive }) })
-      showToast(nextActive ? 'Account activated.' : 'Account disabled.', 'success')
-      setActionOpenId(null)
-      load(data?.current_page || 1)
-    } catch (e) {
-      showToast(e.message || 'Failed to update account status.', 'error')
-    }
-  }
-
   return (
     <div className="w-full min-w-0 space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -300,7 +379,12 @@ export default function UsersPage() {
                 </td>
                 <td className={`${admin.tableCell} tabular-nums ${admin.tableMuted}`}>{u.loans_count != null ? u.loans_count : '—'}</td>
                 <td className={admin.tableCell}>
-                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${u.is_active ? 'bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-500/30 dark:text-emerald-300' : 'bg-gray-200 text-gray-600 dark:bg-[#1F2937] dark:text-gray-400'}`}>{u.is_active ? 'Active' : 'Inactive'}</span>
+                  <UserActiveToggle
+                    active={!!u.is_active}
+                    loading={togglingStatusId === u.id}
+                    disabled={!can('users.manage') || (adminUser?.id != null && Number(u.id) === Number(adminUser.id))}
+                    onToggleRequest={(next) => promptStatusChange(u, next)}
+                  />
                 </td>
                 <td className={`${admin.tableCell} text-right`}>
                   <div className="relative inline-flex items-center justify-end gap-2">
@@ -310,11 +394,10 @@ export default function UsersPage() {
                       <div className="absolute right-0 top-8 z-20 w-44 rounded-xl border border-gray-200 bg-white p-1.5 text-left shadow-xl dark:border-[#1F2937] dark:bg-[#111827]">
                         <button type="button" className="w-full rounded-lg px-2 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-[#1F2937]" onClick={() => openEdit(u)}>Edit user</button>
                         <button type="button" className="w-full rounded-lg px-2 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-[#1F2937]" onClick={() => openEdit(u)}>Assign roles</button>
-                        <button type="button" className="w-full rounded-lg px-2 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-[#1F2937]" onClick={() => toggleActivation(u, !u.is_active)}>{u.is_active ? 'Disable account' : 'Activate account'}</button>
-                        {canDeleteUsers && adminUser?.id != null && Number(u.id) !== Number(adminUser.id) ? <button type="button" className="w-full rounded-lg px-2 py-1.5 text-xs text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/30" onClick={() => confirmDelete(u)}>Delete user</button> : null}
+                        {canDeleteUsers && adminUser?.id != null && Number(u.id) !== Number(adminUser.id) ? <button type="button" className="w-full rounded-lg px-2 py-1.5 text-xs text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/30" onClick={() => promptDelete(u)}>Delete user</button> : null}
                       </div>
                     ) : null}
-                    {canDeleteUsers && adminUser?.id != null && Number(u.id) !== Number(adminUser.id) ? <button type="button" disabled={deletingId === u.id} onClick={() => confirmDelete(u)} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50 dark:border-rose-900/40 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/60">{deletingId === u.id ? 'Deleting…' : 'Delete'}</button> : null}
+                    {canDeleteUsers && adminUser?.id != null && Number(u.id) !== Number(adminUser.id) ? <button type="button" disabled={deletingId === u.id} onClick={() => promptDelete(u)} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50 dark:border-rose-900/40 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/60">{deletingId === u.id ? 'Deleting…' : 'Delete'}</button> : null}
                   </div>
                 </td>
               </tr>
@@ -380,7 +463,9 @@ export default function UsersPage() {
               </div>
             </div>
             <div className="mt-4 flex gap-2">
-              <button type="button" className={admin.btnPrimary} disabled={savingEdit} onClick={saveEdit}>{savingEdit ? 'Saving…' : 'Save changes'}</button>
+              <LoadingButton type="button" className={admin.btnPrimary} loading={savingEdit} loadingKey="save" minWidth="8.5rem" disabled={savingEdit} onClick={saveEdit}>
+                Save changes
+              </LoadingButton>
               <button type="button" className={admin.btnSecondary} onClick={() => setEditingUser(null)}>Cancel</button>
             </div>
           </div>
@@ -396,13 +481,27 @@ export default function UsersPage() {
               <input value={resetForm.password} onChange={(e) => setResetForm((s) => ({ ...s, password: e.target.value }))} placeholder="New password (minimum 8 characters)" type="password" className={`w-full ${admin.input}`} />
               <input value={resetForm.confirmPassword} onChange={(e) => setResetForm((s) => ({ ...s, confirmPassword: e.target.value }))} placeholder="Confirm new password" type="password" className={`w-full ${admin.input}`} />
               <div className="flex gap-2 pt-2">
-                <button type="submit" disabled={resetting} className={`${admin.btnPrimary} disabled:opacity-50`}>{resetting ? 'Updating…' : 'Update Password'}</button>
+                <LoadingButton type="submit" loading={resetting} loadingKey="update" className={admin.btnPrimary} minWidth="9rem">
+                  Update Password
+                </LoadingButton>
                 <button type="button" onClick={() => setResetTarget(null)} className={admin.btnSecondary}>Cancel</button>
               </div>
             </form>
           </div>
         </div>
       ) : null}
+
+      <ConfirmModal
+        open={Boolean(confirmAction)}
+        onClose={() => {
+          if (!deletingId && !togglingStatusId) setConfirmAction(null)
+        }}
+        title={confirmTitle}
+        description={confirmDescription}
+        confirmLabel={confirmLabel}
+        tone={confirmAction?.type === 'delete' || (confirmAction?.type === 'status' && !confirmAction?.nextActive) ? 'danger' : 'default'}
+        onConfirm={handleConfirmAction}
+      />
     </div>
   )
 }

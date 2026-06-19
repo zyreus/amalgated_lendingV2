@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { LoadingButton, FormLoadingOverlay } from '../../components/loading'
 import { borrowerApi } from '../api/client.js'
 import { admin as ui } from '../../admin/components/AdminUi.jsx'
 
@@ -46,6 +47,7 @@ export default function BorrowerSecurityPage() {
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Security</h2>
         <p className={`mt-1 text-sm ${ui.textMuted}`}>Change your borrower account password.</p>
+        <FormLoadingOverlay submitting={loading} label="Updating...">
         <form onSubmit={onSubmit} className="mt-5 space-y-4">
           <div>
             <label className={`text-xs ${ui.textMuted}`}>Current password</label>
@@ -87,14 +89,16 @@ export default function BorrowerSecurityPage() {
               {success}
             </p>
           ) : null}
-          <button
+          <LoadingButton
             type="submit"
-            disabled={loading}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+            loading={loading}
+            loadingKey="update"
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
           >
-            {loading ? 'Updating...' : 'Update password'}
-          </button>
+            Update password
+          </LoadingButton>
         </form>
+        </FormLoadingOverlay>
       </div>
     </div>
   )

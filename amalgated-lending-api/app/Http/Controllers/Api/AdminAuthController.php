@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\AuthSecurityRecorder;
+use App\Support\AuthRateLimit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -50,6 +51,7 @@ class AdminAuthController extends Controller
         $authUser->load(['roles.permissions']);
         $logger->log($authUser, 'auth.admin_login');
         $security->recordSuccess('admin_api', $authUser);
+        AuthRateLimit::clearAdminLogin($request, $login);
 
         return response()->json([
             'ok' => true,

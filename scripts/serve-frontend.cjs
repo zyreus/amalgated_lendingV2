@@ -5,15 +5,23 @@
  * attached as a supervisor instead of starting a duplicate process that exits.
  */
 const { spawn } = require('child_process')
+const fs = require('fs')
 const http = require('http')
 const net = require('net')
 const path = require('path')
+const { logStartup, logExit, fatalExit, attachSignalLogging } = require('./pm2-process-diagnostics.cjs')
+
+const SERVICE = 'amalgated-frontend'
+attachSignalLogging(SERVICE)
 
 const root = path.resolve(__dirname, '..')
 const port = parseInt(process.env.VITE_PORT || process.env.PORT || '6174', 10) || 6174
 const host = process.env.VITE_HOST || '0.0.0.0'
 const probeHost = process.env.VITE_PROBE_HOST || '127.0.0.1'
+const distIndex = path.join(root, 'dist', 'index.html')
 const viteBin = path.join(path.dirname(require.resolve('vite/package.json')), 'bin', 'vite.js')
+
+logStartup(SERVICE, { port, host, distExists: fs.existsSync(distIndex) })
 
 let child = null
 let supervisingExisting = false
@@ -64,7 +72,7 @@ async function superviseExisting() {
 
   setInterval(async () => {
     if (!(await isServing()) && (await isPortAvailable())) {
-      process.stderr.write(`Supervised Vite preview on port ${port} disappeared; asking PM2 to restart it.\n`)
+      logExit(SERVICE, { code: 1, reason: `Supervised Vite preview on port ${port} disappeared` })
       process.exit(1)
     }
   }, 5000)
@@ -77,11 +85,19 @@ async function main() {
   }
 
   if (!(await isPortAvailable())) {
-    process.stderr.write(
-      `Port ${port} is occupied, but http://${probeHost}:${port}/ is not responding. ` +
-        `Stop the stale process using this port and restart PM2.\n`,
+    fatalExit(
+      SERVICE,
+      1,
+      `Port ${port} is occupied but http://${probeHost}:${port}/ is not responding — stop the stale process and restart PM2`,
     )
-    process.exit(1)
+  }
+
+  if (!fs.existsSync(distIndex)) {
+    fatalExit(
+      SERVICE,
+      1,
+      `Missing build artifact: dist/index.html — run: npm run build`,
+    )
   }
 
   process.stderr.write(`Vite preview -> http://${probeHost}:${port}\n`)
@@ -107,7 +123,12 @@ async function main() {
       await superviseExisting()
       return
     }
-    if (signal) process.kill(process.pid, signal)
+    if (signal) {
+      logExit(SERVICE, { code, signal, reason: `Vite preview killed by ${signal}` })
+      process.kill(process.pid, signal)
+      return
+    }
+    logExit(SERVICE, { code, reason: code === 0 ? 'Vite preview exited cleanly' : 'Vite preview crashed' })
     process.exit(code ?? 1)
   })
 }
@@ -124,6 +145,5 @@ process.on('SIGINT', () => shutdown('SIGINT'))
 process.on('SIGTERM', () => shutdown('SIGTERM'))
 
 main().catch((err) => {
-  process.stderr.write(String(err && err.stack ? err.stack : err) + '\n')
-  process.exit(1)
+  fatalExit(SERVICE, 1, String(err && err.message ? err.message : err))
 })

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class FeedbackTicket extends Model
 {
@@ -113,6 +114,64 @@ class FeedbackTicket extends Model
     public function auditLogs(): HasMany
     {
         return $this->hasMany(FeedbackAuditLog::class, 'feedback_id')->latest('id');
+    }
+
+    /** Whether the ticket has no name/email the homepage can use without public_author_label. */
+    public function lacksNamedDisplay(): bool
+    {
+        if (trim((string) ($this->public_author_label ?? '')) !== '') {
+            return false;
+        }
+        if (trim((string) ($this->full_name ?? '')) !== '') {
+            return false;
+        }
+        if (trim((string) ($this->email ?? '')) !== '') {
+            return false;
+        }
+        $this->loadMissing('borrower:id,name,email');
+
+        return trim((string) ($this->borrower?->name ?? '')) === '';
+    }
+
+    /** Default label shown on the public homepage when no borrower name/email is available. */
+    public function resolvePublicAuthorLabel(): string
+    {
+        $label = trim((string) ($this->public_author_label ?? ''));
+        if ($label !== '') {
+            return $label;
+        }
+
+        $fullName = trim((string) ($this->full_name ?? ''));
+        if ($fullName !== '') {
+            return $fullName;
+        }
+
+        foreach ([$this->email, $this->borrower?->email ?? null] as $em) {
+            $em = trim((string) ($em ?? ''));
+            if ($em !== '' && str_contains($em, '@')) {
+                return Str::before($em, '@');
+            }
+        }
+
+        $this->loadMissing('borrower:id,name');
+        $name = trim((string) ($this->borrower?->name ?? ''));
+        if ($name !== '') {
+            return $name;
+        }
+
+        return 'Verified Customer';
+    }
+
+    /** Set public_author_label when anonymous chatbot feedback would otherwise stay hidden. */
+    public function ensurePublicAuthorLabelForHomepage(): bool
+    {
+        if (! $this->lacksNamedDisplay()) {
+            return false;
+        }
+
+        $this->public_author_label = $this->resolvePublicAuthorLabel();
+
+        return true;
     }
 
     /**

@@ -2,10 +2,13 @@
 
 namespace App\Services;
 
+use App\Events\WebsiteChatMessageReceived;
 use App\Models\AdminNotification;
 use App\Models\AdminNotificationRead;
 use App\Models\BorrowerNotification;
+use App\Models\ChatMessage;
 use App\Models\FailedNotification;
+use App\Models\SupportConversation;
 use App\Models\NotificationDeliveryLog;
 use App\Models\NotificationPreference;
 use App\Models\User;
@@ -71,6 +74,43 @@ class NotificationCenter
     public const MODULE_SYSTEM = 'system';
 
     public const MODULE_CREDIT_WELLNESS = 'credit_wellness';
+
+    /**
+     * @return array<string, bool|float>
+     */
+    public static function defaultWebsiteChatSettings(): array
+    {
+        return [
+            'enabled' => true,
+            'sound' => true,
+            'browser' => true,
+            'badge_updates' => true,
+            'crm_inbox_updates' => true,
+            'auto_open_crm' => false,
+            'sound_volume' => 0.7,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $current
+     * @param  array<string, mixed>  $patch
+     * @return array<string, bool|float>
+     */
+    public static function mergeWebsiteChatSettings(array $current, array $patch): array
+    {
+        $defaults = self::defaultWebsiteChatSettings();
+        $merged = array_merge($defaults, $current, $patch);
+
+        return [
+            'enabled' => (bool) ($merged['enabled'] ?? true),
+            'sound' => (bool) ($merged['sound'] ?? true),
+            'browser' => (bool) ($merged['browser'] ?? true),
+            'badge_updates' => (bool) ($merged['badge_updates'] ?? true),
+            'crm_inbox_updates' => (bool) ($merged['crm_inbox_updates'] ?? true),
+            'auto_open_crm' => (bool) ($merged['auto_open_crm'] ?? false),
+            'sound_volume' => max(0, min(1, (float) ($merged['sound_volume'] ?? 0.7))),
+        ];
+    }
 
     public function preferencesFor(User $user): NotificationPreference
     {
@@ -252,6 +292,146 @@ class NotificationCenter
             app(StaffEmailNotifier::class)->dispatchForAdminNotification($row);
         } catch (\Throwable) {
             // Never break primary flows on staff email failures.
+        }
+
+        return $row;
+    }
+
+    /**
+     * Staff notification for website chat visitor messages with grouping and realtime broadcast.
+     */
+    public function notifyStaffWebsiteChatMessage(
+        SupportConversation $conv,
+        ChatMessage $message,
+        string $messagePreview,
+    ): ?AdminNotification {
+        $sessionId = trim((string) $conv->session_id);
+        if ($sessionId === '') {
+            return null;
+        }
+
+        $visitorName = trim((string) ($conv->guest_name ?? ''));
+        if ($visitorName === '') {
+            $visitorName = 'Website Visitor';
+        }
+
+        $visitorId = trim((string) ($message->visitor_id ?? $conv->visitor_id ?? $sessionId));
+        $preview = mb_substr(trim($messagePreview), 0, 240);
+        $timestamp = optional($message->created_at ?? now())?->toIso8601String();
+
+        $existingByMessage = AdminNotification::query()
+            ->where('type', 'website_chat_message')
+            ->where('message_id', $message->id)
+            ->first();
+        if ($existingByMessage) {
+            return $existingByMessage;
+        }
+
+        $existing = AdminNotification::query()
+            ->whereNull('dismissed_globally_at')
+            ->where('type', 'website_chat_message')
+            ->where('conversation_id', $sessionId)
+            ->where('created_at', '>=', now()->subMinutes(30))
+            ->latest('id')
+            ->first();
+
+        $messageCount = 1;
+        if ($existing) {
+            $payload = is_array($existing->data) ? $existing->data : [];
+            $messageCount = max(1, (int) ($payload['message_count'] ?? 1)) + 1;
+        }
+
+        $title = $messageCount > 1
+            ? "{$visitorName} sent {$messageCount} messages"
+            : 'New Website Chat Message';
+
+        $body = $messageCount > 1
+            ? "{$messageCount} new website messages"
+            : "{$visitorName} sent a new message";
+
+        $data = [
+            'conversation_id' => $sessionId,
+            'session_id' => $sessionId,
+            'message_id' => $message->id,
+            'chat_message_id' => $message->id,
+            'visitor_id' => $visitorId,
+            'visitor_name' => $visitorName,
+            'notification_type' => 'website_chat_message',
+            'message_preview' => $preview,
+            'message_count' => $messageCount,
+            'timestamp' => $timestamp,
+            'support_conversation_id' => $conv->id,
+        ];
+
+        if ($existing) {
+            AdminNotificationRead::query()
+                ->where('admin_notification_id', $existing->id)
+                ->delete();
+
+            $existing->fill([
+                'title' => $title,
+                'body' => $body,
+                'message_id' => $message->id,
+                'visitor_id' => $visitorId,
+                'data' => array_merge(is_array($existing->data) ? $existing->data : [], $data),
+            ]);
+            $existing->touch();
+            $existing->save();
+            $row = $existing;
+            $this->logAdminDelivery($row->id, 'in_app', 'updated', 'grouped');
+        } else {
+            $redirect = $this->redirectMetadata('admin', 'website_chat_message', self::CATEGORY_CRM_INQUIRY, $data, [
+                'module' => self::MODULE_CRM,
+            ]);
+
+            $row = AdminNotification::create([
+                'user_id' => null,
+                'type' => 'website_chat_message',
+                'notification_type' => 'website_chat_message',
+                'category' => self::CATEGORY_CRM_INQUIRY,
+                'priority' => $this->defaultPriorityForCategory(self::CATEGORY_CRM_INQUIRY),
+                'module' => self::MODULE_CRM,
+                'title' => $title,
+                'body' => $body,
+                'resource_type' => $redirect['resource_type'],
+                'resource_id' => $redirect['resource_id'],
+                'route_name' => $redirect['route_name'],
+                'route_params' => $redirect['route_params'],
+                'conversation_id' => $sessionId,
+                'message_id' => $message->id,
+                'visitor_id' => $visitorId,
+                'data' => $data,
+                'delivery_channels' => ['in_app'],
+                'read_at' => null,
+                'dismissed_globally_at' => null,
+            ]);
+
+            $this->logAdminDelivery($row->id, 'in_app', 'sent');
+        }
+
+        $broadcastPayload = [
+            'conversation_id' => $sessionId,
+            'message_id' => $message->id,
+            'visitor_id' => $visitorId,
+            'visitor_name' => $visitorName,
+            'message_preview' => $preview,
+            'timestamp' => $timestamp,
+            'notification_id' => $row->id,
+            'message_count' => $messageCount,
+            'title' => $title,
+            'body' => $body,
+        ];
+
+        try {
+            event(new WebsiteChatMessageReceived($broadcastPayload));
+        } catch (\Throwable) {
+            // Never break chat flows on broadcast failures.
+        }
+
+        try {
+            NodeChatBroadcastService::relayWebsiteChatNotification($broadcastPayload);
+        } catch (\Throwable) {
+            // Socket relay is best-effort when Node chat-server is available.
         }
 
         return $row;

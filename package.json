@@ -32,12 +32,16 @@
     "optimize:clear": "node scripts/artisan.cjs optimize:clear",
     "api:cache": "node scripts/artisan.cjs route:clear && node scripts/artisan.cjs config:cache && node scripts/artisan.cjs route:cache && node scripts/artisan.cjs view:cache",
     "pm2:reset": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/pm2-reset.ps1",
-    "pm2:start": "node scripts/pm2-run.cjs start ecosystem.config.cjs --update-env --only amalgated-frontend,amalgated-backend,amalgated-chat",
-    "pm2:restart": "node scripts/pm2-run.cjs restart amalgated-frontend amalgated-backend amalgated-chat --update-env",
+    "pm2:preflight": "node scripts/pm2-preflight.cjs --clear-stale-ports",
+    "pm2:start": "node scripts/pm2-start-ordered.cjs",
+    "pm2:restart": "node scripts/pm2-preflight.cjs --clear-stale-ports && node scripts/pm2-run.cjs restart amalgated-backend --update-env && node scripts/wait-backend-health.cjs && node scripts/pm2-run.cjs restart amalgated-chat amalgated-frontend --update-env",
     "pm2:stop": "node scripts/pm2-run.cjs stop all",
     "pm2:delete": "node scripts/pm2-run.cjs delete all",
     "pm2:status": "node scripts/pm2-run.cjs list",
-    "pm2:logs": "node scripts/pm2-run.cjs logs"
+    "pm2:show": "node scripts/pm2-run.cjs describe",
+    "pm2:logs": "node scripts/pm2-run.cjs logs",
+    "pm2:health": "node scripts/pm2-health-check.cjs",
+    "pm2:stability": "node scripts/pm2-stability-watch.cjs --minutes=5"
   },
   "dependencies": {
     "@aws-amplify/ui-react": "6.15.4",

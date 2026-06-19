@@ -5,6 +5,7 @@ import { admin as ui } from '../../../admin/components/AdminUi.jsx'
 import PrivacyPolicyModal from '../../../components/privacy/PrivacyPolicyModal.jsx'
 import PrivacyConsentCheckbox from '../../../components/privacy/PrivacyConsentCheckbox.jsx'
 import { PRIVACY_POLICY_VERSION } from '../../../components/privacy/PrivacyPolicyContent.jsx'
+import { resolvePublicFileUrl } from '../../../utils/lendingLaravelApi.js'
 
 const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/png']
 const MAX_UPLOAD_MB = 15
@@ -454,7 +455,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
                   <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-400">
                     Uploaded:{' '}
                     {app.documents[key].urls.map((u) => (
-                      <a key={u} href={u} target="_blank" rel="noreferrer" className="ml-1 underline">
+                      <a key={u} href={resolvePublicFileUrl(u)} target="_blank" rel="noreferrer" className="ml-1 underline">
                         view
                       </a>
                     ))}

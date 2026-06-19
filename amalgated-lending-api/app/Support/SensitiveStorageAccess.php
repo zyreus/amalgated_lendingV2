@@ -35,11 +35,20 @@ final class SensitiveStorageAccess
             return (int) $user->id === (int) $m[1];
         }
 
-        if (preg_match('#^documents/(\d+)/#', $normalizedPath, $m)) {
+        if (preg_match('#^documents/(\d+)/([^/]+)/(.+)$#', $normalizedPath, $m)) {
             return LoanApplication::query()
                 ->whereKey((int) $m[1])
                 ->where('user_id', $user->id)
                 ->exists();
+        }
+
+        if (preg_match('#^documents/(\d+)/([^/]+)$#', $normalizedPath, $m)) {
+            if (DocumentLoanApplication::query()
+                ->whereKey((int) $m[1])
+                ->where('user_id', $user->id)
+                ->exists()) {
+                return true;
+            }
         }
 
         if (preg_match('#^documents/document-applications/(\d+)/#', $normalizedPath, $m)) {

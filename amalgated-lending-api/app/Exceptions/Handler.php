@@ -4,6 +4,7 @@ namespace App\Exceptions;
 
 use App\Support\BorrowerVerificationUrl;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Exceptions\InvalidSignatureException;
 use Psr\Log\LogLevel;
@@ -49,6 +50,35 @@ class Handler extends ExceptionHandler
     {
         $this->reportable(function (Throwable $e) {
             //
+        });
+
+        $this->renderable(function (ThrottleRequestsException $e, $request) {
+            $headers = $e->getHeaders();
+            $seconds = max(1, (int) ($headers['Retry-After'] ?? 60));
+
+            if ($request->is('api/*/admin/login')) {
+                $message = 'Too many failed login attempts. Please wait '.$seconds.' seconds before trying again.';
+            } elseif ($request->is('api/*/borrower/login', 'api/*/auth/login')) {
+                $message = 'Too many failed login attempts. Please wait '.$seconds.' seconds before trying again.';
+            } elseif ($request->is('api/*/borrower/forgot-password', 'api/*/admin/forgot-password', 'api/*/borrower/otp/request', 'api/*/borrower/password/forgot-otp')) {
+                $message = 'Too many password reset requests. Please wait '.$seconds.' seconds before trying again.';
+            } elseif ($request->is('api/*/borrower/otp/verify', 'api/*/borrower/verify-otp')) {
+                $message = 'Too many verification attempts. Please wait '.$seconds.' seconds before trying again.';
+            } elseif ($request->is('api/*/public/chat/*', 'api/*/chatbot/*')) {
+                $message = 'Too many chat requests. Please wait '.$seconds.' seconds before trying again.';
+            } else {
+                $message = 'Too many requests. Please wait '.$seconds.' seconds before trying again.';
+            }
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => $message,
+                    'retry_after' => $seconds,
+                ], 429, $e->getHeaders());
+            }
+
+            return response($message, 429, $e->getHeaders());
         });
 
         $this->renderable(function (InvalidSignatureException $e, $request) {

@@ -1,0 +1,1 @@
+import{j as n}from"./vendor-YyKrDgRZ.js";import{P as r}from"./PublicLoanProductPage-D89kYv9a.js";import{g as s}from"./publicLoanProductConfig-b94U3LzJ.js";import"./index-CWXvqlw8.js";function u(){const o=s("sss-pension-loan");return o?n.jsx(r,{config:o}):null}export{u as default};

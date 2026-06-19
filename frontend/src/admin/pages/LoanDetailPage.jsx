@@ -5,7 +5,7 @@ import { useToast } from '../context/ToastContext.jsx'
 import { useAdminApiAuth } from '../context/useAdminApiAuth.js'
 import { admin } from '../components/AdminUi.jsx'
 import { AdminPageSkeleton } from '../../components/AppSkeletons.jsx'
-import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
+import { getLaravelStorageFileUrl, resolvePublicFileUrl } from '../../utils/lendingLaravelApi.js'
 import ConfirmModal from '../components/ConfirmModal.jsx'
 
 function mergeLoanFromApi(res) {
@@ -77,7 +77,7 @@ function buildApplicantUploads(loan) {
       ? loan.document_reviews
       : {}
 
-  const push = ({ kind = 'file', label, path, originalName, loanDocumentId = null, record = null }) => {
+  const push = ({ kind = 'file', label, path, url = null, originalName, loanDocumentId = null, record = null }) => {
     if (!path || typeof path !== 'string') return
 
     let reviewStatus = 'pending'
@@ -101,6 +101,7 @@ function buildApplicantUploads(loan) {
       kind,
       label,
       path,
+      url,
       originalName: originalName || 'Open file',
       loanDocumentId,
       reviewStatus,
@@ -113,11 +114,22 @@ function buildApplicantUploads(loan) {
       kind: 'face',
       label: 'Face photo (liveness)',
       path: loan.face_photo_path,
+      url: loan.face_photo_url,
       originalName: 'Face capture',
     })
   }
 
-  if (Array.isArray(loan.kyc_documents)) {
+  const kycWithUrls = Array.isArray(loan.kyc_documents_with_urls) ? loan.kyc_documents_with_urls : null
+  if (kycWithUrls?.length) {
+    kycWithUrls.forEach((doc, idx) => {
+      push({
+        label: doc?.label || `KYC document ${idx + 1}`,
+        path: doc?.path,
+        url: doc?.url,
+        originalName: doc?.original_name,
+      })
+    })
+  } else if (Array.isArray(loan.kyc_documents)) {
     loan.kyc_documents.forEach((doc, idx) => {
       push({
         label: doc?.label || `KYC document ${idx + 1}`,
@@ -130,13 +142,16 @@ function buildApplicantUploads(loan) {
   const app = loan.loan_application || null
   if (app) {
     const payloadDocs = app.documents_payload
+    const payloadUrls = app.documents_payload_urls
     if (payloadDocs && typeof payloadDocs === 'object' && !Array.isArray(payloadDocs)) {
       Object.entries(payloadDocs).forEach(([docKey, value]) => {
         const arr = Array.isArray(value) ? value : [value]
+        const urlArr = Array.isArray(payloadUrls?.[docKey]) ? payloadUrls[docKey] : payloadUrls?.[docKey] ? [payloadUrls[docKey]] : []
         arr.forEach((path, idx) => {
           push({
             label: `${String(docKey).replace(/_/g, ' ')}${arr.length > 1 ? ` #${idx + 1}` : ''}`,
             path,
+            url: urlArr[idx] || null,
             originalName: `Open ${docKey}`,
           })
         })
@@ -148,6 +163,7 @@ function buildApplicantUploads(loan) {
       push({
         label: (d?.document_type || 'Document').replace(/_/g, ' '),
         path: d?.file_path,
+        url: d?.file_url,
         originalName: d?.original_name || 'Open',
         loanDocumentId: d?.id ?? null,
         record: d,
@@ -157,16 +173,19 @@ function buildApplicantUploads(loan) {
     push({
       label: 'Applicant signature',
       path: app.applicant_signature_path || app.applicant_signature,
+      url: app.applicant_signature_url,
       originalName: 'Open applicant signature',
     })
     push({
       label: 'Spouse signature',
       path: app.spouse_signature_path || app.spouse_signature,
+      url: app.spouse_signature_url,
       originalName: 'Open spouse signature',
     })
     push({
       label: 'Co-maker signature',
       path: app.comaker_signature_path || app.comaker_signature,
+      url: app.comaker_signature_url,
       originalName: 'Open co-maker signature',
     })
   }
@@ -551,6 +570,7 @@ export default function LoanDetailPage() {
             {applicantUploads.map((doc) => {
               const edit = reviewEdits[doc.key] || { status: doc.reviewStatus, notes: doc.reviewNotes }
               const displayStatus = edit.status || doc.reviewStatus || 'pending'
+              const fileUrl = resolvePublicFileUrl(doc.url || doc.path)
               return (
                 <li key={doc.key} className="list-none">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -565,13 +585,13 @@ export default function LoanDetailPage() {
                       </div>
                       {doc.kind === 'face' ? (
                         <a
-                          href={getLaravelStorageFileUrl(doc.path)}
+                          href={fileUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-block"
                         >
                           <img
-                            src={getLaravelStorageFileUrl(doc.path)}
+                            src={fileUrl}
                             alt="Applicant face"
                             className="max-h-56 rounded-lg border border-gray-200 object-contain dark:border-[#1F2937]"
                             loading="lazy"
@@ -580,7 +600,7 @@ export default function LoanDetailPage() {
                         </a>
                       ) : (
                         <a
-                          href={getLaravelStorageFileUrl(doc.path)}
+                          href={fileUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-sm text-red-600 hover:underline dark:text-red-400"

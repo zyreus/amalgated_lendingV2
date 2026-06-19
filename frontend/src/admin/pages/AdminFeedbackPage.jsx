@@ -673,6 +673,13 @@ export default function AdminFeedbackPage() {
                   <span className="text-gray-400"> · </span>
                   Website flag {selected.website_visible ? 'on' : 'off'}
                 </p>
+                {!selected.public_site_live &&
+                String(selected.publication_status || '').toLowerCase() === 'approved' ? (
+                  <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
+                    Approved but hidden from the homepage — add a <span className="font-semibold">public display name</span>{' '}
+                    below (required for anonymous chatbot feedback), then click Approve again or save the name.
+                  </p>
+                ) : null}
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:items-center">
                 <div className="flex flex-wrap justify-end gap-2 sm:justify-end">
@@ -782,6 +789,49 @@ export default function AdminFeedbackPage() {
                   />
                   <span>Legacy “show on website” flag</span>
                 </label>
+                <div>
+                  <label htmlFor="public-author-label" className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                    Public display name
+                  </label>
+                  <input
+                    id="public-author-label"
+                    key={`pub-label-${selectedId}`}
+                    type="text"
+                    defaultValue={selected.public_author_label || ''}
+                    placeholder="e.g. Maria S. or Verified Customer"
+                    disabled={busy}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim()
+                      const prev = String(selected.public_author_label || '').trim()
+                      if (v === prev) return
+                      onPatchTicket({ public_author_label: v || null })
+                    }}
+                    className="mt-1.5 h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-60"
+                  />
+                  <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+                    Shown on the homepage. Required when the customer has no name or email (typical for chatbot feedback).
+                  </p>
+                </div>
+                <div>
+                  <label htmlFor="loan-type-label" className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                    Loan type label
+                  </label>
+                  <input
+                    id="loan-type-label"
+                    key={`loan-type-${selectedId}`}
+                    type="text"
+                    defaultValue={selected.loan_type || ''}
+                    placeholder="e.g. Personal loan, Salary loan"
+                    disabled={busy}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim()
+                      const prev = String(selected.loan_type || '').trim()
+                      if (v === prev) return
+                      onPatchTicket({ loan_type: v || null })
+                    }}
+                    className="mt-1.5 h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-60"
+                  />
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -790,6 +840,7 @@ export default function AdminFeedbackPage() {
                       onPublicationAction('/approve', {
                         consent_public_display: !!selected.consent_public_display,
                         featured: !!selected.featured,
+                        public_author_label: String(selected.public_author_label || '').trim() || undefined,
                       })
                     }
                     className="h-10 w-full min-w-0 rounded-lg bg-emerald-600 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"

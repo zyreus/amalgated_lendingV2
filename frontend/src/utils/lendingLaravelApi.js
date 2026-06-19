@@ -4,6 +4,7 @@
  */
 
 import axios from 'axios'
+import { trackRequestEnd, trackRequestStart, setUploadProgress, clearUploadProgress } from './globalLoadingBus.js'
 
 const STORAGE_KEY = 'lending_laravel_working_api_base'
 
@@ -152,6 +153,7 @@ export function getLaravelPublicOrigin() {
 
 /**
  * Absolute URL for a file on the `public` disk, e.g. `borrower-receipts/xxx.png`.
+ * Preserves signed `expires` / `signature` query params when the API already returned them.
  */
 export function getLaravelStorageFileUrl(relativePath) {
   if (relativePath == null || relativePath === '') return ''
@@ -159,7 +161,9 @@ export function getLaravelStorageFileUrl(relativePath) {
   if (!s) return ''
   const publicOrigin = getLaravelPublicOrigin()
 
-  const toPublicFilesUrl = (pathOnly) => {
+  const appendQuery = (baseUrl, query) => (query ? `${baseUrl}?${query}` : baseUrl)
+
+  const toPublicFilesUrl = (pathOnly, query = '') => {
     const clean = String(pathOnly || '')
       .replace(/^\/+/, '')
       .replace(/\\/g, '/')
@@ -169,10 +173,10 @@ export function getLaravelStorageFileUrl(relativePath) {
       .filter(Boolean)
       .map((part) => encodeURIComponent(part))
       .join('/')
-    return `${publicOrigin}/api/v1/public-files/${encoded}`
+    return appendQuery(`${publicOrigin}/api/v1/public-files/${encoded}`, query)
   }
 
-  /** API already returned a same-origin public-files path */
+  /** API already returned a same-origin public-files path (often signed) */
   if (s.startsWith('/api/v1/public-files/')) {
     return `${publicOrigin}${s}`
   }
@@ -182,11 +186,11 @@ export function getLaravelStorageFileUrl(relativePath) {
       const u = new URL(s)
       const pub = u.pathname.match(/^\/api\/v1\/public-files\/(.+)$/i)
       if (pub && pub[1]) {
-        return toPublicFilesUrl(decodeURIComponent(pub[1]))
+        return toPublicFilesUrl(decodeURIComponent(pub[1]), u.searchParams.toString())
       }
       const m = u.pathname.match(/^\/storage\/(.+)$/i)
       if (m && m[1]) {
-        return toPublicFilesUrl(m[1])
+        return toPublicFilesUrl(m[1], u.searchParams.toString())
       }
       return s
     } catch {
@@ -194,8 +198,25 @@ export function getLaravelStorageFileUrl(relativePath) {
     }
   }
 
+  /** Relative signed path with query string, e.g. from JSON API */
+  const qIdx = s.indexOf('?')
+  if (qIdx !== -1 && s.slice(0, qIdx).includes('public-files/')) {
+    return `${publicOrigin}/${s.replace(/^\/+/, '')}`
+  }
+
   const clean = s.replace(/^\/+/, '')
   return toPublicFilesUrl(clean)
+}
+
+/** Prefer API-provided signed preview/download URLs; fall back to storage path resolution. */
+export function resolvePublicFileUrl(previewOrPath) {
+  if (previewOrPath == null || previewOrPath === '') return ''
+  const s = String(previewOrPath).trim()
+  if (!s) return ''
+  if (s.includes('/api/v1/public-files/') || s.includes('signature=')) {
+    return getLaravelStorageFileUrl(s)
+  }
+  return getLaravelStorageFileUrl(s)
 }
 
 export function rememberWorkingLaravelBase(base) {
@@ -223,6 +244,12 @@ export async function laravelRequest(path, init = {}) {
   let lastNetworkError = null
   const method = String(init.method || 'GET').toUpperCase()
   const headers = { ...(init.headers || {}) }
+  const skipGlobal = init.skipGlobalLoading === true
+  const uploadTrackId = init.uploadTrackId ? String(init.uploadTrackId) : null
+  const uploadLabel = init.uploadLabel ? String(init.uploadLabel) : 'Uploading...'
+
+  if (!skipGlobal) trackRequestStart()
+
   let data
   if (init.body != null && init.body !== '') {
     if (typeof init.body === 'string') {
@@ -251,6 +278,20 @@ export async function laravelRequest(path, init = {}) {
         validateStatus: () => true,
         signal: init.signal,
         timeout: LARAVEL_REQUEST_TIMEOUT_MS,
+        onUploadProgress: init.onUploadProgress
+          ? (evt) => {
+              if (uploadTrackId && evt.total) {
+                setUploadProgress(uploadTrackId, Math.round((evt.loaded / evt.total) * 100), uploadLabel)
+              }
+              init.onUploadProgress(evt)
+            }
+          : uploadTrackId
+            ? (evt) => {
+                if (evt.total) {
+                  setUploadProgress(uploadTrackId, Math.round((evt.loaded / evt.total) * 100), uploadLabel)
+                }
+              }
+            : undefined,
       })
       const res = {
         ok: response.status >= 200 && response.status < 300,
@@ -269,12 +310,16 @@ export async function laravelRequest(path, init = {}) {
       lastRes = res
       if (shouldRetryStatus(response.status)) continue
       if (res.ok) rememberWorkingLaravelBase(base)
+      if (uploadTrackId) clearUploadProgress(uploadTrackId)
+      if (!skipGlobal) trackRequestEnd()
       return { res, base, lastError: null }
     } catch (e) {
       lastNetworkError = e
       continue
     }
   }
+  if (uploadTrackId) clearUploadProgress(uploadTrackId)
+  if (!skipGlobal) trackRequestEnd()
   return { res: lastRes, base: null, lastError: lastNetworkError }
 }
 

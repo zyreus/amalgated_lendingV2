@@ -9,6 +9,7 @@ const path = require('path')
 const root = path.resolve(__dirname, '..')
 process.env.PM2_HOME = path.join(root, '.pm2-home')
 fs.mkdirSync(process.env.PM2_HOME, { recursive: true })
+fs.mkdirSync(path.join(root, 'logs'), { recursive: true })
 process.env.PM2_DISABLE_MONIT = process.env.PM2_DISABLE_MONIT || 'true'
 
 if (process.platform === 'win32') {

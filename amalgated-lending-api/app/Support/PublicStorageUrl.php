@@ -84,6 +84,35 @@ final class PublicStorageUrl
     }
 
     /**
+     * Mirror a stored-path tree (e.g. loan application `documents` JSON) with signed API URLs.
+     *
+     * @return array<string, mixed>
+     */
+    public static function mapPathTree(mixed $node): array
+    {
+        if (! is_array($node)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($node as $key => $value) {
+            if (is_string($value) && $value !== '') {
+                $out[$key] = self::apiUrl($value);
+            } elseif (is_array($value)) {
+                $urls = [];
+                foreach ($value as $path) {
+                    if (is_string($path) && $path !== '') {
+                        $urls[] = self::apiUrl($path);
+                    }
+                }
+                $out[$key] = $urls;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Path relative to the `public` disk root (`storage/app/public`), safe for `Storage::disk('public')`.
      */
     public static function normalizeStoredPath(?string $stored): ?string

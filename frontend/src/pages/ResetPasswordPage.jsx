@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { LoadingButton, FormLoadingOverlay } from '../components/loading'
 import PasswordInput from '../components/PasswordInput.jsx'
 import { publicLaravelPost } from '../utils/lendingLaravelApi.js'
 
@@ -54,6 +55,7 @@ export default function ResetPasswordPage() {
               from sign in.
             </p>
           ) : (
+            <FormLoadingOverlay submitting={loading} label="Updating...">
             <form onSubmit={onSubmit} className="mt-6 space-y-4">
               <PasswordInput
                 value={password}
@@ -81,14 +83,17 @@ export default function ResetPasswordPage() {
                   {doneMsg}
                 </p>
               ) : null}
-              <button
-                disabled={loading}
+              <LoadingButton
                 type="submit"
-                className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+                loading={loading}
+                loadingKey="update"
+                minWidth="100%"
+                className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold text-white transition hover:bg-red-700"
               >
-                {loading ? 'Updating…' : 'Update password'}
-              </button>
+                Update password
+              </LoadingButton>
             </form>
+            </FormLoadingOverlay>
           )}
 
           <p className="mt-6 flex flex-wrap justify-center gap-x-4 gap-y-2 text-center text-sm text-gray-500 dark:text-gray-400">

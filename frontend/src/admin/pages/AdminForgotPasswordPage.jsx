@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { LoadingButton, FormLoadingOverlay } from '../../components/loading'
 import { publicLaravelPost } from '../../utils/lendingLaravelApi.js'
 
 export default function AdminForgotPasswordPage() {
@@ -32,6 +33,7 @@ export default function AdminForgotPasswordPage() {
           <p className="mt-2 text-sm text-gray-500 transition-colors duration-300 dark:text-gray-400">
             Enter your staff account email. If it matches an admin portal user, we will send reset instructions.
           </p>
+          <FormLoadingOverlay submitting={loading} label="Sending...">
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <input
               type="email"
@@ -52,14 +54,17 @@ export default function AdminForgotPasswordPage() {
                 {message}
               </p>
             ) : null}
-            <button
-              disabled={loading}
+            <LoadingButton
               type="submit"
-              className="w-full rounded-xl bg-[#DC2626] py-3 text-sm font-semibold text-white shadow-md transition hover:bg-red-700 hover:shadow-lg disabled:opacity-50"
+              loading={loading}
+              loadingKey="send"
+              minWidth="100%"
+              className="w-full rounded-xl bg-[#DC2626] py-3 text-sm font-semibold text-white shadow-md transition hover:bg-red-700 hover:shadow-lg"
             >
-              {loading ? 'Sending…' : 'Send reset link'}
-            </button>
+              Send reset link
+            </LoadingButton>
           </form>
+          </FormLoadingOverlay>
           <p className="mt-6 text-center text-sm text-gray-500 transition-colors duration-300 dark:text-gray-400">
             <Link to="/admin/login" className="text-red-600 transition hover:text-red-700 hover:underline dark:text-red-400 dark:hover:text-red-300">
               Back to Admin Sign In

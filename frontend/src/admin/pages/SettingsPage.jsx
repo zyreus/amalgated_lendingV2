@@ -3,6 +3,8 @@ import { api } from '../api/client.js'
 import { useToast } from '../context/ToastContext.jsx'
 import { admin } from '../components/AdminUi.jsx'
 import { AdminPageSkeleton } from '../../components/AppSkeletons.jsx'
+import WebsiteChatNotificationSettings from '../components/WebsiteChatNotificationSettings.jsx'
+import WebsiteChatVisitorLimitSettings from '../components/WebsiteChatVisitorLimitSettings.jsx'
 
 const DEFAULTS = {
   company: {
@@ -363,6 +365,12 @@ export default function SettingsPage() {
         title: 'Notifications',
         icon: 'email',
         subtitle: 'Channel toggles and automatic sending.',
+      },
+      {
+        key: 'website_chat_notifications',
+        title: 'Website Chat Notifications',
+        icon: 'email',
+        subtitle: 'Realtime alerts when visitors message from the website widget.',
       },
       {
         key: 'email_settings',
@@ -764,6 +772,18 @@ export default function SettingsPage() {
                   helper="When enabled, templates are sent automatically without manual approval."
                 />
               </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            id="website_chat_notifications"
+            title="Website Chat Notifications"
+            icon="email"
+            subtitle="Control in-app, sound, and browser alerts for visitor chat messages."
+          >
+            <WebsiteChatNotificationSettings />
+            <div className="mt-6 border-t border-white/10 pt-6">
+              <WebsiteChatVisitorLimitSettings />
             </div>
           </SectionCard>
 

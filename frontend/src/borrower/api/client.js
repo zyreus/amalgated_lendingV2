@@ -28,7 +28,16 @@ export async function borrowerApi(path, options = {}) {
   const token = getBorrowerToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const { res, lastError } = await laravelRequest(rel, { ...options, headers })
+  const { res, lastError } = await laravelRequest(rel, {
+    ...options,
+    headers,
+    ...(isFormData
+      ? {
+          uploadTrackId: options.uploadTrackId || `borrower-upload-${Date.now()}`,
+          uploadLabel: options.uploadLabel || 'Uploading...',
+        }
+      : {}),
+  })
   if (!res) {
     const err = new Error(formatLaravelUnreachableError(lastError))
     err.status = 0

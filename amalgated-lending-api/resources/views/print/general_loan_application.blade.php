@@ -154,6 +154,14 @@
     $selfEmployed = is_array($extForm['self_employed'] ?? null) ? $extForm['self_employed'] : [];
     $productExtra = is_array($extForm['product_extra'] ?? null) ? $extForm['product_extra'] : [];
     $loanCategories = is_array($extForm['loan_categories'] ?? null) ? $extForm['loan_categories'] : [];
+    if (! \App\Support\LoanApplicationCategoryResolver::hasSelection($loanCategories)) {
+        $loanCategories = \App\Support\LoanApplicationCategoryResolver::resolve(
+            $app->loan_type ?? null,
+            is_string($form['loan_product_slug'] ?? null) ? $form['loan_product_slug'] : null,
+            is_string($loanTypeLabel ?? null) ? $loanTypeLabel : null,
+            $loanCategories,
+        );
+    }
     $monthlyIncome = is_array($extForm['monthly_income_rows'] ?? null) ? $extForm['monthly_income_rows'] : [];
     $expenses = is_array($extForm['expense_rows'] ?? null) ? $extForm['expense_rows'] : [];
     $collateralOther = is_array($extForm['collateral_other'] ?? null) ? $extForm['collateral_other'] : [];
@@ -204,11 +212,11 @@
         </div>
         <div class="field">
             <div class="field-label">Age</div>
-            <div class="field-line">{{ $line($applicant['age'] ?? null) }}</div>
+            <div class="field-line">{{ $line($applicant['age'] ?? ($form['age'] ?? null)) }}</div>
         </div>
         <div class="field">
             <div class="field-label">Civil Status</div>
-            <div class="field-line">{{ $line($applicant['civil_status'] ?? null) }}</div>
+            <div class="field-line">{{ $line($applicant['civil_status'] ?? ($form['civil_status'] ?? null)) }}</div>
         </div>
     </div>
 
@@ -290,10 +298,10 @@
             <div class="field-label" style="font-weight:700;">Employed</div>
             <div class="grid-2">
                 <div class="field"><div class="field-label">Employer</div><div class="field-line">{{ $line($employed['employer_name'] ?? ($productExtra['employer_name'] ?? ($form['employer_name'] ?? null))) }}</div></div>
-                <div class="field"><div class="field-label">Position</div><div class="field-line">{{ $line($employed['position'] ?? null) }}</div></div>
-                <div class="field"><div class="field-label">Address</div><div class="field-line">{{ $line($employed['address'] ?? null) }}</div></div>
-                <div class="field"><div class="field-label">Length of Service</div><div class="field-line">{{ $line($employed['length_of_service'] ?? null) }}</div></div>
-                <div class="field"><div class="field-label">Salary / Pension</div><div class="field-line">{{ $line($productExtra['monthly_salary'] ?? ($productExtra['monthly_pension'] ?? ($form['monthly_income'] ?? null))) }}</div></div>
+                <div class="field"><div class="field-label">Position</div><div class="field-line">{{ $line($employed['position'] ?? ($form['position'] ?? null)) }}</div></div>
+                <div class="field"><div class="field-label">Address</div><div class="field-line">{{ $line($employed['address'] ?? ($form['company_address'] ?? null)) }}</div></div>
+                <div class="field"><div class="field-label">Length of Service</div><div class="field-line">{{ $line($employed['length_of_service'] ?? ($form['years_of_service'] ?? null)) }}</div></div>
+                <div class="field"><div class="field-label">Salary / Pension</div><div class="field-line">{{ $line($productExtra['monthly_salary'] ?? ($productExtra['monthly_pension'] ?? ($form['monthly_net_salary'] ?? ($form['monthly_pension'] ?? ($form['monthly_income'] ?? null))))) }}</div></div>
             </div>
         </div>
         <div>

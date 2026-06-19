@@ -5,6 +5,8 @@ import { useToast } from '../context/ToastContext.jsx'
 import { admin } from '../components/AdminUi.jsx'
 import ConfirmModal from '../components/ConfirmModal.jsx'
 import { getAdminNotificationHref, handleNotificationClick } from '../utils/notificationRoutes.js'
+import WebsiteChatNotificationCard from '../components/WebsiteChatNotificationCard.jsx'
+import { isWebsiteChatNotification } from '../utils/websiteChatNotificationEffects.js'
 
 const CATEGORY_LABELS = {
   loan_application_submitted: 'New application',
@@ -14,6 +16,7 @@ const CATEGORY_LABELS = {
   payment_overdue: 'Overdue',
   feedback_submitted: 'Feedback',
   crm_customer_inquiry: 'CRM message',
+  website_chat_message: 'Website chat',
   document_verification: 'Document review',
   account_verification: 'Account',
   security_alert: 'Security',
@@ -54,6 +57,12 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
   useEffect(() => {
     load()
   }, [showToast, category, unreadOnly])
+
+  useEffect(() => {
+    const onChanged = () => load()
+    window.addEventListener('admin-notifications-changed', onChanged)
+    return () => window.removeEventListener('admin-notifications-changed', onChanged)
+  }, [category, unreadOnly])
 
   const rows = data?.data || []
   const selectedCount = selectedIds.length
@@ -248,6 +257,7 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
         {rows.map((n) => {
           const href = getAdminNotificationHref(n)
           const isRead = Boolean(n.is_read || n.read_at)
+          const isWebsiteChat = isWebsiteChatNotification(n)
           const cardTone = isRead
             ? 'border-gray-200 bg-gray-50 text-gray-600 dark:border-white/5 dark:bg-black/30 dark:text-gray-400'
             : 'border-red-300 bg-red-50 text-gray-900 dark:border-red-500/30 dark:bg-red-950/20 dark:text-gray-100'
@@ -257,7 +267,7 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
               {n.body ? <p className={`mt-1 text-sm ${admin.textMuted}`}>{n.body}</p> : null}
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:bg-black/20 dark:text-red-300">
-                  {CATEGORY_LABELS[n.category] || String(n.category || n.type || 'notice').replace(/_/g, ' ')}
+                  {CATEGORY_LABELS[n.category] || CATEGORY_LABELS[n.notification_type] || String(n.category || n.type || 'notice').replace(/_/g, ' ')}
                 </span>
                 <p className={`text-xs ${admin.textMuted}`}>{formatTime(n.created_at)}</p>
               </div>
@@ -275,7 +285,25 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
                     aria-label={`Select notification ${n.title || n.id}`}
                   />
                 </label>
-                {href ? (
+                {isWebsiteChat ? (
+                  <WebsiteChatNotificationCard
+                    notification={n}
+                    isRead={isRead}
+                    onOpen={(event) => handleNotificationClick(n, {
+                      audience: 'admin',
+                      event,
+                      markRead: markOne,
+                      navigate,
+                      onNavigate,
+                    })}
+                    onMarkRead={() => markOne(n.id)}
+                    onMarkUnread={() => markUnread(n.id)}
+                    onDelete={() => {
+                      setConfirmDialog({ type: 'deleteSelected', ids: [Number(n.id)] })
+                      setSelectedIds([Number(n.id)])
+                    }}
+                  />
+                ) : href ? (
                   <button
                     type="button"
                     onClick={(event) => handleNotificationClick(n, {
@@ -304,7 +332,7 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
                     {body}
                   </button>
                 )}
-                {!isRead ? (
+                {!isWebsiteChat && !isRead ? (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -316,7 +344,7 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
                   >
                     Mark read
                   </button>
-                ) : (
+                ) : !isWebsiteChat ? (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -328,7 +356,8 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
                   >
                     Mark unread
                   </button>
-                )}
+                ) : null}
+                {!isWebsiteChat ? (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -341,6 +370,7 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
                 >
                   Delete
                 </button>
+                ) : null}
               </div>
             </li>
           )

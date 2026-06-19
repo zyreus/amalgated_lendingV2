@@ -11,6 +11,8 @@ use App\Models\SupportAssignment;
 use App\Models\SupportChatFeedback;
 use App\Models\SupportConversation;
 use App\Services\NotificationCenter;
+use App\Services\SupportConversationHandoffService;
+use App\Services\VisitorMessageLimitService;
 use App\Support\SupportChatPresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +21,49 @@ use Illuminate\Support\Facades\DB;
 
 class SupportChatSyncController extends Controller
 {
+    /** Authoritative handoff state for chat-server before any AI generation. */
+    public function conversationState(string $sessionId): JsonResponse
+    {
+        $conv = SupportConversation::query()->where('session_id', trim($sessionId))->first();
+
+        if (! $conv) {
+            return response()->json([
+                'ok' => true,
+                'data' => [
+                    'session_id' => trim($sessionId),
+                    'ai_enabled' => true,
+                    'conversation_status' => SupportConversationHandoffService::STATUS_AI_ACTIVE,
+                    'status' => SupportConversationHandoffService::STATUS_AI_ACTIVE,
+                    'mode' => 'ai',
+                    'needs_human' => false,
+                    'assigned_agent_id' => null,
+                    'taken_over_at' => null,
+                    'ai_generation_allowed' => true,
+                    'ai_block_reason' => null,
+                    'consecutive_visitor_messages' => 0,
+                    'visitor_send_locked' => false,
+                    'visitor_message_count' => 0,
+                    'visitor_chat_locked' => false,
+                    'first_agent_response_received' => false,
+                    'first_agent_response_at' => null,
+                    'max_consecutive_visitor_messages' => VisitorMessageLimitService::getMaxBeforeFirstReply(),
+                    'max_visitor_messages_before_first_reply' => VisitorMessageLimitService::getMaxBeforeFirstReply(),
+                ],
+            ]);
+        }
+
+        SupportConversationHandoffService::normalizeAiActiveIfEligible($conv);
+        $conv->refresh();
+
+        return response()->json([
+            'ok' => true,
+            'data' => array_merge(
+                SupportConversationHandoffService::handoffPayload($conv),
+                VisitorMessageLimitService::payload($conv),
+            ),
+        ]);
+    }
+
     /** Trusted ingestion from chat-server (AI / agent / escalation). Visitor rows come from browser → PublicChatController. */
     public function syncMessage(Request $request): JsonResponse
     {
@@ -61,23 +106,48 @@ class SupportChatSyncController extends Controller
             [
                 'visitor_id' => $data['visitor_id'] ?? null,
                 'mode' => 'ai',
-                'status' => 'open',
+                'ai_enabled' => true,
+                'status' => SupportConversationHandoffService::STATUS_AI_ACTIVE,
             ],
         );
+
+        SupportConversationHandoffService::normalizeAiActiveIfEligible($conv);
 
         if (! blank($data['visitor_id'] ?? null) && blank($conv->visitor_id)) {
             $conv->visitor_id = $data['visitor_id'];
             $conv->save();
         }
 
-        $bools = SupportChatPresenter::booleansFromSenderType((string) $data['sender_type']);
+        $senderType = strtolower((string) $data['sender_type']);
+        $conv->refresh();
+
+        if (in_array($senderType, ['customer', 'visitor', 'user'], true)) {
+            if (VisitorMessageLimitService::isLocked($conv)) {
+                return response()->json([
+                    'ok' => true,
+                    'skipped' => true,
+                    'reason' => 'visitor_chat_locked',
+                ]);
+            }
+        }
+
+        if ($senderType === 'ai') {
+            if (! SupportConversationHandoffService::canGenerateAiReply($conv)) {
+                SupportConversationHandoffService::logAiBlocked($conv, 'sync_message');
+
+                return response()->json(['ok' => true, 'skipped' => true, 'reason' => 'human_assisted']);
+            }
+            SupportConversationHandoffService::logDecision($conv, 'ai_sync_accepted', 'AI message accepted into warehouse.');
+        }
+
+        $bools = SupportChatPresenter::booleansFromSenderType($senderType);
 
         $msg = ChatMessage::create([
             'support_conversation_id' => $conv->id,
             'visitor_id' => $data['visitor_id'] ?? null,
             'session_id' => $conv->session_id,
             'message' => $body,
-            'sender_type' => strtolower((string) $data['sender_type']),
+            'sender_type' => $senderType,
             'sender_name' => $data['sender_name'] ?? null,
             'is_from_visitor' => $bools['is_from_visitor'],
             'is_from_admin' => $bools['is_from_admin'],
@@ -93,34 +163,23 @@ class SupportChatSyncController extends Controller
             $conv->last_responder_type = 'ai';
         } elseif ($st === 'admin') {
             $conv->last_responder_type = 'admin';
-            $conv->mode = $conv->mode ?: 'human';
+            SupportConversationHandoffService::applyHumanTakeover($conv);
         } elseif (in_array($st, ['customer', 'visitor', 'user'], true)) {
             $conv->last_responder_type = 'customer';
         }
 
         $this->applyConversationPatch($conv, $data['conversation_patch'] ?? null);
-        $conv->save();
 
         if ($msg->is_from_visitor) {
-            app(NotificationCenter::class)->notifyStaff(
-                NotificationCenter::CATEGORY_CRM_INQUIRY,
-                'support_sync_visitor',
-                'Visitor message (sync) — '.mb_substr($body, 0, 72),
-                mb_substr($body, 0, 500),
-                [
-                    'session_id' => $conv->session_id,
-                    'support_conversation_id' => $conv->id,
-                    'chat_message_id' => $msg->id,
-                ],
-                null,
-                [
-                    'module' => NotificationCenter::MODULE_CRM,
-                    'throttle_key' => 'sync-chat:'.$conv->session_id,
-                    'throttle_max' => 12,
-                    'throttle_decay_seconds' => 3600,
-                ],
-            );
+            VisitorMessageLimitService::recordVisitorMessage($conv);
+            $conv->refresh();
+            app(NotificationCenter::class)->notifyStaffWebsiteChatMessage($conv, $msg, $body);
+        } elseif ($st === 'admin') {
+            VisitorMessageLimitService::recordAdminFirstReply($conv);
+            $conv->refresh();
         }
+
+        $conv->save();
 
         if (! empty($data['ai_log']) && ($msg->sender_type === 'ai')) {
             SupportAiLog::create([
@@ -239,7 +298,17 @@ class SupportChatSyncController extends Controller
         }
 
         if (! empty($patch['mode'])) {
-            $conv->mode = strtolower((string) $patch['mode']);
+            $incoming = strtolower((string) $patch['mode']);
+            $lockedHuman = ! SupportConversationHandoffService::canGenerateAiReply($conv)
+                && ($conv->last_responder_type ?? '') === 'admin'
+                && $incoming === 'ai';
+            if (! $lockedHuman) {
+                if ($incoming === 'ai') {
+                    SupportConversationHandoffService::resumeAi($conv);
+                } else {
+                    SupportConversationHandoffService::applyHumanTakeover($conv);
+                }
+            }
         }
 
         if (! empty($patch['status'])) {
@@ -279,8 +348,7 @@ class SupportChatSyncController extends Controller
 
         if (! empty($patch['escalated'])) {
             $conv->escalated_at = $conv->escalated_at ?? Carbon::now();
-            $conv->needs_human = true;
-            $conv->mode = 'human';
+            SupportConversationHandoffService::applyHumanTakeover($conv);
         }
     }
 }

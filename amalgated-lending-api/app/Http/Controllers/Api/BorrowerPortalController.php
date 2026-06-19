@@ -500,7 +500,7 @@ class BorrowerPortalController extends Controller
         }
 
         $path = trim((string) ($payment->receipt_pdf_path ?: ($payment->invoice_pdf_path ?? '')));
-        if ($path === '' || ! Storage::disk('public')->exists($path)) {
+        if (! PaymentReceiptPdfService::isCurrentTemplatePdf($path)) {
             $generated = $pdfService->ensureOfficialPdf($payment->fresh(['loan']), null);
             $path = $generated ? trim((string) $generated) : '';
         }

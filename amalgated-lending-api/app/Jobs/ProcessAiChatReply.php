@@ -44,6 +44,19 @@ class ProcessAiChatReply implements ShouldQueue
             return;
         }
 
+        $chat->refresh();
+        if (data_get($chat->metadata, 'ai_disabled') === true) {
+            return;
+        }
+
+        if (Message::query()
+            ->where('chat_id', $chat->id)
+            ->where('sender_type', Message::SENDER_AGENT)
+            ->where('id', '>=', $this->triggerMessageId)
+            ->exists()) {
+            return;
+        }
+
         $contextMessages = $chat->messages
             ->sortBy('id')
             ->values()

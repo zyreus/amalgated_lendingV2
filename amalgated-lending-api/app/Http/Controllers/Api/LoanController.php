@@ -21,6 +21,7 @@ use App\Services\LoanAmortizationService;
 use App\Services\LoanCalculator;
 use App\Services\LoanProductRateResolver;
 use App\Services\NotificationCenter;
+use App\Support\PublicStorageUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -170,6 +171,7 @@ class LoanController extends Controller
         if ($loan->loanApplication) {
             $this->augmentLoanApplicationForAdminResponse($loan->loanApplication);
         }
+        $this->augmentLoanStorageUrlsForAdminResponse($loan);
 
         $lastDecisionEmail = EmailLog::query()
             ->where('loan_id', $loan->id)
@@ -1011,6 +1013,7 @@ class LoanController extends Controller
         if ($loan->loanApplication) {
             $this->augmentLoanApplicationForAdminResponse($loan->loanApplication);
         }
+        $this->augmentLoanStorageUrlsForAdminResponse($loan);
 
         if ($loan->borrower && $status !== 'pending') {
             $docKey = ! empty($data['loan_document_id']) ? 'ld:'.(int) $data['loan_document_id'] : 'path:'.md5((string) ($data['storage_path'] ?? ''));
@@ -1043,12 +1046,67 @@ class LoanController extends Controller
     {
         $rawDocs = $app->getRawOriginal('documents');
         $payloadDocs = is_string($rawDocs) ? json_decode($rawDocs, true) : $rawDocs;
-        $app->setAttribute('documents_payload', is_array($payloadDocs) ? $payloadDocs : []);
+        $payloadDocs = is_array($payloadDocs) ? $payloadDocs : [];
+        $app->setAttribute('documents_payload', $payloadDocs);
+        $app->setAttribute('documents_payload_urls', $this->mapDocumentPathsToUrls($payloadDocs));
 
         $records = $app->relationLoaded('documents')
             ? $app->getRelation('documents')
             : $app->documents()->get();
-        $app->setAttribute('documents_records', $records);
+        $app->setAttribute('documents_records', $records->map(function (LoanDocument $doc) {
+            $row = $doc->toArray();
+            $row['file_url'] = PublicStorageUrl::apiUrl($doc->file_path);
+
+            return $row;
+        })->values());
+    }
+
+    /**
+     * @param  array<string, mixed>  $payloadDocs
+     * @return array<string, mixed>
+     */
+    private function mapDocumentPathsToUrls(array $payloadDocs): array
+    {
+        $out = [];
+        foreach ($payloadDocs as $key => $value) {
+            if (is_string($value) && $value !== '') {
+                $out[$key] = PublicStorageUrl::apiUrl($value);
+            } elseif (is_array($value)) {
+                $urls = [];
+                foreach ($value as $path) {
+                    if (is_string($path) && $path !== '') {
+                        $urls[] = PublicStorageUrl::apiUrl($path);
+                    }
+                }
+                $out[$key] = $urls;
+            }
+        }
+
+        return $out;
+    }
+
+    private function augmentLoanStorageUrlsForAdminResponse(Loan $loan): void
+    {
+        $loan->setAttribute('face_photo_url', PublicStorageUrl::apiUrl($loan->face_photo_path));
+
+        $kyc = [];
+        foreach ($loan->kyc_documents ?? [] as $idx => $doc) {
+            if (! is_array($doc)) {
+                continue;
+            }
+            $path = isset($doc['path']) ? (string) $doc['path'] : '';
+            $kyc[] = array_merge($doc, [
+                'url' => $path !== '' ? PublicStorageUrl::apiUrl($path) : null,
+            ]);
+        }
+        $loan->setAttribute('kyc_documents_with_urls', $kyc);
+
+        $app = $loan->loanApplication;
+        if ($app) {
+            $app->setAttribute('applicant_signature_url', PublicStorageUrl::apiUrl($app->applicant_signature));
+            $app->setAttribute('spouse_signature_url', PublicStorageUrl::apiUrl($app->spouse_signature));
+            $app->setAttribute('comaker_signature_url', PublicStorageUrl::apiUrl($app->comaker_signature));
+        }
     }
 
     /**

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import { laravelRequest } from '../utils/lendingLaravelApi.js'
 import { COOKIE_PREFERENCES_EVENT } from './privacy/CookiePreferencesModal.jsx'
+import { COMPANY_PHONES } from '../config/companyContact.js'
 
 const AMALGATED_HOLDINGS_URL = import.meta.env.VITE_AMALGATED_HOLDINGS_URL || 'https://amalgatedholdings.com'
 
@@ -10,8 +11,7 @@ const MAIN_OFFICE_ADDRESS =
   'ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Ave. & Iñigo St., Bajada, Davao City 8000'
 
 const CONTACT = {
-  phone: '+63 919 067 5095',
-  phoneHref: 'tel:+639190675095',
+  phones: COMPANY_PHONES,
   email: 'support@amalgatedlending.com',
   hours: 'Monday – Saturday · 8:30 AM – 5:30 PM (PH)',
 }
@@ -255,9 +255,17 @@ export default function Footer() {
               </p>
               <p>
                 <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-footer-white">Phone</span>
-                <a href={CONTACT.phoneHref} className="transition-colors duration-300 hover:text-footer-primary">
-                  {CONTACT.phone}
-                </a>
+                <span className="flex flex-col gap-1">
+                  {CONTACT.phones.map((phone) => (
+                    <a
+                      key={phone.raw}
+                      href={phone.href}
+                      className="transition-colors duration-300 hover:text-footer-primary"
+                    >
+                      {phone.display}
+                    </a>
+                  ))}
+                </span>
               </p>
               <p>
                 <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-footer-white">Email</span>

@@ -37,6 +37,8 @@ class EmailLog extends Model
 
     public const NOTIFICATION_REGISTRATION = 'registration_welcome';
 
+    public const NOTIFICATION_NEWSLETTER_UPDATE = 'newsletter_update';
+
     protected $fillable = [
         'dedupe_key',
         'loan_id',

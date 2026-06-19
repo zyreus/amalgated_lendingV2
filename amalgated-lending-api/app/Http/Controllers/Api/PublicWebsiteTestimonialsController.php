@@ -143,12 +143,16 @@ class PublicWebsiteTestimonialsController extends Controller
 
             $linkedBorrower = (bool) $t->borrower_id;
             $customerTypeLabel = $linkedBorrower ? 'Borrower' : 'Customer';
+            $loanType = trim((string) ($t->loan_type ?? ''));
+            if ($loanType === '' || $loanType === '/') {
+                $loanType = $customerTypeLabel;
+            }
 
             return [
                 'id' => $t->id,
                 'display_name' => $this->displayName($t->borrower, $t->public_author_label, $t->full_name, $t->email),
                 'customer_type_label' => $customerTypeLabel,
-                'loan_type' => $t->loan_type ?: $customerTypeLabel,
+                'loan_type' => $loanType,
                 'rating' => (int) $t->rating,
                 'message' => $msg,
                 'verified_borrower' => $verified,

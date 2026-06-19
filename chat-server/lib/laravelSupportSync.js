@@ -107,3 +107,30 @@ export function syncOutboundFeedback(payload) {
     consent_public_display: Boolean(consent_public_display),
   })
 }
+
+/**
+ * Reload authoritative AI/handoff flags from Laravel warehouse before generating AI.
+ * Returns null when sync env is missing or fetch fails.
+ */
+export async function fetchLaravelHandoffState(sessionId) {
+  const sid = String(sessionId || '').trim()
+  if (!sid) return null
+  if (!SYNC_URL_ROOT || !SYNC_SECRET) {
+    return null
+  }
+  const url = `${SYNC_URL_ROOT}/internal/support/sync/conversation/${encodeURIComponent(sid)}`
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        'X-Support-Sync-Secret': SYNC_SECRET,
+      },
+    })
+    if (!res.ok) return null
+    const json = await res.json().catch(() => null)
+    return json?.data && typeof json.data === 'object' ? json.data : null
+  } catch {
+    return null
+  }
+}

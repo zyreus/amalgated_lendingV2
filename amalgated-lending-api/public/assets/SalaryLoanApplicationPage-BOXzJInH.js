@@ -1,0 +1,1 @@
+import{j as o}from"./vendor-DjsjSLNV.js";import{P as a}from"./ProductLoanApplicationPage-bNP2klnw.js";import"./AdminUi-BGDWg3Zk.js";import"./index-AXRtuX4n.js";import"./PrivacyConsentCheckbox-L9GbRX-U.js";function m(){return o.jsx(a,{loanType:"salary"})}export{m as default};

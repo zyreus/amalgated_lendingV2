@@ -58,6 +58,7 @@ export async function api(path, options = {}) {
       const err = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg))
       err.status = res.status
       err.body = data
+      if (data.retry_after != null) err.retry_after = Number(data.retry_after)
       throw err
     }
 
@@ -73,7 +74,16 @@ export async function api(path, options = {}) {
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const { res, lastError } = await laravelRequest(rel, { ...options, headers })
+  const { res, lastError } = await laravelRequest(rel, {
+    ...options,
+    headers,
+    ...(isFormData
+      ? {
+          uploadTrackId: options.uploadTrackId || `admin-upload-${Date.now()}`,
+          uploadLabel: options.uploadLabel || 'Uploading...',
+        }
+      : {}),
+  })
   if (!res) {
     const err = new Error(formatLaravelUnreachableError(lastError))
     err.status = 0
@@ -102,6 +112,7 @@ export async function api(path, options = {}) {
     const err = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg))
     err.status = res.status
     err.body = data
+    if (data.retry_after != null) err.retry_after = Number(data.retry_after)
     throw err
   }
 

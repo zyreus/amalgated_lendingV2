@@ -1,10 +1,12 @@
+import { COMPANY_PHONES, COMPANY_PHONE_WHATSAPP } from '../../config/companyContact.js'
+
 const mainOfficeAddress =
   'ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000'
 
 export default function ContactSupportSection() {
   const mapQuery = encodeURIComponent(mainOfficeAddress)
   const messengerLink = 'https://m.me/'
-  const whatsappLink = 'https://wa.me/639190675095'
+  const whatsappLink = `https://wa.me/${COMPANY_PHONE_WHATSAPP}`
 
   return (
     <section id="contact-support" className="app-container landing-section">
@@ -21,7 +23,13 @@ export default function ContactSupportSection() {
             </div>
             <div>
               <dt className="font-semibold text-brand-text">Mobile</dt>
-              <dd className="mt-1">09190675095</dd>
+              <dd className="mt-1 flex flex-col gap-1">
+                {COMPANY_PHONES.map((phone) => (
+                  <a key={phone.raw} href={phone.href} className="hover:text-brand-primary">
+                    {phone.raw}
+                  </a>
+                ))}
+              </dd>
             </div>
             <div>
               <dt className="font-semibold text-brand-text">Email</dt>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Services\PaymentReceiptPdfService;
 use App\Services\PaymentReceiptStatusManager;
 use App\Support\PublicStorageUrl;
 use Illuminate\Http\Request;
@@ -17,6 +18,13 @@ class PaymentListResource extends JsonResource
 
         $invoicePath = $this->receipt_pdf_path ?: ($this->invoice_pdf_path ?? null);
         $statusLower = strtolower((string) $this->status);
+        if (
+            $statusLower === 'paid'
+            && trim((string) ($this->official_receipt_number ?? '')) !== ''
+            && ! PaymentReceiptPdfService::isCurrentTemplatePdf($invoicePath)
+        ) {
+            $invoicePath = app(PaymentReceiptPdfService::class)->ensureOfficialPdf($this->resource, null);
+        }
         $processedByName = $this->processed_by_name
             ?: $this->encoder_name
             ?: $this->processedByUser?->name

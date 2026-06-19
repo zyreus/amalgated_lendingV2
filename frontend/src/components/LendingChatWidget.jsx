@@ -4,6 +4,8 @@ import { adminSocketUrls, publicChatFetch } from '../utils/adminChatApi.js'
 import { laravelRequest, publicLaravelPost } from '../utils/lendingLaravelApi.js'
 import VisitorChatStatusDot from './lending-chat/VisitorChatStatusDot.jsx'
 import VisitorConnectionWaitBanner from './lending-chat/VisitorConnectionWaitBanner.jsx'
+import VisitorHumanAssistedBanner from './lending-chat/VisitorHumanAssistedBanner.jsx'
+import VisitorSendLockedBanner from './lending-chat/VisitorSendLockedBanner.jsx'
 import VisitorStreamTypingIndicator from './lending-chat/VisitorStreamTypingIndicator.jsx'
 
 const QUICK_OPTIONS = [
@@ -106,7 +108,23 @@ function normalizeChatMessage(message) {
   }
 }
 
+function preferMessageRow(existing, incoming) {
+  const score = (m) => {
+    const id = String(m?.id ?? '')
+    if (/^\d+$/.test(id)) return 100
+    if (m?.dedupe_key || m?.dedupeKey) return 60
+    if (id.startsWith('laravel-')) return 40
+    if (id.startsWith('stream-')) return 15
+    if (id.startsWith('tmp-') || id.startsWith('t-')) return 10
+    return 25
+  }
+  return score(incoming) > score(existing) ? incoming : existing
+}
+
 function messageStableKey(message) {
+  const dedupe = message?.dedupe_key || message?.dedupeKey
+  if (dedupe) return `dedupe:${dedupe}`
+
   const idStr = message?.id != null && message.id !== '' ? String(message.id) : ''
   const volatile =
     idStr.startsWith('tmp-') ||
@@ -114,16 +132,36 @@ function messageStableKey(message) {
     idStr.startsWith('t-') ||
     idStr.startsWith('laravel-')
   if (idStr && !volatile && /^\d+$/.test(idStr)) return `id:${idStr}`
+
   const sid = message?.conversation_id || message?.session_id || ''
-  const body = String(message?.content || message?.message || '').slice(0, 240)
-  return `fp:${sid}|${String(message?.sender || '')}|${body}|${String(message?.created_at || message?.time || '')}`
+  const sender = String(message?.sender || '')
+  const body = String(message?.content || message?.message || '').trim().toLowerCase()
+
+  // Collapse optimistic + socket echo + Laravel poll for the same visitor send.
+  if (sender === 'user' && body) {
+    const ts = new Date(message?.created_at || message?.time || 0).getTime()
+    const bucket = Number.isFinite(ts) && ts > 0 ? Math.floor(ts / 30000) : 'na'
+    return `userfp:${sid}|${body}|${bucket}`
+  }
+
+  // Collapse stream bubble + warehouse poll for the same AI reply.
+  if ((sender === 'ai' || sender === 'assistant') && body) {
+    const ts = new Date(message?.created_at || message?.time || 0).getTime()
+    const bucket = Number.isFinite(ts) && ts > 0 ? Math.floor(ts / 120000) : 'na'
+    return `aifp:${sid}|${body.slice(0, 400)}|${bucket}`
+  }
+
+  const bodySlice = body.slice(0, 240)
+  return `fp:${sid}|${sender}|${bodySlice}|${String(message?.created_at || message?.time || '')}`
 }
 
 function mergeMessages(prev, incomingRows) {
   const all = [...prev.map((m) => normalizeChatMessage(m)), ...incomingRows.map((m) => normalizeChatMessage(m))]
   const byKey = new Map()
   all.forEach((m) => {
-    byKey.set(messageStableKey(m), m)
+    const key = messageStableKey(m)
+    const existing = byKey.get(key)
+    byKey.set(key, existing ? preferMessageRow(existing, m) : m)
   })
   return Array.from(byKey.values()).sort((a, b) => {
     const ta = new Date(a.created_at || a.time || 0).getTime()
@@ -166,27 +204,46 @@ export default function LendingChatWidget() {
   /** True after user send until first streamed token or non-stream AI message. */
   const [streamPending, setStreamPending] = useState(false)
   const [conversationMeta, setConversationMeta] = useState(null)
+  const [humanAssisted, setHumanAssisted] = useState(false)
+  const [visitorSendLocked, setVisitorSendLocked] = useState(false)
+  const [visitorLockMessage, setVisitorLockMessage] = useState('')
+
+  const applyVisitorLimitFromMeta = useCallback((meta) => {
+    if (!meta || typeof meta !== 'object') return
+    const firstReplyReceived = !!meta.first_agent_response_received
+    const locked = !firstReplyReceived && !!(meta.visitor_chat_locked ?? meta.visitor_send_locked)
+    setVisitorSendLocked(locked)
+    if (meta.visitor_lock_message) {
+      setVisitorLockMessage(String(meta.visitor_lock_message))
+    } else if (!locked) {
+      setVisitorLockMessage('')
+    }
+    setConversationMeta((prev) => (prev ? { ...prev, ...meta, first_agent_response_received: firstReplyReceived } : meta))
+  }, [])
 
   const socketRef = useRef(null)
   const convoId = useRef(getConvoId())
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
   const openRef = useRef(open)
+  const humanAssistedRef = useRef(false)
   const streamMessageByIdRef = useRef(new Map())
   const lastPersistedMessageIdRef = useRef(0)
   const recentUserSendsRef = useRef([])
+  const sendInFlightRef = useRef(false)
 
   const shouldIgnoreUserEcho = useCallback((msg) => {
     if (!msg || msg.sender !== 'user') return false
     const content = String(msg.content || '').trim()
-    if (!content) return false
+    const dedupe = msg?.dedupe_key || msg?.dedupeKey
+    if (!content && !dedupe) return false
     const now = Date.now()
-    const windowMs = 2500
+    const windowMs = 8000
     const recent = Array.isArray(recentUserSendsRef.current) ? recentUserSendsRef.current : []
-    // Keep only a small window of recent sends.
     const next = recent.filter((r) => r && now - (r.t || 0) <= windowMs)
     recentUserSendsRef.current = next
-    return next.some((r) => r && r.content === content)
+    if (dedupe && next.some((r) => r && r.dedupe === dedupe)) return true
+    return content ? next.some((r) => r && r.content === content) : false
   }, [])
 
   const sourcePage = useMemo(
@@ -203,11 +260,30 @@ export default function LendingChatWidget() {
       })
       if (!res?.ok) return
       const payload = await res.json().catch(() => ({}))
-      setConversationMeta(payload?.data || null)
+      const meta = payload?.data || null
+      setConversationMeta(meta)
+      applyVisitorLimitFromMeta(meta)
+      if (
+        meta?.ai_enabled === false ||
+        meta?.conversation_status === 'human_assisted' ||
+        meta?.status === 'human_assisted' ||
+        meta?.mode === 'human' ||
+        meta?.needs_human ||
+        meta?.assigned_agent_id
+      ) {
+        setHumanAssisted(true)
+      } else if (
+        meta?.ai_enabled === true ||
+        meta?.conversation_status === 'ai_active' ||
+        meta?.status === 'ai_active' ||
+        meta?.mode === 'ai'
+      ) {
+        setHumanAssisted(false)
+      }
     } catch {
       /* ignore */
     }
-  }, [])
+  }, [applyVisitorLimitFromMeta])
 
   const loadPersistedMessages = useCallback(async (sessionId, options = {}) => {
     const sid = String(sessionId || '').trim()
@@ -234,7 +310,12 @@ export default function LendingChatWidget() {
       // Do not paint CRM/history into the transcript until the visitor opens the widget —
       // avoids showing prior AI replies as if the bot spoke before they started chatting.
       if (!openRef.current) return
-      setMessages((prev) => mergeMessages(prev, rows))
+      const isHuman = humanAssistedRef.current
+      const filtered = isHuman
+        ? rows.filter((row) => String(row?.sender || row?.sender_type || '').toLowerCase() !== 'ai')
+        : rows
+      if (!filtered.length) return
+      setMessages((prev) => mergeMessages(prev, filtered))
     } catch {
       /* ignore */
     }
@@ -264,6 +345,9 @@ export default function LendingChatWidget() {
     setAgentForm({ name: '', email: '', concern: '' })
     setStreamPending(false)
     setConversationMeta(null)
+    setHumanAssisted(false)
+    setVisitorSendLocked(false)
+    setVisitorLockMessage('')
     socketRef.current?.emit('visitor:join', {
       conversationId: next,
       source_page: sourcePage,
@@ -272,6 +356,15 @@ export default function LendingChatWidget() {
     loadPersistedMessages(next, { afterId: 0 })
     loadConversationMeta(next)
   }, [sourcePage, lang, loadPersistedMessages, loadConversationMeta])
+
+  useEffect(() => {
+    humanAssistedRef.current =
+      humanAssisted ||
+      conversationMeta?.ai_enabled === false ||
+      conversationMeta?.mode === 'human' ||
+      conversationMeta?.status === 'human_assisted' ||
+      !!conversationMeta?.needs_human
+  }, [humanAssisted, conversationMeta])
 
   useEffect(() => {
     if (!open) return undefined
@@ -295,22 +388,35 @@ export default function LendingChatWidget() {
 
       socket.on('chat:message', (msg) => {
         if (shouldIgnoreUserEcho(msg)) return
+        if (humanAssistedRef.current && msg?.sender === 'ai') return
         if (openRef.current) {
           setMessages((prev) => mergeMessages(prev, [msg]))
         }
         const fromAssistant = msg?.sender === 'ai' || msg?.sender === 'admin' || msg?.sender === 'system'
         if (fromAssistant) {
           setStreamPending(false)
+          if (msg?.sender === 'admin') {
+            setVisitorSendLocked(false)
+            setVisitorLockMessage('')
+            applyVisitorLimitFromMeta({
+              visitor_chat_locked: false,
+              visitor_send_locked: false,
+              first_agent_response_received: true,
+              visitor_message_count: 0,
+            })
+          }
         }
         setTyping(false)
         if (!openRef.current && msg.sender !== 'user') setUnread((n) => n + 1)
       })
 
-      socket.on('chat:typing', () => {
+      socket.on('chat:typing', ({ sender } = {}) => {
+        if (humanAssistedRef.current && sender === 'ai') return
         if (openRef.current) setTyping(true)
       })
       socket.on('chat:typingStop', () => setTyping(false))
       socket.on('chat:streamStart', (event) => {
+        if (humanAssistedRef.current) return
         if (!openRef.current) return
         const streamId = event?.stream_id
         if (!streamId) return
@@ -328,6 +434,7 @@ export default function LendingChatWidget() {
         )
       })
       socket.on('chat:streamDelta', (event) => {
+        if (humanAssistedRef.current) return
         if (!openRef.current) return
         const streamId = event?.stream_id
         const delta = String(event?.delta || '')
@@ -341,6 +448,18 @@ export default function LendingChatWidget() {
         )
       })
       socket.on('chat:streamEnd', (event) => {
+        if (humanAssistedRef.current || event?.cancelled) {
+          setStreamPending(false)
+          setTyping(false)
+          if (event?.stream_id) {
+            const messageId = streamMessageByIdRef.current.get(event.stream_id)
+            streamMessageByIdRef.current.delete(event.stream_id)
+            if (messageId) {
+              setMessages((prev) => prev.filter((m) => m.id !== messageId))
+            }
+          }
+          return
+        }
         const streamId = event?.stream_id
         if (!streamId) return
         const messageId = streamMessageByIdRef.current.get(streamId)
@@ -350,18 +469,17 @@ export default function LendingChatWidget() {
         setStreamPending(false)
         setTyping(false)
         if (!openRef.current) return
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId
-              ? normalizeChatMessage({
-                  ...m,
-                  sender: 'ai',
-                  content: finalContent || m.content || '',
-                  created_at: event?.created_at || m.created_at || new Date().toISOString(),
-                })
-              : m,
-          ),
-        )
+        const finalized = normalizeChatMessage({
+          id: messageId,
+          sender: 'ai',
+          content: finalContent,
+          created_at: event?.created_at || new Date().toISOString(),
+          dedupe_key: event?.dedupe_key || event?.dedupeKey || null,
+        })
+        setMessages((prev) => {
+          const withoutStream = prev.filter((m) => m.id !== messageId)
+          return mergeMessages(withoutStream, [finalized])
+        })
       })
       socket.on('chat:requestLeadDetails', ({ inquiry_message }) => {
         setLeadCapture({ inquiry_message: inquiry_message || '' })
@@ -373,12 +491,68 @@ export default function LendingChatWidget() {
       })
       socket.on('disconnect', () => setSocketConnected(false))
       socket.on('chat:expectNoAiStream', () => {
+        setHumanAssisted(true)
+        setStreamPending(false)
+        setTyping(false)
+      })
+      socket.on('conversation:modeChanged', ({ mode, human_assisted: handoffFlag, ai_enabled: aiEnabled, status, conversation_status: convStatus }) => {
+        const resolvedStatus = String(convStatus || status || '').toLowerCase()
+        const isHuman =
+          mode === 'human' ||
+          handoffFlag === true ||
+          aiEnabled === false ||
+          resolvedStatus === 'human_assisted'
+        setHumanAssisted(isHuman)
+        setConversationMeta((prev) =>
+          prev
+            ? {
+                ...prev,
+                mode: isHuman ? 'human' : 'ai',
+                conversation_status: isHuman ? 'human_assisted' : 'ai_active',
+                status: isHuman ? 'human_assisted' : 'ai_active',
+                ai_enabled: !isHuman,
+                needs_human: isHuman,
+                assigned_agent_id: isHuman ? prev.assigned_agent_id : null,
+              }
+            : prev,
+        )
+        if (isHuman) {
+          setStreamPending(false)
+          setTyping(false)
+          streamMessageByIdRef.current.clear()
+          setMessages((prev) => prev.filter((m) => !String(m?.id || '').startsWith('stream-')))
+        }
+      })
+      socket.on('chat:aiHandoff', () => {
+        setHumanAssisted(true)
         setStreamPending(false)
         setTyping(false)
       })
       socket.on('chat:error', () => {
         setStreamPending(false)
         setTyping(false)
+      })
+      socket.on('conversation:visitorLocked', (payload) => {
+        setVisitorSendLocked(true)
+        if (payload?.message) setVisitorLockMessage(String(payload.message))
+        applyVisitorLimitFromMeta({
+          visitor_send_locked: true,
+          visitor_lock_message: payload?.message,
+          consecutive_visitor_messages: payload?.consecutive_visitor_messages,
+        })
+      })
+      socket.on('conversation:visitorUnlocked', (payload) => {
+        setVisitorSendLocked(false)
+        setVisitorLockMessage('')
+        applyVisitorLimitFromMeta({
+          visitor_chat_locked: false,
+          visitor_send_locked: false,
+          visitor_message_count: 0,
+          consecutive_visitor_messages: 0,
+          first_agent_response_received: payload?.first_agent_response_received !== false,
+          first_agent_response_at: payload?.first_agent_response_at,
+          visitor_lock_message: null,
+        })
       })
     }
 
@@ -412,7 +586,7 @@ export default function LendingChatWidget() {
       currentSocket?.removeAllListeners()
       currentSocket?.disconnect()
     }
-  }, [lang, sourcePage])
+  }, [lang, sourcePage, applyVisitorLimitFromMeta])
 
   useEffect(() => {
     openRef.current = open
@@ -478,7 +652,8 @@ export default function LendingChatWidget() {
   const sendMessage = useCallback(
     async (textInput = input) => {
       const text = String(textInput || '').trim()
-      if (!text) return
+      if (!text || sendInFlightRef.current || visitorSendLocked) return
+      sendInFlightRef.current = true
       const outboundDedupeKey =
         typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
           ? crypto.randomUUID()
@@ -488,17 +663,21 @@ export default function LendingChatWidget() {
         id: tempId,
         sender: 'user',
         content: text,
+        dedupe_key: outboundDedupeKey,
       })
-      setMessages((prev) => [...prev, optimistic])
+      setMessages((prev) => mergeMessages(prev, [optimistic]))
       try {
         const now = Date.now()
         const recent = Array.isArray(recentUserSendsRef.current) ? recentUserSendsRef.current : []
-        recentUserSendsRef.current = [...recent.slice(-10), { content: text, t: now }]
+        recentUserSendsRef.current = [
+          ...recent.slice(-10),
+          { content: text, t: now, dedupe: outboundDedupeKey },
+        ]
       } catch {
         /* ignore */
       }
       const socketOk = !!socketRef.current?.connected
-      setStreamPending(socketOk)
+      setStreamPending(socketOk && !humanAssistedRef.current)
 
       setInput('')
       /** Same dedupe UUID as Socket.IO payload so Laravel upserts stay aligned with chat-server warehouse sync. */
@@ -535,18 +714,30 @@ export default function LendingChatWidget() {
         void (async () => {
           try {
             const data = await publicLaravelPost('/public/chat/send', warehouseSendBody())
+            if (data?.visitor_limit) {
+              applyVisitorLimitFromMeta(data.visitor_limit)
+            }
             if (data?.message) {
-              const persisted = normalizeChatMessage(data.message)
+              const persisted = normalizeChatMessage({
+                ...data.message,
+                dedupe_key: data.message?.dedupe_key || outboundDedupeKey,
+              })
               const persistedId = Number(persisted?.id)
               if (Number.isFinite(persistedId) && persistedId > lastPersistedMessageIdRef.current) {
                 lastPersistedMessageIdRef.current = persistedId
               }
-              setMessages((prev) => prev.map((m) => (m.id === tempId ? persisted : m)))
+              setMessages((prev) => mergeMessages(prev, [persisted]))
             }
-          } catch {
-            /* Non-fatal: realtime path still works; staff may lack warehouse row until sync is configured */
+          } catch (err) {
+            if (err?.status === 429 && err?.body?.locked) {
+              applyVisitorLimitFromMeta(err.body.data || err.body.visitor_limit || { visitor_send_locked: true })
+              if (err.body?.message) setVisitorLockMessage(String(err.body.message))
+              setMessages((prev) => prev.filter((m) => m.id !== tempId))
+            }
+          } finally {
+            await loadConversationMeta(convoId.current)
+            sendInFlightRef.current = false
           }
-          await loadConversationMeta(convoId.current)
         })()
         return
       }
@@ -555,20 +746,31 @@ export default function LendingChatWidget() {
       setStreamPending(false)
       try {
         const data = await publicLaravelPost('/public/chat/send', warehouseSendBody())
+        if (data?.visitor_limit) {
+          applyVisitorLimitFromMeta(data.visitor_limit)
+        }
         if (data?.message) {
-          const persisted = normalizeChatMessage(data.message)
+          const persisted = normalizeChatMessage({
+            ...data.message,
+            dedupe_key: data.message?.dedupe_key || outboundDedupeKey,
+          })
           const persistedId = Number(persisted?.id)
           if (Number.isFinite(persistedId) && persistedId > lastPersistedMessageIdRef.current) {
             lastPersistedMessageIdRef.current = persistedId
           }
-          setMessages((prev) => prev.map((m) => (m.id === tempId ? persisted : m)))
+          setMessages((prev) => mergeMessages(prev, [persisted]))
         }
-      } catch {
+      } catch (err) {
+        if (err?.status === 429 && err?.body?.locked) {
+          applyVisitorLimitFromMeta(err.body.data || err.body.visitor_limit || { visitor_send_locked: true })
+          if (err.body?.message) setVisitorLockMessage(String(err.body.message))
+        }
         setMessages((prev) => prev.filter((m) => m.id !== tempId))
       }
       await loadConversationMeta(convoId.current)
+      sendInFlightRef.current = false
     },
-    [input, lang, sourcePage, loadConversationMeta],
+    [input, lang, sourcePage, loadConversationMeta, visitorSendLocked, applyVisitorLimitFromMeta],
   )
 
   const handleQuickOption = useCallback(
@@ -841,9 +1043,9 @@ export default function LendingChatWidget() {
               <p className="text-xs leading-snug text-white/70">
                 {!socketConnected
                   ? 'Offline delivery — connects to staff inbox (enable chat server for AI streaming).'
-                  : conversationMeta?.mode === 'human' || conversationMeta?.needs_human
-                    ? 'Human support queue • AI standby off'
-                    : 'AI Assistant • escalate to Human anytime'}
+                  : humanAssisted || conversationMeta?.mode === 'human' || conversationMeta?.needs_human
+                    ? '👨 Human Assisted — a support agent is replying'
+                    : '🤖 AI Active — escalate to human anytime'}
               </p>
             </div>
             <select
@@ -861,6 +1063,12 @@ export default function LendingChatWidget() {
           </div>
 
           <VisitorConnectionWaitBanner visible={!socketConnected} />
+          <VisitorHumanAssistedBanner
+            visible={
+              humanAssisted || conversationMeta?.mode === 'human' || !!conversationMeta?.needs_human
+            }
+          />
+          <VisitorSendLockedBanner visible={visitorSendLocked} message={visitorLockMessage} />
 
           <div className="chat-scrollbar flex-1 space-y-3 overflow-y-auto px-4 py-4">
             {messages.length === 0 && (
@@ -1109,20 +1317,26 @@ export default function LendingChatWidget() {
                 ref={inputRef}
                 rows={1}
                 value={input}
+                disabled={visitorSendLocked}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
+                  if (visitorSendLocked) return
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
                     sendMessage()
                   }
                 }}
-                placeholder="Type your message..."
+                placeholder={
+                  visitorSendLocked
+                    ? 'Waiting for Support Agent response...'
+                    : 'Type your message...'
+                }
                 className="max-h-24 flex-1 resize-none rounded-xl border border-black/10 bg-[#F8F8F8] px-4 py-2.5 text-sm text-brand-text outline-none transition placeholder:text-black/50 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 disabled:cursor-not-allowed disabled:border-amber-200/80 disabled:bg-black/5 disabled:text-black/40"
               />
               <button
                 type="button"
                 onClick={() => sendMessage()}
-                disabled={!input.trim()}
+                disabled={!input.trim() || visitorSendLocked}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-primary text-white transition hover:bg-brand-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

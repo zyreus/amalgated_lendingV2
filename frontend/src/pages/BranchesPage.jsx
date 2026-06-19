@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
@@ -8,6 +8,7 @@ import luzonBranchImage from '../assets/luzon.png'
 import visminBranchImage from '../assets/vismin.jpg'
 import mangagoyBranchImage from '../assets/mangagoy branch.jpg'
 import kidapawanBranchImage from '../assets/kidapawan.jpg'
+import lagaoBranchImage from '../assets/lagao-branch.jpg'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -31,7 +32,7 @@ const mainOffices = [
   },
 ]
 
-/** Branch network photos: Kidapawan and Mangagoy use branch storefronts; Lagao uses VisMin regional photo. */
+/** Branch network photos: each location uses its own storefront image. */
 const branches = [
   {
     name: 'Amalgated Lending Inc. - Kidapawan branch',
@@ -45,16 +46,91 @@ const branches = [
   },
   {
     name: 'Amalgated Lending Inc. - Lagao Branch',
-    image: visminBranchImage,
+    image: lagaoBranchImage,
     detail: 'Aradaza st. General Santos City',
   },
 ]
 
 const serviceAreas = ['Mindanao', 'Visayas', 'Luzon', 'NCR']
 
+function BranchImage({ src, alt, title, onPreview }) {
+  return (
+    <button
+      type="button"
+      className="group relative block aspect-[3/2] w-full overflow-hidden bg-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2"
+      aria-label={`View larger photo of ${title}`}
+      onClick={() => onPreview({ src, alt, title })}
+    >
+      <img
+        src={src}
+        alt={alt}
+        className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+        loading="lazy"
+        decoding="async"
+        onError={(e) => {
+          e.target.onerror = null
+          e.target.src = getPlaceholderImage(title)
+        }}
+      />
+      <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/20">
+        <span className="rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-black opacity-0 shadow-sm transition group-hover:opacity-100">
+          View photo
+        </span>
+      </span>
+    </button>
+  )
+}
+
+function BranchImageLightbox({ preview, onClose }) {
+  useEffect(() => {
+    if (!preview) return
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [preview, onClose])
+
+  if (!preview) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={preview.title}
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-black/10 px-4 py-3 sm:px-5">
+          <p className="text-sm font-semibold text-black sm:text-base">{preview.title}</p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-black/70 transition hover:bg-black/5"
+          >
+            Close
+          </button>
+        </div>
+        <div className="bg-black/5 p-2 sm:p-4">
+          <img
+            src={preview.src}
+            alt={preview.alt}
+            className="mx-auto max-h-[75vh] w-full rounded-xl object-contain"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function BranchesPage() {
   const officesRef = useRef(null)
   const branchesRef = useRef(null)
+  const [imagePreview, setImagePreview] = useState(null)
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -97,9 +173,12 @@ export default function BranchesPage() {
           <div ref={officesRef} className="mt-4 grid gap-6 sm:grid-cols-2">
             {mainOffices.map((office) => (
               <article key={office.name} className="branch-card overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm transition hover:shadow-md">
-                <div className="aspect-[3/2] w-full overflow-hidden bg-black/5">
-                  <img src={office.image} alt={office.name} className="h-full w-full object-cover" loading="lazy" decoding="async" onError={(e) => { e.target.onerror = null; e.target.src = getPlaceholderImage(office.name) }} />
-                </div>
+                <BranchImage
+                  src={office.image}
+                  alt={office.name}
+                  title={office.name}
+                  onPreview={setImagePreview}
+                />
                 <div className="p-5 sm:p-6">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600">{office.name}</p>
                   <p className="mt-2 text-sm font-medium text-black">{office.address}</p>
@@ -119,19 +198,12 @@ export default function BranchesPage() {
                 key={branch.name}
                 className="branch-card overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm transition hover:shadow-md"
               >
-                <div className="aspect-[3/2] w-full overflow-hidden bg-black/5">
-                  <img
-                    src={branch.image}
-                    alt={`${branch.name} branch`}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                    decoding="async"
-                    onError={(e) => {
-                      e.target.onerror = null
-                      e.target.src = getPlaceholderImage(branch.name)
-                    }}
-                  />
-                </div>
+                <BranchImage
+                  src={branch.image}
+                  alt={branch.name}
+                  title={branch.name}
+                  onPreview={setImagePreview}
+                />
                 <div className="p-5">
                   <h3 className="font-semibold text-black">{branch.name}</h3>
                   <p className="mt-2 text-sm text-black/70">
@@ -160,6 +232,7 @@ export default function BranchesPage() {
           <Link to="/" className="text-sm font-medium text-red-600 hover:underline">← Back to home</Link>
         </div>
       </main>
+      <BranchImageLightbox preview={imagePreview} onClose={() => setImagePreview(null)} />
       <Footer />
     </div>
   )

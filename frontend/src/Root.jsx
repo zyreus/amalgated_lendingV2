@@ -24,6 +24,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage.jsx'
 import CookieBanner from './components/privacy/CookieBanner.jsx'
 import CookiePreferencesModal, { COOKIE_PREFERENCES_EVENT } from './components/privacy/CookiePreferencesModal.jsx'
 import { LogoutConfirmProvider } from './context/LogoutConfirmProvider.jsx'
+import { LoadingProvider } from './context/LoadingProvider.jsx'
 
 const ContactPage = lazy(() => import('./pages/ContactPage.jsx'))
 const LoanProductsPage = lazy(() => import('./pages/LoanProductsPage.jsx'))
@@ -182,6 +183,7 @@ export default function Root() {
           <BorrowerAuthProvider>
             <AdminApiAuthProvider>
               <LogoutConfirmProvider>
+              <LoadingProvider>
               <ToastProvider>
                 <Suspense fallback={<RouteLoadingFallback />}>
                   <Routes>
@@ -293,6 +295,7 @@ export default function Root() {
                 <LendingChatWidgetGate />
                 <CookieConsentGate cookieModalOpen={cookieModalOpen} setCookieModalOpen={setCookieModalOpen} />
               </ToastProvider>
+              </LoadingProvider>
               </LogoutConfirmProvider>
             </AdminApiAuthProvider>
           </BorrowerAuthProvider>

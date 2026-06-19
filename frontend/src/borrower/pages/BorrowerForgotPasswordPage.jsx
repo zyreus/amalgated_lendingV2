@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Mail, Smartphone } from 'lucide-react'
+import { LoadingButton, FormLoadingOverlay } from '../../components/loading'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 
 export default function BorrowerForgotPasswordPage() {
@@ -48,6 +49,7 @@ export default function BorrowerForgotPasswordPage() {
           <p className="mt-2 text-sm text-gray-500 transition-colors duration-300 dark:text-gray-400">
             Enter your registered email address or mobile number. We will send a one-time password to continue reset.
           </p>
+          <FormLoadingOverlay submitting={loading} label="Sending...">
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <div>
               <label htmlFor="reset_identifier" className="text-sm font-medium text-gray-700 dark:text-gray-200">
@@ -75,14 +77,17 @@ export default function BorrowerForgotPasswordPage() {
                 {message}
               </p>
             ) : null}
-            <button
-              disabled={loading}
+            <LoadingButton
               type="submit"
-              className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white transition hover:bg-brand-primary-hover disabled:opacity-60"
+              loading={loading}
+              loadingKey="send"
+              minWidth="100%"
+              className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white transition hover:bg-brand-primary-hover"
             >
-              {loading ? 'Sending...' : 'Send reset OTP'}
-            </button>
+              Send reset OTP
+            </LoadingButton>
           </form>
+          </FormLoadingOverlay>
           <p className="mt-5 text-center text-sm text-gray-500 transition-colors duration-300 dark:text-gray-400">
             <Link to="/borrower/login" className="text-red-600 transition hover:text-red-700 hover:underline dark:text-red-400 dark:hover:text-red-300">
               Back to sign in

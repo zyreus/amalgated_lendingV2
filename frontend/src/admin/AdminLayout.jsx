@@ -8,6 +8,16 @@ import { useAdminApiAuth } from './context/useAdminApiAuth.js'
 import { useLogoutConfirm } from '../context/useLogoutConfirm.js'
 import { admin } from './components/AdminUi.jsx'
 import AdminHeaderClock from './components/AdminHeaderClock.jsx'
+import WebsiteChatNotificationSettings from './components/WebsiteChatNotificationSettings.jsx'
+import {
+  DEFAULT_WEBSITE_CHAT_SETTINGS,
+  fetchWebsiteChatSettings,
+  readLocalWebsiteChatSettings,
+} from './utils/websiteChatNotificationSettings.js'
+import {
+  playWebsiteChatSound,
+  showWebsiteChatBrowserNotification,
+} from './utils/websiteChatNotificationEffects.js'
 import { ADMIN_NAV_GROUPS } from './adminNavConfig.js'
 import {
   BarChart3,
@@ -204,6 +214,31 @@ export default function AdminLayout() {
   const [navGroups, setNavGroups] = useState(() => buildGroupedNavFromConfig(can))
   const [navLoading, setNavLoading] = useState(true)
   const [crmVisitorPing, setCrmVisitorPing] = useState(0)
+  const [websiteChatSettings, setWebsiteChatSettings] = useState(DEFAULT_WEBSITE_CHAT_SETTINGS)
+  const [notifSettingsOpen, setNotifSettingsOpen] = useState(false)
+  const websiteChatSettingsRef = useRef(DEFAULT_WEBSITE_CHAT_SETTINGS)
+
+  useEffect(() => {
+    websiteChatSettingsRef.current = websiteChatSettings
+  }, [websiteChatSettings])
+
+  useEffect(() => {
+    if (!user) return undefined
+    let cancelled = false
+    ;(async () => {
+      const merged = await fetchWebsiteChatSettings(api)
+      if (!cancelled) setWebsiteChatSettings(merged)
+    })()
+    const onSettingsChanged = (event) => {
+      const next = event?.detail || readLocalWebsiteChatSettings()
+      setWebsiteChatSettings(next)
+    }
+    window.addEventListener('website-chat-settings-changed', onSettingsChanged)
+    return () => {
+      cancelled = true
+      window.removeEventListener('website-chat-settings-changed', onSettingsChanged)
+    }
+  }, [user])
 
   const displayRoles = useMemo(() => sortRolesForDisplay(user?.roles), [user?.roles])
 
@@ -249,6 +284,63 @@ export default function AdminLayout() {
     let scheduleId = null
     const targets = adminSocketUrls()
 
+    const handleWebsiteChatAlert = (payload, conversationId) => {
+      const settings = websiteChatSettingsRef.current
+      if (!settings.enabled) return
+
+      window.dispatchEvent(new CustomEvent('admin:statsRefresh'))
+
+      if (settings.badge_updates) {
+        window.dispatchEvent(new CustomEvent('admin-notifications-changed'))
+      }
+
+      if (settings.sound) {
+        playWebsiteChatSound(settings.sound_volume)
+      }
+
+      if (settings.browser) {
+        showWebsiteChatBrowserNotification(payload, (detail) => {
+          const cid = detail?.conversation_id || conversationId
+          if (!cid) return
+          const sp = new URLSearchParams()
+          sp.set('view', 'chats')
+          sp.set('conversation', cid)
+          navigate(`/admin/chat-crm?${sp.toString()}`)
+        })
+      }
+
+      if (!location.pathname.startsWith('/admin/chat-crm')) {
+        setCrmVisitorPing((n) => Math.min(n + 1, 99))
+      }
+
+      if (settings.auto_open_crm && !location.pathname.startsWith('/admin/chat-crm')) {
+        const sp = new URLSearchParams()
+        sp.set('view', 'chats')
+        sp.set('conversation', conversationId)
+        navigate(`/admin/chat-crm?${sp.toString()}`, { replace: true })
+      }
+    }
+
+    const handleCrmRealtimeUpdate = (conversationId) => {
+      const settings = websiteChatSettingsRef.current
+      window.dispatchEvent(new CustomEvent('admin:statsRefresh'))
+      if (settings.crm_inbox_updates) {
+        window.dispatchEvent(new CustomEvent('admin:crmInboxRefresh', { detail: { conversation_id: conversationId } }))
+      }
+      if (!location.pathname.startsWith('/admin/chat-crm')) {
+        setCrmVisitorPing((n) => Math.min(n + 1, 99))
+      }
+    }
+
+    const onWebsiteChatNotification = (payload) => {
+      const conversationId = String(payload?.conversation_id || '').trim()
+      if (!conversationId) return
+      handleWebsiteChatAlert(payload, conversationId)
+      if (websiteChatSettingsRef.current.crm_inbox_updates) {
+        window.dispatchEvent(new CustomEvent('admin:crmInboxRefresh', { detail: payload }))
+      }
+    }
+
     const onVisitorMessage = (payload) => {
       const msg = payload?.message
       if (!msg) return
@@ -261,26 +353,18 @@ export default function AdminLayout() {
       if (!isVisitorMsg) return
 
       const raw = payload?.conversationId
-      const cid =
+      const conversationId =
         typeof raw === 'string' ? raw.trim() : String(raw || '').trim()
-      if (!cid) return
+      if (!conversationId) return
 
-      window.dispatchEvent(new CustomEvent('admin:statsRefresh'))
+      handleCrmRealtimeUpdate(conversationId)
 
-      if (location.pathname.startsWith('/admin/chat-crm')) {
-        window.dispatchEvent(
-          new CustomEvent('admin:focusChatConversation', {
-            detail: { conversationId: cid },
-          }),
-        )
-        return
+      const settings = websiteChatSettingsRef.current
+      if (settings.enabled && settings.badge_updates) {
+        window.setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('admin-notifications-changed'))
+        }, 900)
       }
-
-      setCrmVisitorPing((n) => Math.min(n + 1, 99))
-      const sp = new URLSearchParams()
-      sp.set('view', 'chats')
-      sp.set('conversation', cid)
-      navigate(`/admin/chat-crm?${sp.toString()}`, { replace: true })
     }
 
     const connectWithFallback = (index) => {
@@ -298,6 +382,7 @@ export default function AdminLayout() {
         socket.emit('admin:join', { token: getAdminToken() || '', secret: getLendingChatSecret() || '' })
       })
       socket.on('chat:newMessage', onVisitorMessage)
+      socket.on('websiteChat:messageReceived', onWebsiteChatNotification)
       socket.on('feedback:refresh', () => {
         window.dispatchEvent(new CustomEvent('admin-notifications-changed'))
       })
@@ -332,6 +417,7 @@ export default function AdminLayout() {
         }
       }
       currentSocket?.off('chat:newMessage', onVisitorMessage)
+      currentSocket?.off('websiteChat:messageReceived', onWebsiteChatNotification)
       currentSocket?.off('feedback:refresh')
       currentSocket?.removeAllListeners()
       if (currentSocket?.connected) currentSocket.disconnect()
@@ -634,15 +720,27 @@ export default function AdminLayout() {
                 >
                   <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-[#1F2937]">
                     <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Notifications</h2>
-                    <button
-                      type="button"
-                      className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/10"
-                      onClick={() => setNotifModalOpen(false)}
-                    >
-                      Close
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/10"
+                        onClick={() => setNotifSettingsOpen((v) => !v)}
+                      >
+                        {notifSettingsOpen ? 'Back' : 'Settings'}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/10"
+                        onClick={() => setNotifModalOpen(false)}
+                      >
+                        Close
+                      </button>
+                    </div>
                   </div>
                   <div className="max-h-[68vh] overflow-y-auto p-3">
+                    {notifSettingsOpen ? (
+                      <WebsiteChatNotificationSettings compact />
+                    ) : (
                     <Suspense
                       fallback={
                         <div className="flex items-center justify-center py-10 text-sm text-gray-500 dark:text-gray-400">
@@ -652,6 +750,7 @@ export default function AdminLayout() {
                     >
                       <NotificationsPage embedded onNavigate={() => setNotifModalOpen(false)} />
                     </Suspense>
+                    )}
                   </div>
                 </div>
               </div>

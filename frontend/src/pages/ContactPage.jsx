@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { LoadingButton, FormLoadingOverlay } from '../components/loading'
 import SubPageHeader from '../components/SubPageHeader.jsx'
 import Footer from '../components/Footer.jsx'
 import { postPublicInquiry } from '../utils/lendingApi.js'
@@ -119,6 +120,7 @@ export default function ContactPage() {
             </div>
           </div>
 
+          <FormLoadingOverlay submitting={status === 'loading'} label="Sending...">
           <form onSubmit={handleSubmit} className="contact-col mt-10 lg:mt-0" noValidate>
             <label className="sr-only" htmlFor="contact-website-hp">
               Leave empty
@@ -205,20 +207,14 @@ export default function ContactPage() {
               />
             </label>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <button
+              <LoadingButton
                 type="submit"
-                disabled={status === 'loading'}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:scale-[1.01] hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
+                loading={status === 'loading'}
+                loadingKey="send"
+                className="inline-flex w-full rounded-lg bg-red-600 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:scale-[1.01] hover:bg-red-700 sm:w-auto"
               >
-                {status === 'loading' ? (
-                  <>
-                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                    Sending...
-                  </>
-                ) : (
-                  'Submit enquiry'
-                )}
-              </button>
+                Submit enquiry
+              </LoadingButton>
               <Link
                 to="/borrower/login"
                 className="inline-flex w-full items-center justify-center rounded-lg border border-black/15 px-6 py-3 text-sm font-semibold text-black transition hover:bg-black/5 sm:w-auto"
@@ -238,6 +234,7 @@ export default function ContactPage() {
               </p>
             )}
           </form>
+          </FormLoadingOverlay>
         </div>
 
         <section ref={mapRef} className="mt-12">

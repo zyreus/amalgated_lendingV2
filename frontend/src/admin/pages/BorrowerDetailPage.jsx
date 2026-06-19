@@ -5,7 +5,7 @@ import { useToast } from '../context/ToastContext.jsx'
 import { useAdminApiAuth } from '../context/useAdminApiAuth.js'
 import { admin } from '../components/AdminUi.jsx'
 import { AdminPageSkeleton } from '../../components/AppSkeletons.jsx'
-import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
+import { getLaravelStorageFileUrl, resolvePublicFileUrl } from '../../utils/lendingLaravelApi.js'
 import { applicationPayloadRows } from '../utils/loanApplicationPayloadDisplay.js'
 import BorrowerUploadedFilesPanel from '../components/BorrowerUploadedFilesPanel.jsx'
 
@@ -320,28 +320,6 @@ export default function BorrowerDetailPage() {
               )}
             </dd>
           </div>
-          <div className="sm:col-span-2">
-            <dt className={`text-xs font-medium uppercase tracking-wider ${admin.textMuted}`}>ID document (portal upload)</dt>
-            <dd className="mt-1">
-              {borrower.id_document_path ? (
-                <span className="flex flex-wrap items-center gap-2">
-                  <a
-                    href={getLaravelStorageFileUrl(borrower.id_document_path)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-red-600 hover:underline dark:text-red-400"
-                  >
-                    {borrower.id_document_name || 'Open file'}
-                  </a>
-                  {borrower.id_document_name ? (
-                    <span className={`text-xs ${admin.textMuted}`}>({borrower.id_document_name})</span>
-                  ) : null}
-                </span>
-              ) : (
-                <span className={`text-sm ${admin.textMuted}`}>No ID document on file.</span>
-              )}
-            </dd>
-          </div>
         </dl>
       </div>
 
@@ -594,7 +572,7 @@ export default function BorrowerDetailPage() {
                                     {doc.label || 'Document'}:{' '}
                                   </span>
                                   <a
-                                    href={getLaravelStorageFileUrl(doc.path)}
+                                    href={resolvePublicFileUrl(doc.url || doc.path)}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-red-600 hover:underline dark:text-red-400"

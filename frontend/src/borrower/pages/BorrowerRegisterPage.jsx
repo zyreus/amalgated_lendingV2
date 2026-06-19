@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { BadgeCheck, MapPin, ShieldCheck, UserRound } from 'lucide-react'
+import { LoadingButton, FormLoadingOverlay } from '../../components/loading'
 import PasswordInput from '../../components/PasswordInput.jsx'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 import { borrowerAuthHandoffSearchParams } from '../../utils/borrowerAuthApplyPath.js'
@@ -114,6 +115,7 @@ export default function BorrowerRegisterPage() {
               </div>
             </aside>
 
+            <FormLoadingOverlay submitting={loading} label="Creating...">
             <form onSubmit={onSubmit} className="space-y-6 p-6 sm:p-8">
               <div>
                 <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Borrower registration</h2>
@@ -174,13 +176,15 @@ export default function BorrowerRegisterPage() {
             {errorMsg ? (
               <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{errorMsg}</p>
             ) : null}
-            <button
-              disabled={loading}
+            <LoadingButton
               type="submit"
-              className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white transition hover:bg-brand-primary-hover disabled:opacity-60"
+              loading={loading}
+              loadingKey="create"
+              minWidth="100%"
+              className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white transition hover:bg-brand-primary-hover"
             >
-              {loading ? 'Creating account...' : 'Create account and send OTP'}
-            </button>
+              Create account and send OTP
+            </LoadingButton>
               <p className="text-center text-sm text-gray-500 transition-colors duration-300 dark:text-gray-400">
                 Already have an account?{' '}
                 <Link
@@ -191,6 +195,7 @@ export default function BorrowerRegisterPage() {
                 </Link>
               </p>
             </form>
+            </FormLoadingOverlay>
           </div>
         </motion.div>
       </div>

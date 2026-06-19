@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAdminApiAuth } from '../admin/context/useAdminApiAuth.js'
 import { useBorrowerAuth } from '../borrower/context/useBorrowerAuth.js'
+import { setAuthOverlay } from '../utils/globalLoadingBus.js'
 import LogoutConfirmModal from '../components/LogoutConfirmModal.jsx'
 import { LogoutConfirmContext } from './logoutConfirmContext.js'
 
@@ -34,6 +35,7 @@ export function LogoutConfirmProvider({ children }) {
     if (submittingRef.current || !portalRole) return
     submittingRef.current = true
     setBusy(true)
+    setAuthOverlay('Signing Out...')
     try {
       if (portalRole === 'admin') {
         await adminLogout()
@@ -45,6 +47,7 @@ export function LogoutConfirmProvider({ children }) {
       setOpen(false)
       setPortalRole(null)
     } finally {
+      setAuthOverlay(null)
       setBusy(false)
       submittingRef.current = false
     }

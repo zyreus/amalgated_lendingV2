@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { KeyRound } from 'lucide-react'
+import { LoadingButton, FormLoadingOverlay } from '../../components/loading'
 import PasswordInput from '../../components/PasswordInput.jsx'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 
@@ -56,6 +57,7 @@ export default function BorrowerResetPasswordPage() {
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
             Verify the reset OTP and choose a stronger password. You will be signed in automatically.
           </p>
+          <FormLoadingOverlay submitting={loading} label="Updating...">
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <div>
               <label htmlFor="reset_password_identifier" className="text-sm font-medium text-gray-700 dark:text-gray-200">
@@ -85,10 +87,17 @@ export default function BorrowerResetPasswordPage() {
             <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="New password" autoComplete="new-password" />
             <PasswordInput value={passwordConfirmation} onChange={(e) => setPasswordConfirmation(e.target.value)} required placeholder="Confirm new password" autoComplete="new-password" />
             {errorMsg ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{errorMsg}</p> : null}
-            <button disabled={loading} type="submit" className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white transition hover:bg-brand-primary-hover disabled:opacity-60">
-              {loading ? 'Updating...' : 'Reset password and sign in'}
-            </button>
+            <LoadingButton
+              type="submit"
+              loading={loading}
+              loadingKey="update"
+              minWidth="100%"
+              className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white transition hover:bg-brand-primary-hover"
+            >
+              Reset password and sign in
+            </LoadingButton>
           </form>
+          </FormLoadingOverlay>
           <p className="mt-5 text-center text-sm text-gray-500 dark:text-gray-400">
             <Link to="/borrower/login" className="text-brand-primary transition hover:text-brand-primary-hover hover:underline">
               Back to sign in

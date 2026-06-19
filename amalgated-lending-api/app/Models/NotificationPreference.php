@@ -13,6 +13,7 @@ class NotificationPreference extends Model
         'email',
         'sms',
         'muted_categories',
+        'website_chat_settings',
     ];
 
     protected $casts = [
@@ -20,6 +21,7 @@ class NotificationPreference extends Model
         'email' => 'boolean',
         'sms' => 'boolean',
         'muted_categories' => 'array',
+        'website_chat_settings' => 'array',
     ];
 
     public function user(): BelongsTo

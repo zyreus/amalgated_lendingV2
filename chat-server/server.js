@@ -36,7 +36,7 @@ clearChatActivePort();
 process.on('exit', clearChatActivePort);
 import authRoutes from './api/routes/authRoutes.js';
 import postsRoutes from './api/routes/postsRoutes.js';
-import { LENDING_AI_APPEND, LENDING_CUSTOMER_FAQ, getLendingFallbackReply } from './ai/lendingTraining.js';
+import { LENDING_AI_APPEND, LENDING_CUSTOMER_FAQ, getLendingFallbackReply, shouldTriggerHumanEscalation, escalationHandoffReply } from './ai/lendingTraining.js';
 import {
   createConversation,
   getConversation,
@@ -141,7 +141,7 @@ import {
   getCmsSectionByPageAndKey,
 } from './db/provider.js';
 import { sendNotificationEmails, isEmailConfigured, sendTestEmail, sendCustomEmail, sendApplicationConfirmationEmail } from './lib/email.js';
-import { syncOutboundChatMessage, syncOutboundFeedback } from './lib/laravelSupportSync.js';
+import { syncOutboundChatMessage, syncOutboundFeedback, fetchLaravelHandoffState } from './lib/laravelSupportSync.js';
 import { deterministicSyncUuid } from './lib/syncDedupeUuid.js';
 
 const app = express();
@@ -445,14 +445,55 @@ function requireInternalChatBroadcast(req, res, next) {
  * Laravel → Socket.IO relay: staff replies created in Laravel `chat_messages` reach visitors without Pusher.
  * POST JSON { conversation_id, message: { id?, sender, content, created_at?, admin_name? } }
  */
-app.post('/api/internal/chat-broadcast/message', requireInternalChatBroadcast, (req, res) => {
+app.post('/api/internal/chat-broadcast/handoff', requireInternalChatBroadcast, async (req, res) => {
+  try {
+    const conversationId = String(req.body?.conversation_id || '').trim();
+    if (!conversationId) {
+      return res.status(422).json({ ok: false, message: 'conversation_id is required.' });
+    }
+    await disableAiForHumanHandoff(conversationId, {
+      emitBanner: false,
+      assignedTo: req.body?.assigned_to ?? null,
+    });
+    emitConversationsRefresh();
+    return res.json({ ok: true, mode: 'human', ai_enabled: false });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      message: e instanceof Error ? e.message : 'Unable to relay handoff.',
+    });
+  }
+});
+
+app.post('/api/internal/chat-broadcast/message', requireInternalChatBroadcast, async (req, res) => {
   try {
     const conversationId = String(req.body?.conversation_id || '').trim();
     const m = req.body?.message || {};
     const content = String(m.content || '').trim();
+    const handoff = req.body?.handoff !== false;
     if (!conversationId || !content) {
       return res.status(422).json({ ok: false, message: 'conversation_id and message.content are required.' });
     }
+
+    if (handoff) {
+      await disableAiForHumanHandoff(conversationId, {
+        emitBanner: true,
+        assignedTo: req.body?.assigned_to ?? null,
+      });
+    }
+
+    const adminName = m.admin_name || null;
+    const recentRows = await getMessages(conversationId, { limit: 3 });
+    const lastRow = Array.isArray(recentRows) ? recentRows[recentRows.length - 1] : null;
+    const alreadyStored =
+      lastRow &&
+      String(lastRow.sender || '').toLowerCase() === 'admin' &&
+      String(lastRow.content || '').trim() === content;
+    if (!alreadyStored) {
+      await addMessage(conversationId, 'admin', content, adminName || 'Support Agent');
+    }
+    await clearConversationUnread(conversationId);
+
     const payload = {
       conversation_id: conversationId,
       id: m.id != null ? m.id : `laravel-${Date.now()}`,
@@ -463,12 +504,137 @@ app.post('/api/internal/chat-broadcast/message', requireInternalChatBroadcast, (
     };
     io.to(conversationId).emit('chat:message', payload);
     io.to('admin').emit('chat:newMessage', { conversationId, message: payload });
+    io.to(conversationId).emit('conversation:visitorUnlocked', {
+      conversationId,
+      conversation_id: conversationId,
+      visitor_send_locked: false,
+      visitor_chat_locked: false,
+      consecutive_visitor_messages: 0,
+      visitor_message_count: 0,
+      first_agent_response_received: true,
+      first_agent_response_at: new Date().toISOString(),
+    });
     emitConversationsRefresh();
-    return res.json({ ok: true });
+    return res.json({ ok: true, mode: handoff ? 'human' : undefined });
   } catch (e) {
     return res.status(500).json({
       ok: false,
       message: e instanceof Error ? e.message : 'Unable to relay message.',
+    });
+  }
+});
+
+app.post('/api/internal/chat-broadcast/mode', requireInternalChatBroadcast, async (req, res) => {
+  try {
+    const conversationId = String(req.body?.conversation_id || '').trim();
+    const mode = String(req.body?.mode || '').toLowerCase() === 'ai' ? 'ai' : 'human';
+    if (!conversationId) {
+      return res.status(422).json({ ok: false, message: 'conversation_id is required.' });
+    }
+    if (mode === 'ai') {
+      await enableAiAssistant(conversationId);
+    } else {
+      await disableAiForHumanHandoff(conversationId, { emitBanner: false });
+    }
+    emitConversationsRefresh();
+    return res.json({ ok: true, mode });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      message: e instanceof Error ? e.message : 'Unable to relay mode change.',
+    });
+  }
+});
+
+/**
+ * Laravel → Socket.IO relay: website chat staff notifications (no redirect — UI listeners only).
+ * POST JSON { conversation_id, message_id, visitor_id, visitor_name, message_preview, timestamp, ... }
+ */
+app.post('/api/internal/chat-broadcast/website-chat-notification', requireInternalChatBroadcast, (req, res) => {
+  try {
+    const conversationId = String(req.body?.conversation_id || '').trim();
+    if (!conversationId) {
+      return res.status(422).json({ ok: false, message: 'conversation_id is required.' });
+    }
+    const payload = {
+      conversation_id: conversationId,
+      message_id: req.body?.message_id ?? null,
+      visitor_id: req.body?.visitor_id ?? null,
+      visitor_name: req.body?.visitor_name ?? 'Website Visitor',
+      message_preview: String(req.body?.message_preview || '').slice(0, 240),
+      timestamp: req.body?.timestamp || new Date().toISOString(),
+      notification_id: req.body?.notification_id ?? null,
+      message_count: req.body?.message_count ?? 1,
+      title: req.body?.title || 'New Website Chat Message',
+      body: req.body?.body || '',
+    };
+    io.to('admin').emit('websiteChat:messageReceived', payload);
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      message: e instanceof Error ? e.message : 'Unable to relay website chat notification.',
+    });
+  }
+});
+
+/** Laravel → visitor widget: first-reply phase limit reached */
+app.post('/api/internal/chat-broadcast/visitor-send-locked', requireInternalChatBroadcast, (req, res) => {
+  try {
+    const conversationId = String(req.body?.conversation_id || '').trim();
+    if (!conversationId) {
+      return res.status(422).json({ ok: false, message: 'conversation_id is required.' });
+    }
+    const payload = {
+      conversationId,
+      conversation_id: conversationId,
+      visitor_chat_locked: true,
+      visitor_send_locked: true,
+      visitor_message_count: Number(req.body?.visitor_message_count ?? req.body?.consecutive_visitor_messages) || 0,
+      consecutive_visitor_messages: Number(req.body?.visitor_message_count ?? req.body?.consecutive_visitor_messages) || 0,
+      max_visitor_messages_before_first_reply: Number(req.body?.max_visitor_messages_before_first_reply ?? req.body?.max_consecutive_visitor_messages) || 8,
+      max_consecutive_visitor_messages: Number(req.body?.max_visitor_messages_before_first_reply ?? req.body?.max_consecutive_visitor_messages) || 8,
+      first_agent_response_received: false,
+      message:
+        req.body?.message ||
+        'Your inquiry has been received. Please wait for a Support Agent to respond before sending additional messages.',
+    };
+    io.to(conversationId).emit('conversation:visitorLocked', payload);
+    io.to('admin').emit('conversation:updated', { conversationId, visitor_chat_locked: true, ...payload });
+    io.to('admin').emit('conversations:refresh');
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      message: e instanceof Error ? e.message : 'Unable to relay visitor send lock.',
+    });
+  }
+});
+
+/** Laravel → visitor widget: first admin reply — limit permanently lifted */
+app.post('/api/internal/chat-broadcast/visitor-send-unlocked', requireInternalChatBroadcast, (req, res) => {
+  try {
+    const conversationId = String(req.body?.conversation_id || '').trim();
+    if (!conversationId) {
+      return res.status(422).json({ ok: false, message: 'conversation_id is required.' });
+    }
+    const payload = {
+      conversationId,
+      conversation_id: conversationId,
+      visitor_chat_locked: false,
+      visitor_send_locked: false,
+      visitor_message_count: 0,
+      consecutive_visitor_messages: 0,
+      first_agent_response_received: req.body?.first_agent_response_received !== false,
+      first_agent_response_at: req.body?.first_agent_response_at || new Date().toISOString(),
+    };
+    io.to(conversationId).emit('conversation:visitorUnlocked', payload);
+    io.to('admin').emit('conversation:updated', { conversationId, visitor_chat_locked: false, ...payload });
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      message: e instanceof Error ? e.message : 'Unable to relay visitor send unlock.',
     });
   }
 });
@@ -893,7 +1059,7 @@ const WEBSITE_KNOWLEDGE = `
 - Main office VisMin (corporate): ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000.
 - Main office Luzon: 1220 Pedro Gil Street, Paco, Manila.
 - Branch network (see /branches on amalgatedlending.com): Kidapawan — A & S Landing Commercial Bldg., Brgy. Sudapin, Kidapawan City; Mangagoy — M.Conpinco Building Espiritu St., Mangagoy, Bislig City, Surigao del Sur 8311; Lagao — Aradaza st., General Santos City.
-- Mobile: 09190675095 (official callback — do not use or repeat any old landline such as (082) 297 8099).
+- Mobile: 09565686044 / 09190675781 (official callback — do not use or repeat any old landline such as (082) 297 8099).
 - Email: support@amalgatedlending.com.
 - Website: https://amalgatedlending.com — key routes: /loan-products, /application-flow, /contact (inquiry form → continue in Borrower Portal), /branches, /privacy-policy.
 - Operating hours (typical): Monday–Saturday, 8:30 AM–5:30 PM (confirm by phone if unsure).
@@ -997,6 +1163,298 @@ const GROQ_MODEL_CANDIDATES = [
 ];
 const aiContexts = new Map();
 const aiQueues = new Map();
+const aiSuppressed = new Map();
+/** Bumped on every human handoff — queued/in-flight AI work with a stale generation is discarded. */
+const aiHandoffGeneration = new Map();
+/** Active AI stream ids per conversation (cancelled immediately on handoff). */
+const activeAiStreams = new Map();
+/** Prevents overlapping AI generation jobs per conversation (queue still serializes follow-ups). */
+const aiProcessingConversations = new Set();
+
+/** Ignore repeated visitor text within a cooldown window (anti-spam). */
+const visitorMessageFingerprints = new Map();
+const visitorComplaintCounts = new Map();
+const VISITOR_DEDUPE_MS = Math.max(
+  3000,
+  (Number(process.env.CHAT_DUPLICATE_COOLDOWN_SECONDS || 8) || 8) * 1000,
+);
+const COMPLAINT_ESCALATION_THRESHOLD = Math.max(
+  2,
+  Number(process.env.CHAT_COMPLAINT_ESCALATION_COUNT || 3) || 3,
+);
+
+function visitorMessageFingerprint(conversationId, content, dedupeKey) {
+  const dedupe = String(dedupeKey || '').trim();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dedupe)) {
+    return `dedupe:${dedupe}`;
+  }
+  const norm = String(content || '').trim().toLowerCase();
+  return `fp:${conversationId}|${norm}`;
+}
+
+function isDuplicateVisitorMessage(conversationId, content, dedupeKey) {
+  const key = visitorMessageFingerprint(conversationId, content, dedupeKey);
+  const now = Date.now();
+  const last = visitorMessageFingerprints.get(key);
+  if (last != null && now - last < VISITOR_DEDUPE_MS) {
+    return true;
+  }
+  visitorMessageFingerprints.set(key, now);
+  if (visitorMessageFingerprints.size > 5000) {
+    for (const [k, ts] of visitorMessageFingerprints) {
+      if (now - ts > VISITOR_DEDUPE_MS * 4) visitorMessageFingerprints.delete(k);
+    }
+  }
+  return false;
+}
+
+function trackVisitorComplaint(conversationId, content) {
+  const m = String(content || '').toLowerCase();
+  if (!/\b(complaint|reklamo|problem|issue|not happy|mali|error|frustrat|angry)\b/i.test(m)) {
+    return false;
+  }
+  const prev = Number(visitorComplaintCounts.get(conversationId) || 0) + 1;
+  visitorComplaintCounts.set(conversationId, prev);
+  return prev >= COMPLAINT_ESCALATION_THRESHOLD;
+}
+
+async function syncHumanHandoffToLaravel(conversationId, systemMessage, dedupeSuffix) {
+  return syncOutboundChatMessage({
+    sessionId: conversationId,
+    visitorId: conversationId,
+    senderType: 'system',
+    message: systemMessage,
+    dedupeKey: deterministicSyncUuid('handoff-sync', [conversationId, dedupeSuffix]),
+    conversationPatch: {
+      mode: 'human',
+      status: 'human_assisted',
+      ai_enabled: false,
+      needs_human: true,
+    },
+  }).catch(() => {});
+}
+
+const AI_HANDOFF_BANNER =
+  'AI Assistant disabled. Human Support Agent is now handling this conversation.';
+
+function getAiHandoffGeneration(conversationId) {
+  return aiHandoffGeneration.get(conversationId) || 0;
+}
+
+function bumpAiHandoffGeneration(conversationId) {
+  const next = getAiHandoffGeneration(conversationId) + 1;
+  aiHandoffGeneration.set(conversationId, next);
+  return next;
+}
+
+function isAiHandoffStale(conversationId, generation) {
+  return generation !== getAiHandoffGeneration(conversationId);
+}
+
+function trackAiStream(conversationId, streamId) {
+  if (!conversationId || !streamId) return;
+  if (!activeAiStreams.has(conversationId)) activeAiStreams.set(conversationId, new Set());
+  activeAiStreams.get(conversationId).add(streamId);
+}
+
+function untrackAiStream(conversationId, streamId) {
+  activeAiStreams.get(conversationId)?.delete(streamId);
+  if (activeAiStreams.get(conversationId)?.size === 0) activeAiStreams.delete(conversationId);
+}
+
+function cancelActiveAiStreams(conversationId) {
+  const streams = activeAiStreams.get(conversationId);
+  if (!streams?.size) return;
+  const now = new Date().toISOString();
+  for (const streamId of streams) {
+    io.to(conversationId).emit('chat:streamEnd', {
+      conversation_id: conversationId,
+      sender: 'ai',
+      stream_id: streamId,
+      content: '',
+      cancelled: true,
+      created_at: now,
+    });
+  }
+  activeAiStreams.delete(conversationId);
+  io.to(conversationId).emit('chat:typingStop');
+  io.to(conversationId).emit('chat:expectNoAiStream', { reason: 'human' });
+}
+
+function suppressAiForConversation(conversationId) {
+  bumpAiHandoffGeneration(conversationId);
+  aiSuppressed.set(conversationId, true);
+  aiQueues.set(conversationId, Promise.resolve());
+  cancelActiveAiStreams(conversationId);
+}
+
+function resumeAiForConversation(conversationId) {
+  aiSuppressed.delete(conversationId);
+}
+
+function logAiState(conversationId, event, details = {}) {
+  console.info('[ai][state]', {
+    event,
+    conversation_id: conversationId,
+    ...details,
+  });
+}
+
+/**
+ * Laravel warehouse is authoritative when sync is configured.
+ * AI is blocked only for human_assisted / closed / archived (not legacy "open").
+ * @returns {{ allowed: boolean, reason: string, state: object|null }}
+ */
+function evaluateAiGenerationFromState(state) {
+  if (!state || typeof state !== 'object') {
+    return { allowed: false, reason: 'AI blocked — no conversation state from warehouse.', state };
+  }
+  const status = String(state.conversation_status || state.status || '').toLowerCase();
+  const aiEnabled = state.ai_enabled !== false;
+  const assignedAgentId = state.assigned_agent_id ?? state.assigned_to ?? null;
+  const aiBlockedStatuses = new Set(['human_assisted', 'closed', 'archived', 'resolved']);
+
+  if (!aiEnabled) {
+    return { allowed: false, reason: 'AI blocked because ai_enabled is false.', state };
+  }
+  if (aiBlockedStatuses.has(status)) {
+    return {
+      allowed: false,
+      reason: `AI blocked because conversation_status is "${status || 'unknown'}".`,
+      state,
+    };
+  }
+  if (assignedAgentId) {
+    return {
+      allowed: false,
+      reason: `AI blocked because assigned_agent_id is set (${assignedAgentId}).`,
+      state,
+    };
+  }
+  if (String(state.mode || '').toLowerCase() === 'human') {
+    return { allowed: false, reason: 'AI blocked because mode is human.', state };
+  }
+  return { allowed: true, reason: 'AI allowed — conversation is not human_assisted.', state };
+}
+
+async function isVisitorSendLockedFromLaravel(conversationId) {
+  const state = await fetchLaravelHandoffState(conversationId);
+  if (!state) return false;
+  if (state.first_agent_response_received === true) return false;
+  return state.visitor_chat_locked === true || state.visitor_send_locked === true;
+}
+
+async function shouldSkipAiReply(conversationId, handoffGeneration = null) {
+  if (handoffGeneration != null && isAiHandoffStale(conversationId, handoffGeneration)) {
+    logAiState(conversationId, 'ai_blocked', {
+      reason: 'AI blocked — stale handoff generation (superseded by human takeover).',
+    });
+    return true;
+  }
+
+  const laravel = await fetchLaravelHandoffState(conversationId);
+  const evaluation = evaluateAiGenerationFromState(laravel);
+
+  if (laravel) {
+    if (!evaluation.allowed) {
+      if (!isAiSuppressed(conversationId)) {
+        suppressAiForConversation(conversationId);
+      } else {
+        await updateMode(conversationId, 'human');
+      }
+      logAiState(conversationId, 'ai_blocked', {
+        reason: evaluation.reason,
+        ai_enabled: laravel.ai_enabled,
+        conversation_status: laravel.conversation_status || laravel.status,
+        assigned_agent_id: laravel.assigned_agent_id ?? laravel.assigned_to ?? null,
+      });
+      return true;
+    }
+
+    // Warehouse says AI is active — clear stale local blocks and sync Node mode.
+    aiSuppressed.delete(conversationId);
+    const convo = await getConversation(conversationId);
+    if (convo?.mode !== 'ai') {
+      await updateMode(conversationId, 'ai');
+    }
+    logAiState(conversationId, 'ai_triggered', {
+      reason: evaluation.reason,
+      ai_enabled: laravel.ai_enabled,
+      conversation_status: laravel.conversation_status || laravel.status,
+      assigned_agent_id: null,
+    });
+    return false;
+  }
+
+  if (isAiSuppressed(conversationId)) {
+    logAiState(conversationId, 'ai_blocked', { reason: 'AI blocked — in-memory suppression flag is set.' });
+    return true;
+  }
+
+  const convo = await getConversation(conversationId);
+  if (convo?.mode !== 'ai') {
+    logAiState(conversationId, 'ai_blocked', {
+      reason: 'AI blocked — local mode is not ai (warehouse sync unavailable).',
+      mode: convo?.mode,
+    });
+    return true;
+  }
+
+  logAiState(conversationId, 'ai_triggered', {
+    reason: 'AI allowed — local mode is ai (warehouse sync unavailable).',
+    mode: convo?.mode,
+  });
+  return false;
+}
+
+function isAiSuppressed(conversationId) {
+  return aiSuppressed.get(conversationId) === true;
+}
+
+async function disableAiForHumanHandoff(conversationId, { emitBanner = true, assignedTo = null } = {}) {
+  suppressAiForConversation(conversationId);
+  await updateMode(conversationId, 'human');
+  await updateStatus(conversationId, 'human_assisted');
+  io.to(conversationId).emit('conversation:modeChanged', {
+    conversationId,
+    mode: 'human',
+    ai_enabled: false,
+    status: 'human_assisted',
+    conversation_status: 'human_assisted',
+    human_assisted: true,
+  });
+  logAiState(conversationId, 'human_takeover', {
+    reason: 'AI disabled — human agent took over.',
+    assigned_agent_id: assignedTo,
+  });
+  if (emitBanner) {
+    io.to(conversationId).emit('chat:aiHandoff', {
+      conversationId,
+      message: AI_HANDOFF_BANNER,
+    });
+  }
+  io.to('admin').emit('conversation:updated', await getConversation(conversationId));
+}
+
+async function enableAiAssistant(conversationId) {
+  resumeAiForConversation(conversationId);
+  await updateMode(conversationId, 'ai');
+  const convo = await getConversation(conversationId);
+  io.to('admin').emit('conversation:updated', convo);
+  io.to(conversationId).emit('conversation:modeChanged', {
+    conversationId,
+    mode: 'ai',
+    ai_enabled: true,
+    status: 'ai_active',
+    conversation_status: 'ai_active',
+    human_assisted: false,
+  });
+  logAiState(conversationId, 'resume_ai', {
+    reason: 'AI resumed — local mode set to ai.',
+    conversation_status: 'ai_active',
+    assigned_agent_id: null,
+  });
+}
 const MAX_CONTEXT_MESSAGES = Number.isFinite(Number(process.env.AI_MAX_CONTEXT_MESSAGES))
   ? Math.max(6, Number(process.env.AI_MAX_CONTEXT_MESSAGES))
   : 12;
@@ -1179,7 +1637,7 @@ function resolveLocationFromIp(visitId, ip, cb) {
 function getHoldingsFallbackReply(userMessage, lang) {
   const m = String(userMessage || '').toLowerCase();
   const l = normalizeLang(lang);
-  const phone = '09190675095';
+  const phone = '09565686044 / 09190675781';
   const email = 'support@amalgatedlending.com';
   const addrDavao =
     'ACI IT and Corporate Centre, Doña Carolina Uykimpang Building, Cor. JP Laurel Avenue and Iñigo Street, Bajada, Davao City 8000';
@@ -1203,6 +1661,10 @@ function optimizeReplyForProfile(reply, contentProfile) {
 }
 
 async function prepareAiContext(conversationId, userMessage, lang, options = {}) {
+  const handoffGeneration = options?.handoffGeneration ?? getAiHandoffGeneration(conversationId);
+  if (await shouldSkipAiReply(conversationId, handoffGeneration)) {
+    return { key: conversationId, lang: normalizeLang(lang), userText: '', fallbackReply: '', context: null };
+  }
   const l = normalizeLang(lang);
   const fromLending =
     typeof conversationId === 'string' && conversationId.startsWith('lending-');
@@ -1253,6 +1715,9 @@ async function prepareAiContext(conversationId, userMessage, lang, options = {})
 }
 
 async function getAIReply(conversationId, userMessage, lang, options = {}) {
+  if (await shouldSkipAiReply(conversationId, options?.handoffGeneration)) {
+    return '';
+  }
   try {
     if (shouldUseFastLendingFaq(conversationId, userMessage, options)) {
       return getLendingFallbackReply(String(userMessage || '').trim(), normalizeLang(lang));
@@ -1280,6 +1745,11 @@ async function getAIReply(conversationId, userMessage, lang, options = {}) {
 }
 
 async function streamAIReply(conversationId, userMessage, lang, handlers = {}, options = {}) {
+  const handoffGeneration = options?.handoffGeneration ?? getAiHandoffGeneration(conversationId);
+  if (await shouldSkipAiReply(conversationId, handoffGeneration)) {
+    handlers.onComplete?.('');
+    return '';
+  }
   if (shouldUseFastLendingFaq(conversationId, userMessage, options)) {
     const fastReply = getLendingFallbackReply(String(userMessage || '').trim(), normalizeLang(lang));
     handlers.onChunk?.(fastReply);
@@ -1288,6 +1758,13 @@ async function streamAIReply(conversationId, userMessage, lang, handlers = {}, o
   }
   const prep = await prepareAiContext(conversationId, userMessage, lang, options);
   if (!prep.context) {
+    if (prep.fallbackReply) {
+      logAiState(conversationId, 'ai_response_generated', {
+        source: 'fallback',
+        reply_chars: prep.fallbackReply.length,
+        groq_configured: !!(groqApiKey && groq),
+      });
+    }
     handlers.onChunk?.(prep.fallbackReply);
     handlers.onComplete?.(prep.fallbackReply);
     return prep.fallbackReply;
@@ -1297,6 +1774,10 @@ async function streamAIReply(conversationId, userMessage, lang, handlers = {}, o
     const stream = await groqChatCreate(prep.context, { stream: true });
     const emitChunks = options?.contentProfile !== 'lite';
     for await (const part of stream) {
+      if (isAiHandoffStale(conversationId, handoffGeneration) || isAiSuppressed(conversationId)) {
+        handlers.onComplete?.('');
+        return '';
+      }
       const delta = String(part?.choices?.[0]?.delta?.content || '');
       if (!delta) continue;
       aggregated += delta;
@@ -2146,10 +2627,13 @@ app.patch('/api/admin/conversations/:id/status', requireAdminOrLendingSecret, re
 app.patch('/api/admin/conversations/:id/mode', requireAdminOrLendingSecret, requirePermission('manage_tickets'), async (req, res) => {
   const { mode, ai_enabled } = req.body;
   const targetMode = mode === 'human' || ai_enabled === false ? 'human' : 'ai';
-  await updateMode(req.params.id, targetMode);
+  if (targetMode === 'ai') {
+    await enableAiAssistant(req.params.id);
+  } else {
+    await disableAiForHumanHandoff(req.params.id, { emitBanner: true });
+  }
   const convo = await getConversation(req.params.id);
   io.to('admin').emit('conversation:updated', convo);
-  io.to(req.params.id).emit('conversation:modeChanged', { conversationId: req.params.id, mode: targetMode });
   res.json({ ok: true, mode: targetMode, ai_enabled: targetMode === 'ai' });
 });
 
@@ -2852,6 +3336,39 @@ io.on('connection', (socket) => {
     const startedAt = nowMs();
     const langCode = normalizeLang(lang || socket.data.lang);
     const contentText = content.trim();
+    const clientDedupe = String(rawClientDedupe || '').trim();
+    const isUuidLike =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientDedupe);
+
+    if (isDuplicateVisitorMessage(conversationId, contentText, clientDedupe)) {
+      perfLog('visitor:message.duplicate_ignored', startedAt, { conversation_id: conversationId });
+      return;
+    }
+
+    if (await isVisitorSendLockedFromLaravel(conversationId)) {
+      socket.emit('conversation:visitorLocked', {
+        conversationId,
+        conversation_id: conversationId,
+        visitor_send_locked: true,
+        message:
+          'Your inquiry has been received. Please wait for a Support Agent to respond before sending additional messages.',
+      });
+      socket.emit('chat:error', { message: 'Please wait for a support agent response before sending more messages.' });
+      perfLog('visitor:message.blocked_locked', startedAt, { conversation_id: conversationId });
+      return;
+    }
+
+    logAiState(conversationId, 'visitor_message_received', {
+      content_preview: contentText.slice(0, 120),
+      lang: langCode,
+      dedupe_key: isUuidLike ? clientDedupe : null,
+    });
+
+    const repeatComplaint = trackVisitorComplaint(conversationId, contentText);
+    const fromLending = conversationId.startsWith('lending-');
+    const needsEscalation =
+      fromLending && shouldTriggerHumanEscalation(contentText, langCode, { repeatComplaint });
+
     try {
       await createConversation(conversationId);
       await Promise.all([
@@ -2898,6 +3415,7 @@ io.on('connection', (socket) => {
       sender: 'user',
       content: contentText,
       created_at: new Date().toISOString(),
+      ...(isUuidLike ? { dedupe_key: clientDedupe } : {}),
     };
     io.to(conversationId).emit('chat:message', userMsg);
     io.to('admin').emit('chat:newMessage', { conversationId, message: userMsg });
@@ -2905,9 +3423,6 @@ io.on('connection', (socket) => {
 
     /** Mirror visitor text → Laravel warehouse (admin CRM inbox). Dedupe aligns with widget HTTP fallback. */
     try {
-      const clientDedupe = String(rawClientDedupe || '').trim();
-      const isUuidLike =
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientDedupe);
       syncOutboundChatMessage({
         sessionId: conversationId,
         visitorId: conversationId,
@@ -2925,11 +3440,37 @@ io.on('connection', (socket) => {
       /* ignore sync errors — Node CRM still authoritative for realtime */
     }
 
+    if (needsEscalation) {
+      await disableAiForHumanHandoff(conversationId, { emitBanner: false });
+      const handoffText = escalationHandoffReply(langCode);
+      await addMessage(conversationId, 'system', handoffText);
+      const sysMsg = {
+        conversation_id: conversationId,
+        sender: 'system',
+        content: handoffText,
+        created_at: new Date().toISOString(),
+      };
+      io.to(conversationId).emit('chat:message', sysMsg);
+      io.to('admin').emit('chat:newMessage', { conversationId, message: sysMsg });
+      io.to('admin').emit('websiteChat:messageReceived', {
+        conversation_id: conversationId,
+        message_preview: contentText.slice(0, 160),
+        escalated: true,
+      });
+      await syncHumanHandoffToLaravel(conversationId, handoffText, `escalation-${startedAt}`);
+      emitConversationsRefresh();
+      return;
+    }
+
     const convo = await getConversation(conversationId);
-    if (convo?.mode !== 'ai') {
+    const handoffGen = getAiHandoffGeneration(conversationId);
+    if (await shouldSkipAiReply(conversationId, handoffGen)) {
       socket.emit('chat:expectNoAiStream', { reason: 'human' });
     } else {
       if (wantsLeadCapture(contentText)) {
+        if (await shouldSkipAiReply(conversationId, handoffGen)) {
+          socket.emit('chat:expectNoAiStream', { reason: 'human' });
+        } else {
         const askMsg = t(langCode, 'leadAsk');
         await addMessage(conversationId, 'ai', askMsg);
         const aiMsg = {
@@ -2953,11 +3494,25 @@ io.on('connection', (socket) => {
             askMsg.slice(0, 200),
           ]),
         }).catch(() => {});
+        }
       } else {
         // Queue AI work per conversation so multiple rapid messages don't block each other or interleave responses.
+        const taskHandoffGen = handoffGen;
         enqueueAiTask(conversationId, async () => {
+          if (aiProcessingConversations.has(conversationId)) {
+            logAiState(conversationId, 'ai_skipped', { reason: 'ai_processing_in_flight' });
+            return;
+          }
+          if (await shouldSkipAiReply(conversationId, taskHandoffGen)) {
+            io.to(conversationId).emit('chat:expectNoAiStream', { reason: 'human' });
+            io.to(conversationId).emit('chat:typingStop');
+            return;
+          }
+          aiProcessingConversations.add(conversationId);
           io.to(conversationId).emit('chat:typing', { sender: 'ai' });
           const streamId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          const aiReplyDedupeKey = deterministicSyncUuid('ai-stream-final', [conversationId, streamId]);
+          trackAiStream(conversationId, streamId);
           io.to(conversationId).emit('chat:streamStart', {
             conversation_id: conversationId,
             sender: 'ai',
@@ -2969,6 +3524,7 @@ io.on('connection', (socket) => {
             const contentProfile = socket.data?.clientMeta?.contentProfile || 'full';
             finalReply = await streamAIReply(conversationId, contentText, langCode, {
               onChunk: (delta) => {
+                if (isAiHandoffStale(conversationId, taskHandoffGen)) return;
                 io.to(conversationId).emit('chat:streamDelta', {
                   conversation_id: conversationId,
                   sender: 'ai',
@@ -2976,8 +3532,24 @@ io.on('connection', (socket) => {
                   delta,
                 });
               },
-            }, { contentProfile });
+            }, { contentProfile, handoffGeneration: taskHandoffGen });
+            if (await shouldSkipAiReply(conversationId, taskHandoffGen)) {
+              io.to(conversationId).emit('chat:streamEnd', {
+                conversation_id: conversationId,
+                sender: 'ai',
+                stream_id: streamId,
+                content: '',
+                cancelled: true,
+                created_at: new Date().toISOString(),
+              });
+              io.to(conversationId).emit('chat:typingStop');
+              return;
+            }
             await addMessage(conversationId, 'ai', finalReply);
+            logAiState(conversationId, 'ai_response_saved', {
+              reply_chars: String(finalReply || '').length,
+              reply_preview: String(finalReply || '').slice(0, 160),
+            });
             const aiMsg = {
               conversation_id: conversationId,
               sender: 'ai',
@@ -2989,6 +3561,7 @@ io.on('connection', (socket) => {
               sender: 'ai',
               stream_id: streamId,
               content: finalReply,
+              dedupe_key: aiReplyDedupeKey,
               created_at: aiMsg.created_at,
             });
             perfLog('visitor:message.ai_stream_completed', startedAt, {
@@ -2996,18 +3569,18 @@ io.on('connection', (socket) => {
               reply_chars: String(finalReply || '').length,
             });
             recordAiReplyMetric(conversationId, nowMs() - startedAt);
-            syncOutboundChatMessage({
-              sessionId: conversationId,
-              visitorId: conversationId,
-              senderType: 'ai',
-              message: finalReply,
-              aiLogMs: nowMs() - startedAt,
-              dedupeKey: deterministicSyncUuid('ai-stream-final', [conversationId, streamId]),
-              conversationPatch: await getConversation(conversationId).then((c) => ({
-                mode: c?.mode,
-                status: c?.status === 'resolved' ? c.status : 'open',
-              })),
-            }).catch(() => {});
+        syncOutboundChatMessage({
+          sessionId: conversationId,
+          visitorId: conversationId,
+          senderType: 'ai',
+          message: finalReply,
+          aiLogMs: nowMs() - startedAt,
+          dedupeKey: aiReplyDedupeKey,
+          conversationPatch: {
+            mode: 'ai',
+            status: 'ai_active',
+          },
+        }).catch(() => {});
           } catch (err) {
             console.error('[ai]', err?.message || err);
             const errorText = t(langCode, 'aiError');
@@ -3027,6 +3600,8 @@ io.on('connection', (socket) => {
               conversationPatch: { last_responder_type: 'system' },
             }).catch(() => {});
           } finally {
+            aiProcessingConversations.delete(conversationId);
+            untrackAiStream(conversationId, streamId);
             io.to(conversationId).emit('chat:typingStop');
             emitConversationsRefresh();
           }
@@ -3044,6 +3619,7 @@ io.on('connection', (socket) => {
   socket.on('visitor:leadDetails', async ({ conversationId, name, email, phone, company, inquiry_message, source_page, lang }) => {
     try {
       if (!conversationId || !name?.trim() || !email?.trim()) return;
+      if (await shouldSkipAiReply(conversationId)) return;
       const langCode = normalizeLang(lang || socket.data.lang);
       const lead = await createLead({
         name: name.trim(),
@@ -3193,13 +3769,36 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('admin:handoff', async ({ conversationId }) => {
+    if (socket.data.role !== 'admin') return;
+    if (!conversationId) return;
+    try {
+      await disableAiForHumanHandoff(conversationId, { emitBanner: false });
+      io.to('admin').emit('conversation:updated', await getConversation(conversationId));
+      emitConversationsRefresh();
+    } catch (err) {
+      console.error('[socket][admin:handoff]', err?.message || err);
+    }
+  });
+
+  socket.on('admin:resumeAi', async ({ conversationId }) => {
+    if (socket.data.role !== 'admin') return;
+    if (!conversationId) return;
+    try {
+      await enableAiAssistant(conversationId);
+      io.to('admin').emit('conversation:updated', await getConversation(conversationId));
+      emitConversationsRefresh();
+    } catch (err) {
+      console.error('[socket][admin:resumeAi]', err?.message || err);
+    }
+  });
+
   socket.on('admin:message', async ({ conversationId, content, adminName }) => {
     if (socket.data.role !== 'admin') return;
     if (!conversationId || !content?.trim()) return;
     try {
+      await disableAiForHumanHandoff(conversationId, { emitBanner: true });
       await addMessage(conversationId, 'admin', content.trim(), adminName || 'Support Agent');
-      await updateMode(conversationId, 'human');
-      await updateStatus(conversationId, 'in_progress');
       await clearConversationUnread(conversationId);
 
     const adminMsg = {
@@ -3210,7 +3809,6 @@ io.on('connection', (socket) => {
       created_at: new Date().toISOString(),
     };
       io.to(conversationId).emit('chat:message', adminMsg);
-      io.to(conversationId).emit('conversation:modeChanged', { conversationId, mode: 'human' });
       io.to('admin').emit('chat:newMessage', { conversationId, message: adminMsg });
       io.to('admin').emit('conversation:updated', await getConversation(conversationId));
       emitConversationsRefresh();

@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, setToken } from '../admin/api/client.js'
 import { setAuthUser } from '../auth/session.js'
+import { setAuthOverlay } from '../utils/globalLoadingBus.js'
+import { LoadingButton, FormLoadingOverlay } from '../components/loading'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -14,6 +16,7 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setErrorMsg('')
+    setAuthOverlay('Signing In...')
     try {
       const res = await api('/auth/login', {
         method: 'POST',
@@ -37,6 +40,7 @@ export default function LoginPage() {
     } catch (err) {
       setErrorMsg(err.message || 'Login failed.')
     } finally {
+      setAuthOverlay(null)
       setLoading(false)
     }
   }
@@ -48,6 +52,7 @@ export default function LoginPage() {
         <h1 className="mt-2 text-2xl font-semibold">Sign in</h1>
         <p className="mt-2 text-sm text-white/60">Sign in with your username/email and password.</p>
 
+        <FormLoadingOverlay submitting={loading} label="Signing In...">
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
             <label className="text-xs font-medium text-white/70">Username or email</label>
@@ -57,6 +62,7 @@ export default function LoginPage() {
               className="mt-1 w-full rounded-xl border border-white/15 bg-black px-4 py-3 text-sm text-white outline-none focus:border-red-600"
               autoComplete="username"
               required
+              disabled={loading}
             />
           </div>
           <div>
@@ -68,17 +74,21 @@ export default function LoginPage() {
               className="mt-1 w-full rounded-xl border border-white/15 bg-black px-4 py-3 text-sm text-white outline-none focus:border-red-600"
               autoComplete="current-password"
               required
+              disabled={loading}
             />
           </div>
           {errorMsg ? <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">{errorMsg}</p> : null}
-          <button
+          <LoadingButton
             type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+            loading={loading}
+            loadingKey="signIn"
+            minWidth="100%"
+            className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold text-white hover:bg-red-700"
           >
-            {loading ? 'Signing in...' : 'Sign in'}
-          </button>
+            Sign in
+          </LoadingButton>
         </form>
+        </FormLoadingOverlay>
         <p className="mt-6 text-center text-sm text-white/50">
           <Link to="/" className="text-red-400 hover:underline">← Back to home</Link>
         </p>
