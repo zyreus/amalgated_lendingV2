@@ -256,6 +256,7 @@ class SupportChatSyncController extends Controller
                     'message' => $comment,
                     'rating' => (int) $data['rating'],
                     'email' => $data['email'] ?? null,
+                    'full_name' => FeedbackTicket::normalizeFullName($data['name'] ?? null),
                     'website_visible' => false,
                 ],
             );

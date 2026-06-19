@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import { fetchWebsiteTestimonials } from '../../utils/fetchWebsiteTestimonials.js'
+import StarRating from '../StarRating.jsx'
+import { computeAverageRating } from '../../utils/feedbackRating.js'
 import heroWhyChooseUsImage from '../../assets/hero-why-choose-us.png'
 
 /**
@@ -11,19 +13,6 @@ import heroWhyChooseUsImage from '../../assets/hero-why-choose-us.png'
 const HERO_IMAGE_SRC = heroWhyChooseUsImage
 const HERO_IMAGE_ALT =
   'Amalgated Lending — Why choose us: we prioritize transparency, guide you step by step, and process quickly.'
-
-function HeroStarRow({ filled }) {
-  const n = Math.min(5, Math.max(0, Math.round(Number(filled) || 0)))
-  return (
-    <span className="inline-flex items-center gap-0.5 text-sm font-medium" aria-hidden>
-      {[1, 2, 3, 4, 5].map((star) => (
-        <span key={star} className={star <= n ? 'text-brand-premium' : 'text-slate-200'}>
-          ★
-        </span>
-      ))}
-    </span>
-  )
-}
 
 export default function HomeModernHero() {
   const reduceMotion = useReducedMotion()
@@ -52,12 +41,12 @@ export default function HomeModernHero() {
 
   const ratingLine = useMemo(() => {
     if (stats.loadState === 'loading') {
-      return { score: null, stars: 0, busy: true }
+      return { score: null, busy: true }
     }
     if (stats.reviewCount > 0 && stats.ratingValue != null && !Number.isNaN(stats.ratingValue)) {
-      return { score: stats.ratingValue, stars: stats.ratingValue, busy: false }
+      return { score: stats.ratingValue, busy: false }
     }
-    return { score: null, stars: 0, busy: false }
+    return { score: null, busy: false }
   }, [stats])
 
   const ratingCaption = useMemo(() => {
@@ -204,7 +193,14 @@ export default function HomeModernHero() {
                     {ratingLine.score != null ? ratingLine.score.toFixed(1) : stats.loadState === 'loading' ? '…' : '—'}
                   </span>
                   <span className="sr-only">out of 5 stars</span>
-                  <HeroStarRow filled={ratingLine.stars} />
+                  {ratingLine.score != null ? (
+                    <StarRating
+                      value={ratingLine.score}
+                      size="sm"
+                      filledClass="text-brand-premium"
+                      emptyClass="text-slate-200"
+                    />
+                  ) : null}
                 </dd>
                 <p className="mt-1 text-xs text-slate-500">{ratingCaption}</p>
               </div>

@@ -257,8 +257,7 @@ class AdminFeedbackController extends Controller
             && ($ticket->consent_public_display ?? false)
             && ($ticket->website_visible ?? false)
         ) {
-            $ticket->loadMissing('borrower:id,name,email');
-            $ticket->ensurePublicAuthorLabelForHomepage();
+            $ticket->prepareForPublicHomepage();
         }
 
         $ticket->save();
@@ -350,7 +349,7 @@ class AdminFeedbackController extends Controller
             }
         }
         $ticket->loadMissing('borrower:id,name,email');
-        $ticket->ensurePublicAuthorLabelForHomepage();
+        $ticket->prepareForPublicHomepage();
         $ticket->save();
 
         $this->audit($request, $ticket, 'publication.approve', $data);
@@ -582,10 +581,8 @@ class AdminFeedbackController extends Controller
 
         $latestApp = $applications->sortByDesc('id')->first();
 
-        $publicSiteLive = FeedbackTicket::query()
-            ->whereKey($ticket->id)
-            ->forPublicWebsiteHomepage()
-            ->exists();
+        $publicSiteLive = $ticket->isPublicWebsiteLive();
+        $homepageBlockers = $publicSiteLive ? [] : $ticket->homepageVisibilityBlockers();
 
         return [
             'id' => $ticket->id,
@@ -604,6 +601,8 @@ class AdminFeedbackController extends Controller
             'archived_at' => optional($ticket->archived_at)?->toIso8601String(),
             'customer_type_label' => $ticket->borrower_id ? 'Borrower' : 'Customer',
             'public_site_live' => $publicSiteLive,
+            'homepage_blockers' => $homepageBlockers,
+            'homepage_min_rating' => max(1, min(5, (int) config('testimonials.min_rating', 4))),
             'featured' => (bool) ($ticket->featured ?? false),
             'source' => $ticket->source,
             'consent_public_display' => (bool) ($ticket->consent_public_display ?? false),

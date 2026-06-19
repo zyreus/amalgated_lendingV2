@@ -251,10 +251,7 @@ class PublicChatController extends Controller
 
         // Feedback Management Center: create a ticket mirror if migrated.
         if (DB::getSchemaBuilder()->hasTable('feedback_tickets')) {
-            $fullName = isset($data['name']) ? trim((string) $data['name']) : null;
-            if ($fullName === '') {
-                $fullName = null;
-            }
+            $fullName = FeedbackTicket::normalizeFullName($data['name'] ?? null);
 
             FeedbackTicket::query()->updateOrCreate(
                 ['support_chat_feedback_id' => $supportFeedback->id],

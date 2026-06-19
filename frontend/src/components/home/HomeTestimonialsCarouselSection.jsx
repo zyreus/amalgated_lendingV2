@@ -1,20 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { laravelRequest } from '../../utils/lendingLaravelApi.js'
+import StarRating from '../StarRating.jsx'
+import { computeAverageRating } from '../../utils/feedbackRating.js'
 
 const LIMIT = 12
-
-function Stars({ value }) {
-  return (
-    <div className="flex items-center gap-0.5" aria-label={`${value} out of 5 stars`}>
-      {[1, 2, 3, 4, 5].map((star) => (
-        <span key={star} className={star <= value ? 'text-amber-400' : 'text-gray-200'} aria-hidden>
-          ★
-        </span>
-      ))}
-    </div>
-  )
-}
 
 export default function HomeTestimonialsCarouselSection() {
   const [items, setItems] = useState([])
@@ -72,14 +62,14 @@ export default function HomeTestimonialsCarouselSection() {
     el.scrollBy({ left: delta, behavior: reduceMotion ? 'auto' : 'smooth' })
   }, [reduceMotion])
 
+  const aggregateRating = useMemo(
+    () => computeAverageRating(meta.rating_value, items),
+    [meta.rating_value, items],
+  )
+
   const jsonLd = useMemo(() => {
     const count = meta.review_count || items.length
-    const avg =
-      meta.rating_value != null && !Number.isNaN(meta.rating_value)
-        ? meta.rating_value
-        : items.length
-          ? items.reduce((s, x) => s + x.rating, 0) / items.length
-          : null
+    const avg = aggregateRating
     const reviews = items.slice(0, 6).map((it) => ({
       '@type': 'Review',
       author: { '@type': 'Person', name: it.name },
@@ -103,7 +93,7 @@ export default function HomeTestimonialsCarouselSection() {
           : undefined,
       review: reviews.length ? reviews : undefined,
     }
-  }, [items, meta.rating_value, meta.review_count])
+  }, [items, meta.review_count, aggregateRating])
 
   return (
     <section
@@ -133,9 +123,9 @@ export default function HomeTestimonialsCarouselSection() {
                 Reviews could not be loaded right now.
               </p>
             ) : null}
-            {meta.rating_value != null && items.length ? (
+            {aggregateRating != null && items.length ? (
               <p className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-full border border-black/[0.06] bg-[#F8F9FA] px-4 py-2 text-sm text-brand-text/80">
-                <span className="font-semibold tabular-nums text-amber-500">★ {Number(meta.rating_value).toFixed(1)}</span>
+                <StarRating value={aggregateRating} showValue filledClass="text-amber-400" />
                 <span className="text-brand-text/40">·</span>
                 <span>
                   <span className="font-semibold text-brand-text">{meta.review_count || items.length}</span> published reviews
@@ -184,7 +174,7 @@ export default function HomeTestimonialsCarouselSection() {
                 className="w-[min(100%,22rem)] shrink-0 snap-center rounded-3xl border border-black/[0.07] bg-[#F8F9FA] p-8 shadow-[0_12px_40px_rgba(0,0,0,0.06)] sm:w-[24rem] lg:w-[26rem] lg:p-10"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <Stars value={item.rating} />
+                  <StarRating value={item.rating} />
                   {item.verified ? (
                     <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 ring-1 ring-emerald-200/90">
                       Verified

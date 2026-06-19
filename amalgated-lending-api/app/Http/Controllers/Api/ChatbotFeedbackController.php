@@ -49,10 +49,7 @@ class ChatbotFeedbackController extends Controller
             return response()->json(['ok' => true, 'duplicate' => true, 'message' => 'Thank you — we already recorded similar feedback recently.']);
         }
 
-        $fullName = isset($data['name']) ? trim((string) $data['name']) : null;
-        if ($fullName === '') {
-            $fullName = null;
-        }
+        $fullName = FeedbackTicket::normalizeFullName($data['name'] ?? null);
 
         $ticket = FeedbackTicket::query()->create([
             'borrower_id' => $borrowerId,

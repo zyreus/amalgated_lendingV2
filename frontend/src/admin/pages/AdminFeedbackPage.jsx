@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client.js'
 import ConfirmModal from '../components/ConfirmModal.jsx'
 
@@ -104,6 +104,17 @@ function buildQuery(params) {
   return s ? `?${s}` : ''
 }
 
+function resolveApprovePublicLabel(selected, inputValue) {
+  const fromInput = String(inputValue || '').trim()
+  if (fromInput) return fromInput
+  const fromState = String(selected?.public_author_label || '').trim()
+  if (fromState) return fromState
+  const hasName = String(selected?.full_name || selected?.contact?.full_name || '').trim()
+  const hasEmail = String(selected?.contact?.email || '').trim()
+  if (!hasName && !hasEmail) return 'Verified Customer'
+  return undefined
+}
+
 export default function AdminFeedbackPage() {
   const [quick, setQuick] = useState('all')
   const [searchInput, setSearchInput] = useState('')
@@ -139,6 +150,7 @@ export default function AdminFeedbackPage() {
   const [toast, setToast] = useState('')
   /** { id, subject } when delete confirmation modal is open */
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const publicAuthorLabelRef = useRef(null)
 
   useEffect(() => {
     const t = window.setTimeout(() => setSearchDebounced(searchInput.trim()), 400)
@@ -675,10 +687,29 @@ export default function AdminFeedbackPage() {
                 </p>
                 {!selected.public_site_live &&
                 String(selected.publication_status || '').toLowerCase() === 'approved' ? (
-                  <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
-                    Approved but hidden from the homepage — add a <span className="font-semibold">public display name</span>{' '}
-                    below (required for anonymous chatbot feedback), then click Approve again or save the name.
-                  </p>
+                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
+                    <p className="font-semibold">Approved but hidden from the homepage</p>
+                    {Array.isArray(selected.homepage_blockers) && selected.homepage_blockers.length > 0 ? (
+                      <ul className="mt-1.5 list-disc space-y-1 pl-4">
+                        {selected.homepage_blockers.map((reason) => (
+                          <li key={reason}>{reason}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1.5">
+                        Check publication settings below, then click <span className="font-semibold">Approve</span> again to sync.
+                      </p>
+                    )}
+                    {Array.isArray(selected.homepage_blockers) &&
+                    selected.homepage_blockers.some((reason) =>
+                      String(reason).toLowerCase().includes('public display name'),
+                    ) ? (
+                      <p className="mt-1.5">
+                        Add a <span className="font-semibold">public display name</span> below (or click Approve to auto-fill
+                        &ldquo;Verified Customer&rdquo; for anonymous chatbot feedback).
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:items-center">
@@ -796,6 +827,7 @@ export default function AdminFeedbackPage() {
                   <input
                     id="public-author-label"
                     key={`pub-label-${selectedId}`}
+                    ref={publicAuthorLabelRef}
                     type="text"
                     defaultValue={selected.public_author_label || ''}
                     placeholder="e.g. Maria S. or Verified Customer"
@@ -840,7 +872,10 @@ export default function AdminFeedbackPage() {
                       onPublicationAction('/approve', {
                         consent_public_display: !!selected.consent_public_display,
                         featured: !!selected.featured,
-                        public_author_label: String(selected.public_author_label || '').trim() || undefined,
+                        public_author_label: resolveApprovePublicLabel(
+                          selected,
+                          publicAuthorLabelRef.current?.value,
+                        ),
                       })
                     }
                     className="h-10 w-full min-w-0 rounded-lg bg-emerald-600 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
