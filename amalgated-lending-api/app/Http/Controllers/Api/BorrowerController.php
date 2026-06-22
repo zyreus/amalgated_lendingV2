@@ -8,7 +8,9 @@ use App\Models\Loan;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\BorrowerChatLeadService;
 use App\Services\BorrowerUploadedFilesManifest;
+use App\Services\StaffScopeService;
 use App\Support\SignedPrintUrls;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -335,6 +337,7 @@ class BorrowerController extends Controller
     public function index(Request $request): JsonResponse
     {
         $q = $this->borrowerListQuery()->where('is_archived', false);
+        app(StaffScopeService::class)->applyAssignedBorrowerScope($q, $request->user());
         $this->applyBorrowerSearchAndRiskFilters($q, $request);
 
         $perPage = max(1, min(100, (int) $request->query('per_page', 15)));
@@ -564,6 +567,8 @@ class BorrowerController extends Controller
 
             return $user->load(['roles', 'borrowerProfile']);
         });
+
+        app(BorrowerChatLeadService::class)->ensureForUser($user);
 
         $logger->log($request->user(), 'borrowers.create', $user, ['email' => $user->email]);
 

@@ -42,7 +42,7 @@ export default function ApplicationFormModalHost() {
         x-transition:leave="transition ease-in duration-150"
         x-transition:leave-start="opacity-100"
         x-transition:leave-end="opacity-0"
-        class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+        class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
         role="dialog"
         aria-modal="true"
         aria-labelledby="system-message-title"
@@ -56,33 +56,27 @@ export default function ApplicationFormModalHost() {
           x-transition:leave-start="opacity-100 scale-100"
           x-transition:leave-end="opacity-0 scale-95"
           @click.stop
-          class="relative w-full max-w-md rounded-2xl border-2 bg-white p-6 text-black shadow-2xl"
-          :class="modalTone === 'success' ? 'border-emerald-600' : 'border-red-600'"
+          class="relative w-full max-w-md rounded-2xl border border-gray-200 border-t-[3px] border-t-[#d92243] bg-white p-6 text-gray-900 shadow-2xl"
         >
-          <h2 id="system-message-title" class="text-lg font-bold text-black" x-text="modalTitle"></h2>
-          <div
-            class="mt-4 flex gap-3 pl-3"
-            :class="modalTone === 'success' ? 'border-l-4 border-emerald-600' : 'border-l-4 border-red-600'"
-          >
+          <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#d92243]">System message</p>
+          <h2 id="system-message-title" class="mt-2 text-lg font-semibold text-gray-900" x-text="modalTitle"></h2>
+          <div class="mt-4 flex gap-3 border-l-4 border-[#d92243] pl-3">
             <template x-if="modalTone === 'success'">
-              <svg class="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <svg class="mt-0.5 h-5 w-5 shrink-0 text-[#d92243]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15-5-5 1.41-1.41L11 14.17l5.59-5.59L18 10l-7 7z" />
               </svg>
             </template>
             <template x-if="modalTone !== 'success'">
-              <svg class="mt-0.5 h-5 w-5 shrink-0 text-red-600" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <svg class="mt-0.5 h-5 w-5 shrink-0 text-[#d92243]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
               </svg>
             </template>
-            <p class="text-sm leading-relaxed text-black" x-text="modalMessage"></p>
+            <p class="text-sm leading-relaxed text-gray-700" x-text="modalMessage"></p>
           </div>
           <button
             type="button"
             @click="closeModal()"
-            class="mt-6 w-full rounded-full px-4 py-2.5 text-sm font-semibold text-white transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-            :class="modalTone === 'success'
-              ? 'bg-emerald-600 hover:bg-emerald-700 focus-visible:ring-emerald-600'
-              : 'bg-red-600 hover:bg-red-700 focus-visible:ring-red-600'"
+            class="mt-6 w-full rounded-xl bg-[#d92243] px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-[#b81c38] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d92243] focus-visible:ring-offset-2"
           >
             OK
           </button>

@@ -34,7 +34,7 @@
     "pm2:reset": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/pm2-reset.ps1",
     "pm2:preflight": "node scripts/pm2-preflight.cjs --clear-stale-ports",
     "pm2:start": "node scripts/pm2-start-ordered.cjs",
-    "pm2:restart": "node scripts/pm2-preflight.cjs --clear-stale-ports && node scripts/pm2-run.cjs restart amalgated-backend --update-env && node scripts/wait-backend-health.cjs && node scripts/pm2-run.cjs restart amalgated-chat amalgated-frontend --update-env",
+    "pm2:restart": "node scripts/pm2-restart-services.cjs",
     "pm2:stop": "node scripts/pm2-run.cjs stop all",
     "pm2:delete": "node scripts/pm2-run.cjs delete all",
     "pm2:status": "node scripts/pm2-run.cjs list",

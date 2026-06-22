@@ -102,15 +102,15 @@ function BranchImageLightbox({ preview, onClose }) {
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className="relative w-full max-w-5xl overflow-hidden rounded-2xl border border-gray-200 border-t-[3px] border-t-brand-primary bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-black/10 px-4 py-3 sm:px-5">
-          <p className="text-sm font-semibold text-black sm:text-base">{preview.title}</p>
+        <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 sm:px-5 dark:border-[#1F2937]">
+          <p className="text-sm font-semibold text-gray-900 sm:text-base dark:text-gray-100">{preview.title}</p>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-3 py-1.5 text-sm font-medium text-black/70 transition hover:bg-black/5"
+            className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-semibold text-gray-800 transition hover:bg-gray-100 dark:border-[#1F2937] dark:bg-[#1F2937] dark:text-gray-100"
           >
             Close
           </button>

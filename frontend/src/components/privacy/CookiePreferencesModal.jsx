@@ -49,14 +49,15 @@ export default function CookiePreferencesModal({ isOpen, onClose, onSaved }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="cookie-pref-title"
-        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-black/10 bg-white shadow-2xl dark:border-white/10 dark:bg-zinc-900"
+        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 border-t-[3px] border-t-brand-primary bg-white shadow-2xl dark:border-[#1F2937] dark:border-t-brand-primary dark:bg-[#111827]"
         style={{ animation: 'cookie-slide-up 260ms ease-out' }}
       >
-        <div className="border-b border-black/10 px-6 py-4 dark:border-white/10">
-          <h2 id="cookie-pref-title" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+        <div className="border-b border-gray-200 px-6 py-4 dark:border-[#1F2937]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-primary">Preferences</p>
+          <h2 id="cookie-pref-title" className="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">
             Cookie Preferences
           </h2>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
             Manage your privacy settings. Essential cookies are always enabled for platform security and core functionality.
           </p>
         </div>
@@ -89,11 +90,11 @@ export default function CookiePreferencesModal({ isOpen, onClose, onSaved }) {
           />
         </div>
 
-        <div className="flex flex-col-reverse gap-3 border-t border-black/10 px-6 py-4 sm:flex-row sm:justify-end dark:border-white/10">
+        <div className="flex flex-col-reverse gap-3 border-t border-gray-200 px-6 py-4 sm:flex-row sm:justify-end dark:border-[#1F2937]">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-black/15 px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-white/20 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 transition hover:bg-gray-100 dark:border-[#1F2937] dark:bg-[#1F2937] dark:text-gray-100 dark:hover:bg-gray-800"
           >
             Cancel
           </button>
@@ -112,10 +113,10 @@ export default function CookiePreferencesModal({ isOpen, onClose, onSaved }) {
 
 function CookieRow({ title, description, checked, disabled = false, onToggle }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-xl border border-black/10 p-4 dark:border-white/10">
+    <div className="flex items-start justify-between gap-4 rounded-xl border border-gray-200 p-4 dark:border-[#1F2937]">
       <div className="min-w-0">
-        <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{title}</p>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">{description}</p>
+        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</p>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{description}</p>
       </div>
       <button
         type="button"
@@ -124,7 +125,7 @@ function CookieRow({ title, description, checked, disabled = false, onToggle }) 
         disabled={disabled}
         onClick={onToggle}
         className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition ${
-          checked ? 'bg-brand-primary' : 'bg-zinc-300 dark:bg-zinc-700'
+          checked ? 'bg-brand-primary' : 'bg-gray-300 dark:bg-gray-700'
         } ${disabled ? 'cursor-not-allowed opacity-70' : ''}`}
       >
         <span

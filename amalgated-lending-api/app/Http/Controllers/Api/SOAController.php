@@ -3,13 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\SendSoaStatementEmailJob;
 use App\Models\Loan;
 use App\Models\SoaLog;
 use App\Models\SoaStatement;
 use App\Repositories\SOARepository;
 use App\Services\ActivityLogger;
 use App\Services\AnalyticsService;
+use App\Services\EmailNotificationService;
 use App\Services\PDFGenerationService;
 use App\Services\SOAService;
 use App\Support\PdfSupport;
@@ -138,13 +138,43 @@ class SOAController extends Controller
         ]);
     }
 
-    public function resend(Request $request, SoaStatement $statement, ActivityLogger $logger): JsonResponse
+    public function resend(Request $request, SoaStatement $statement, ActivityLogger $logger, EmailNotificationService $emails): JsonResponse
     {
-        SendSoaStatementEmailJob::dispatch($statement->id, $request->user()?->id);
-        SoaLog::query()->create(['soa_id' => $statement->id, 'action' => 'email_queued', 'description' => 'Admin queued SOA email resend.', 'created_by' => $request->user()?->id]);
+        $result = $emails->sendSoa($statement, $request->user()?->id);
+        if (! ($result['ok'] ?? false)) {
+            SoaLog::query()->create([
+                'soa_id' => $statement->id,
+                'action' => 'email_failed',
+                'description' => 'SOA email resend failed: '.($result['detail'] ?? 'send_failed'),
+                'created_by' => $request->user()?->id,
+            ]);
+
+            return response()->json([
+                'ok' => false,
+                'message' => $this->soaEmailFailureMessage($result['detail'] ?? null),
+            ], 422);
+        }
+
+        SoaLog::query()->create([
+            'soa_id' => $statement->id,
+            'action' => 'email_sent',
+            'description' => 'Admin resent SOA email to borrower.',
+            'created_by' => $request->user()?->id,
+        ]);
         $logger->log($request->user(), 'soa.resend_email', $statement);
 
-        return response()->json(['ok' => true, 'message' => 'SOA email queued.']);
+        return response()->json(['ok' => true, 'message' => 'SOA email sent to borrower.']);
+    }
+
+    private function soaEmailFailureMessage(?string $detail): string
+    {
+        return match ($detail) {
+            'invalid_recipient' => 'Borrower has no valid email address on file.',
+            'email_disabled' => 'Transactional email is disabled in Admin → Settings → Notifications.',
+            'smtp_not_configured' => 'SMTP is not configured. Check mail settings in the API environment.',
+            'rate_limited' => 'Email rate limit reached. Wait a minute and try again.',
+            default => 'SOA email could not be sent'.($detail ? ': '.$detail : '.'),
+        };
     }
 
     public function analytics(Request $request): JsonResponse

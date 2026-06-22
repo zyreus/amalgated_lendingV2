@@ -34,6 +34,14 @@ for (const name of fs.readdirSync(distDir)) {
   fs.copyFileSync(src, path.join(publicDir, name))
 }
 
+const publicExtras = ['service-worker.js', 'offline.html']
+for (const name of publicExtras) {
+  const src = path.join(root, 'frontend', 'public', name)
+  if (fs.existsSync(src)) {
+    fs.copyFileSync(src, path.join(publicDir, name))
+  }
+}
+
 const mailLogoSrc = path.join(root, 'frontend', 'src', 'assets', 'amalgated-lending-logo.png')
 const mailLogoDest = path.join(publicDir, 'amalgated-lending-logo.png')
 if (fs.existsSync(mailLogoSrc)) {

@@ -6,7 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\LoanListResource;
 use App\Jobs\SendLoanApplicationReceivedJob;
 use App\Jobs\SendLoanDecisionJob;
+use App\Jobs\SendLoanPreApprovedJob;
+use App\Support\DeferredDispatch;
 use App\Mail\LoanDecisionMail;
+use App\Mail\LoanPreApprovedMail;
 use App\Models\EmailLog;
 use App\Models\Loan;
 use App\Models\LoanApplication;
@@ -17,6 +20,7 @@ use App\Models\Role;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\StaffScopeService;
 use App\Services\LoanAmortizationService;
 use App\Services\LoanCalculator;
 use App\Services\LoanProductRateResolver;
@@ -129,6 +133,9 @@ class LoanController extends Controller
             });
         }
 
+        $staffScope = app(StaffScopeService::class);
+        $staffScope->applyAssignedLoanScope($q, $request->user());
+
         $loans = $q->orderByDesc('id')->paginate((int) $request->query('per_page', 15));
 
         $loans->setCollection(LoanListResource::collection($loans->getCollection())->collection);
@@ -153,8 +160,13 @@ class LoanController extends Controller
         return in_array($value, self::APPLICATION_STATUSES, true) ? $value : null;
     }
 
-    public function show(Loan $loan): JsonResponse
+    public function show(Request $request, Loan $loan): JsonResponse
     {
+        $staffScope = app(StaffScopeService::class);
+        if (! $staffScope->canAccessLoan($request->user(), $loan->assigned_officer_id, $loan->status)) {
+            return response()->json(['ok' => false, 'message' => 'This loan is not assigned to you.'], 403);
+        }
+
         $loan->load([
             'borrower',
             'approver',
@@ -227,7 +239,44 @@ class LoanController extends Controller
             return $result;
         }
 
-        return response()->json(['ok' => true, 'loan' => $result]);
+        $result->loadMissing(['borrower', 'approver']);
+        $this->notifyBorrowerPreApproved($result);
+
+        $ts = (int) ($result->approved_at?->getTimestamp() ?? now()->getTimestamp());
+        $nc = app(NotificationCenter::class);
+        if ($result->borrower) {
+            $nc->notifyBorrower(
+                $result->borrower,
+                NotificationCenter::CATEGORY_LOAN_PRE_APPROVED,
+                'loan_pre_approved',
+                'Application pre-approved',
+                'Your loan application #'.$result->id.' is pre-approved. Please wait for final approval and schedule an office visit to confirm your loan application.',
+                ['loan_id' => $result->id],
+                ['dedupe_key' => 'loan_pre_approved:'.$result->id.':'.$ts, 'module' => NotificationCenter::MODULE_LOANS],
+            );
+        }
+        $nc->notifyStaff(
+            NotificationCenter::CATEGORY_LOAN_PRE_APPROVED,
+            'loan_pre_approved',
+            'Application pre-approved',
+            'Loan #'.$result->id.($result->borrower ? ' — '.$result->borrower->name : '').' was pre-approved.',
+            ['loan_id' => $result->id],
+            (int) $request->user()->id,
+            ['module' => NotificationCenter::MODULE_LOANS],
+        );
+
+        $lastPreApprovalEmail = EmailLog::query()
+            ->where('loan_id', $result->id)
+            ->where('notification_type', EmailLog::NOTIFICATION_LOAN_PRE_APPROVED)
+            ->orderByDesc('id')
+            ->first();
+
+        return response()->json([
+            'ok' => true,
+            'loan' => $result,
+            'last_loan_pre_approval_email' => $this->formatLoanDecisionEmailLog($lastPreApprovalEmail),
+            'email_notification_queued' => true,
+        ]);
     }
 
     public function returnToPending(Request $request, Loan $loan, ActivityLogger $logger): JsonResponse
@@ -437,9 +486,11 @@ class LoanController extends Controller
             // Rebuild payment ledger from official schedule.
             $termMonths = max(1, (int) $loan->term_months);
             Payment::query()->where('loan_id', $loan->id)->delete();
+            $now = now();
+            $paymentRows = [];
             foreach ($schedule as $row) {
                 $instNo = (int) ($row['installment_no'] ?? 0);
-                Payment::create([
+                $paymentRows[] = [
                     'loan_id' => $loan->id,
                     'installment_no' => $instNo,
                     'is_final_payment' => $instNo === $termMonths,
@@ -450,7 +501,12 @@ class LoanController extends Controller
                     'status' => Payment::STATUS_PENDING,
                     'source' => 'system',
                     'penalty_amount' => 0.0,
-                ]);
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+            if ($paymentRows !== []) {
+                Payment::query()->insert($paymentRows);
             }
 
             // Persist an SOA snapshot for historical accuracy (used by SOA printable templates).
@@ -805,14 +861,64 @@ class LoanController extends Controller
             ],
         );
 
-        try {
-            SendLoanApplicationReceivedJob::dispatchSync($borrower->id, $loan->id);
-        } catch (\Throwable $e) {
-            report($e);
-            SendLoanApplicationReceivedJob::dispatch($borrower->id, $loan->id);
-        }
+        DeferredDispatch::run(new SendLoanApplicationReceivedJob($borrower->id, $loan->id));
 
         return response()->json(['ok' => true, 'loan_id' => $loan->id], 201);
+    }
+
+    /**
+     * Pre-approval email to borrower (portal notice is sent separately via NotificationCenter).
+     */
+    private function notifyBorrowerPreApproved(Loan $loan): void
+    {
+        $loan->loadMissing(['borrower:id,name,email']);
+
+        $ts = (int) ($loan->approved_at?->getTimestamp()
+            ?? $loan->updated_at?->getTimestamp()
+            ?? now()->getTimestamp());
+        $dedupeKey = SendLoanPreApprovedJob::dedupeKey($loan->id, $ts);
+
+        $borrower = $loan->borrower;
+        $email = trim((string) ($borrower?->email ?? ''));
+        $validEmail = $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL);
+
+        if (! $validEmail) {
+            EmailLog::query()->updateOrCreate(
+                ['dedupe_key' => $dedupeKey],
+                [
+                    'loan_id' => $loan->id,
+                    'notification_type' => EmailLog::NOTIFICATION_LOAN_PRE_APPROVED,
+                    'mailable_class' => LoanPreApprovedMail::class,
+                    'recipient_email' => $email !== '' ? $email : 'invalid@invalid.local',
+                    'recipient_name' => $borrower?->name,
+                    'subject' => null,
+                    'status' => EmailLog::STATUS_FAILED,
+                    'transport_detail' => 'invalid_recipient',
+                    'error_message' => 'Missing or invalid borrower email.',
+                    'meta' => ['source' => 'LoanController::notifyBorrowerPreApproved'],
+                ]
+            );
+
+            return;
+        }
+
+        EmailLog::query()->updateOrCreate(
+            ['dedupe_key' => $dedupeKey],
+            [
+                'loan_id' => $loan->id,
+                'notification_type' => EmailLog::NOTIFICATION_LOAN_PRE_APPROVED,
+                'mailable_class' => LoanPreApprovedMail::class,
+                'recipient_email' => $email,
+                'recipient_name' => $borrower?->name,
+                'subject' => null,
+                'status' => EmailLog::STATUS_QUEUED,
+                'transport_detail' => null,
+                'error_message' => null,
+                'meta' => ['source' => 'LoanController::notifyBorrowerPreApproved'],
+            ]
+        );
+
+        DeferredDispatch::run(new SendLoanPreApprovedJob($loan->id, $ts));
     }
 
     /**
@@ -870,12 +976,7 @@ class LoanController extends Controller
             ]
         );
 
-        try {
-            SendLoanDecisionJob::dispatchSync($loan->id, $decision, $ts);
-        } catch (\Throwable $e) {
-            report($e);
-            SendLoanDecisionJob::dispatch($loan->id, $decision, $ts);
-        }
+        DeferredDispatch::run(new SendLoanDecisionJob($loan->id, $decision, $ts));
     }
 
     /**

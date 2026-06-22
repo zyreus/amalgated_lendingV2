@@ -52,6 +52,18 @@ class BorrowerEmailVerificationFlowTest extends TestCase
         $this->assertStringNotContainsString('localhost', $url);
     }
 
+    public function test_marketing_site_url_for_email_skips_api_and_loopback(): void
+    {
+        config()->set('app.url', 'https://api.amalgatedlending.com');
+        config()->set('app.frontend_url', 'http://localhost:6174');
+        config(['services.borrower_verify.base_url' => 'http://127.0.0.1:8001']);
+
+        $this->assertSame(
+            'https://amalgatedlending.com',
+            BorrowerVerificationUrl::marketingSiteUrlForEmail(),
+        );
+    }
+
     public function test_production_env_uses_configured_public_base(): void
     {
         config()->set('app.env', 'production');

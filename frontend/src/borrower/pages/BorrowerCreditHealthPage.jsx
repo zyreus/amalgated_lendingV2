@@ -5,6 +5,17 @@ import KpiStat from '../../components/portal/KpiStat.jsx'
 import { BorrowerPageHeader } from '../../components/portal/BorrowerPageHeader.jsx'
 import { borrowerApi } from '../api/client.js'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
+import WellnessScoreGauge from '../../components/wellness/WellnessScoreGauge.jsx'
+import RiskBadge from '../../components/wellness/RiskBadge.jsx'
+import BorrowerTierBadge from '../../components/wellness/BorrowerTierBadge.jsx'
+import TrendIndicator from '../../components/wellness/TrendIndicator.jsx'
+import AchievementBadges from '../../components/wellness/AchievementBadges.jsx'
+import ScoreBreakdown from '../../components/wellness/ScoreBreakdown.jsx'
+import WellnessProgressTimeline from '../../components/wellness/WellnessProgressTimeline.jsx'
+import FinancialTips from '../../components/wellness/FinancialTips.jsx'
+import LoanEligibilityInsights, { UpcomingMilestones } from '../../components/wellness/LoanEligibilityInsights.jsx'
+import WellnessAlertsPanel from '../../components/wellness/WellnessAlertsPanel.jsx'
+import { getCreditRating, computeWellnessAlerts } from '../../components/wellness/wellnessUtils.js'
 const CreditWellnessChart = lazy(() => import('../components/CreditWellnessChart.jsx'))
 
 const CATEGORY_LABELS = {
@@ -13,14 +24,6 @@ const CATEGORY_LABELS = {
   fair: 'Fair',
   at_risk: 'At Risk',
   critical: 'Critical',
-}
-
-const CATEGORY_RING = {
-  excellent: '#10b981',
-  good: '#34d399',
-  fair: '#fbbf24',
-  at_risk: '#f97316',
-  critical: '#ef4444',
 }
 
 const HEALTH_LABELS = {
@@ -88,9 +91,8 @@ export default function BorrowerCreditHealthPage() {
     }))
   }, [data])
 
-  const ringColor = CATEGORY_RING[data?.score_category] || CATEGORY_RING.fair
   const score = data?.wellness_score ?? 0
-  const ringPct = Math.min(100, Math.max(8, score))
+  const prevScore = data?.history?.[1]?.score
 
   if (loading && !data) {
     return (
@@ -106,7 +108,16 @@ export default function BorrowerCreditHealthPage() {
       <BorrowerPageHeader
         eyebrow="Credit & wellness"
         title={`Hey ${displayName}, your financial snapshot`}
-        description="Track loan health, payment consistency, and personalized recommendations to improve your profile."
+        description={
+          <>
+            Track loan health, payment consistency, and personalized recommendations to improve your profile.
+            {user?.email ? (
+              <span className="mt-2 block font-medium text-gray-700 dark:text-gray-300">
+                Profile email: <span className="text-brand-primary">{user.email}</span>
+              </span>
+            ) : null}
+          </>
+        }
         actions={
           <Link
             to="/borrower/apply-loan"
@@ -125,6 +136,17 @@ export default function BorrowerCreditHealthPage() {
           </button>
         </div>
       ) : null}
+
+      <Box className="flex flex-wrap items-center gap-3">
+        <RiskBadge level={data?.default_risk_level || data?.risk_level} size="lg" />
+        <BorrowerTierBadge score={score} />
+        {data?.improvement_trend ? <TrendIndicator trend={data.improvement_trend} /> : null}
+        {data?.credit_score != null ? (
+          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+            Credit rating: {getCreditRating(data.credit_score)}
+          </span>
+        ) : null}
+      </Box>
 
       <Box className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiStat
@@ -152,19 +174,13 @@ export default function BorrowerCreditHealthPage() {
       <Box className="grid gap-6 lg:grid-cols-2">
         <PortalCard title="Wellness overview" subtitle={data?.improvement_trend ? `Trend: ${data.improvement_trend}` : undefined}>
           <div className="flex flex-col items-center justify-center gap-4 py-6 text-center sm:flex-row sm:text-left">
-            <div
-              className="relative flex h-36 w-36 items-center justify-center rounded-full p-1 shadow-inner"
-              style={{
-                background: `conic-gradient(from 210deg, ${ringColor} 0%, ${ringColor} ${ringPct}%, #f1f5f9 ${ringPct}%, #f1f5f9 100%)`,
-              }}
-            >
-              <Box className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white dark:bg-[#0F172A]">
-                <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Score</span>
-                <span className="heading-display text-3xl font-bold text-brand-text dark:text-white">{score}</span>
-                <span className="mt-1 text-xs font-medium text-brand-primary">{formatCategory(data?.score_category)}</span>
-              </Box>
-            </div>
+            <WellnessScoreGauge score={score} category={data?.score_category} />
             <div className="max-w-sm space-y-2 text-sm text-gray-600 dark:text-gray-400">
+              {user?.email ? (
+                <p>
+                  Account email: <strong className="text-brand-text dark:text-white">{user.email}</strong>
+                </p>
+              ) : null}
               {data?.credit_score != null ? (
                 <p>
                   Credit score: <strong className="text-brand-text dark:text-white">{Number(data.credit_score).toFixed(0)}</strong>
@@ -197,6 +213,42 @@ export default function BorrowerCreditHealthPage() {
           </Suspense>
         </PortalCard>
       </Box>
+
+      <PortalCard title="Score breakdown" subtitle="How your wellness score is composed">
+        <ScoreBreakdown data={data} />
+      </PortalCard>
+
+      <PortalCard title="Achievement badges" subtitle="Earn badges by maintaining excellent payment behavior">
+        <AchievementBadges data={data} />
+      </PortalCard>
+
+      <Box className="grid gap-6 lg:grid-cols-2">
+        <PortalCard title="Wellness progress timeline" subtitle="Your score journey">
+          <WellnessProgressTimeline history={data?.history ?? []} />
+        </PortalCard>
+
+        <PortalCard title="Financial tips" subtitle="Personalized guidance">
+          <FinancialTips data={data} />
+        </PortalCard>
+      </Box>
+
+      <Box className="grid gap-6 lg:grid-cols-2">
+        <PortalCard title="Loan eligibility insights" subtitle="How your profile affects borrowing">
+          <LoanEligibilityInsights data={data} />
+        </PortalCard>
+
+        <PortalCard title="Upcoming milestones" subtitle="Goals to unlock next">
+          <UpcomingMilestones data={data} />
+        </PortalCard>
+      </Box>
+
+      <PortalCard title="Wellness alerts" subtitle="Important updates about your profile">
+        {computeWellnessAlerts(data, prevScore).length > 0 ? (
+          <WellnessAlertsPanel data={data} prevScore={prevScore} title="" />
+        ) : (
+          <p className="text-sm text-gray-500 dark:text-gray-400">No alerts — keep up the great work!</p>
+        )}
+      </PortalCard>
 
       {(data?.risk_flags?.length ?? 0) > 0 ? (
         <PortalCard title="Risk alerts" subtitle="Predictive flags based on your payment behavior">

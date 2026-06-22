@@ -13,6 +13,7 @@ use App\Models\Payment;
 use App\Models\SoaStatement;
 use App\Models\TravelApplication;
 use App\Models\User;
+use App\Services\BorrowerChatLeadService;
 use App\Services\NotificationCenter;
 use App\Services\PaymentReceiptPdfService;
 use App\Support\LoanApplicationDocumentStatus;
@@ -30,8 +31,6 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class BorrowerPortalController extends Controller
 {
-    private const BORROWER_CHAT_LOAN_TYPE = 'Borrower Support';
-
     private const BORROWER_TICKET_LOAN_TYPE = 'Borrower Ticket';
 
     /**
@@ -170,32 +169,7 @@ class BorrowerPortalController extends Controller
 
     private function resolveBorrowerLead($user): Lead
     {
-        $lead = Lead::query()
-            ->where('email', $user->email)
-            ->where('loan_type', self::BORROWER_CHAT_LOAN_TYPE)
-            ->orderByDesc('id')
-            ->first();
-
-        if ($lead) {
-            if ($lead->user_id !== $user->id) {
-                $lead->user_id = $user->id;
-                $lead->save();
-            }
-
-            return $lead;
-        }
-
-        return Lead::create([
-            'user_id' => $user->id,
-            'name' => (string) $user->name,
-            'email' => (string) $user->email,
-            'organization' => null,
-            'loan_type' => self::BORROWER_CHAT_LOAN_TYPE,
-            'status' => 'ongoing',
-            'initial_message' => 'Borrower opened support chat.',
-            'chat_token' => bin2hex(random_bytes(20)),
-            'last_message_at' => now(),
-        ]);
+        return app(BorrowerChatLeadService::class)->ensureForUser($user, borrowerInitiated: true);
     }
 
     public function dashboard(Request $request): JsonResponse
@@ -740,6 +714,7 @@ class BorrowerPortalController extends Controller
         $beforeId = $request->query('before_id');
 
         $query = $lead->messages()
+            ->reorder()
             ->with(['adminUser:id,name'])
             ->orderByDesc('id')
             ->limit($limit);

@@ -1,0 +1,1 @@
+import{aj as s,V as e,j as o,w as p}from"./vendor-CVFDHIyP.js";import{b as u}from"./index-CaEMd79e.js";function n(){const{slug:r}=s(),[a]=e(),t=r||a.get("product")||"";return o.jsx(p,{to:u(t),replace:!0})}export{n as default};

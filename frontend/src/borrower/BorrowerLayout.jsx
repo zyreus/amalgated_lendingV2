@@ -110,7 +110,7 @@ const BORROWER_ICON_CONFIG = {
   apply: { Icon: FilePlus2, wrapper: 'bg-blue-100 text-blue-600' },
   payments: { Icon: CreditCard, wrapper: 'bg-rose-100 text-rose-600' },
   statements: { Icon: FileText, wrapper: 'bg-cyan-100 text-cyan-600' },
-  chat: { Icon: MessageCircleMore, wrapper: 'bg-sky-100 text-sky-600' },
+  chat: { Icon: MessageCircleMore, wrapper: 'bg-red-100 text-brand-primary' },
   help: { Icon: LifeBuoy, wrapper: 'bg-amber-100 text-amber-600' },
   tickets: { Icon: Ticket, wrapper: 'bg-orange-100 text-orange-600' },
   profile: { Icon: UserRound, wrapper: 'bg-pink-100 text-pink-600' },

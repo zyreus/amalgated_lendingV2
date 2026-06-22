@@ -416,8 +416,9 @@ export default function UsersPage() {
       {showCreate ? (
         <div className="fixed inset-0 z-[85]">
           <button type="button" className="absolute inset-0 bg-black/30" onClick={() => setShowCreate(false)} />
-          <aside className="absolute right-0 top-0 h-full w-full max-w-lg overflow-y-auto bg-white p-5 shadow-2xl dark:bg-[#111827]">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Create User</h2>
+          <aside className="absolute right-0 top-0 h-full w-full max-w-lg overflow-y-auto border-l-[3px] border-l-brand-primary bg-white p-5 shadow-2xl dark:bg-[#111827]">
+            <p className={admin.modalEyebrow}>Users</p>
+            <h2 className="mt-2 text-lg font-semibold text-gray-900 dark:text-gray-100">Create User</h2>
             <p className={`mt-1 text-xs ${admin.textMuted}`}>Create account, assign roles, and set activation state.</p>
             <form className="mt-4 space-y-3 pb-24" onSubmit={submitCreate}>
               <input value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} placeholder="Full name *" className={`w-full ${admin.input}`} />
@@ -431,6 +432,9 @@ export default function UsersPage() {
               <label className="flex items-center gap-2 text-sm text-gray-800 dark:text-gray-100"><input type="checkbox" checked={form.is_active} onChange={(e) => setForm((s) => ({ ...s, is_active: e.target.checked }))} /> Active account</label>
               <div className={admin.insetPanel}>
                 <p className={`mb-2 text-xs font-semibold uppercase tracking-wide ${admin.textMuted}`}>Role assignment</p>
+                <p className={`mb-3 text-xs leading-relaxed ${admin.textMuted}`}>
+                  Permissions follow the rules configured in Roles &amp; Permissions. Loan officers and collectors sync automatically on their next refresh.
+                </p>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {roles.map((r) => <label key={r.id} className="flex items-center gap-2 text-sm text-gray-800 dark:text-gray-100"><input type="checkbox" checked={form.role_ids.includes(r.id)} onChange={() => toggleRole(r.id)} /><span>{r.name}</span><span className={`text-xs ${admin.textMuted}`}>({r.slug})</span></label>)}
                 </div>
@@ -458,6 +462,9 @@ export default function UsersPage() {
             <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={editForm.is_active} onChange={(e) => setEditForm((s) => ({ ...s, is_active: e.target.checked }))} /> Active account</label>
             <div className={`${admin.insetPanel} mt-3`}>
               <p className={`mb-2 text-xs font-semibold uppercase tracking-wide ${admin.textMuted}`}>Assign roles</p>
+              <p className={`mb-3 text-xs leading-relaxed ${admin.textMuted}`}>
+                Staff access (admin, loan officer, collector) uses the permission rules from Roles &amp; Permissions.
+              </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {roles.map((r) => <label key={r.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editForm.role_ids.includes(r.id)} onChange={() => toggleRole(r.id, setEditForm)} /><span>{r.name}</span></label>)}
               </div>

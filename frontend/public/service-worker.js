@@ -1,14 +1,19 @@
-/** Bumped to v2 — invalidates the previous SW cache that pinned the placeholder SVG logo. */
-const SW_VERSION = 'amalgated-sw-v2'
+/** v4 — never serve offline.html for SPA navigations when index.html is cached (fixes verify → login). */
+const SW_VERSION = 'amalgated-sw-v4'
 const STATIC_CACHE = `${SW_VERSION}-static`
 const API_CACHE = `${SW_VERSION}-api`
 const OFFLINE_URL = '/offline.html'
+const SPA_SHELL = '/index.html'
 
-const STATIC_ASSETS = ['/', '/index.html', '/favicon.svg', '/amalgated-lending-logo.png', OFFLINE_URL]
+const STATIC_ASSETS = ['/', SPA_SHELL, '/favicon.svg', '/amalgated-lending-logo.png', OFFLINE_URL]
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS)).then(() => self.skipWaiting())
+    caches
+      .open(STATIC_CACHE)
+      .then((cache) => cache.addAll(STATIC_ASSETS))
+      .then(() => fetch(SPA_SHELL).then((response) => response.ok && caches.open(STATIC_CACHE).then((c) => c.put(SPA_SHELL, response))))
+      .then(() => self.skipWaiting())
   )
 })
 
@@ -16,11 +21,15 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) =>
-        Promise.all(keys.filter((key) => ![STATIC_CACHE, API_CACHE].includes(key)).map((key) => caches.delete(key)))
-      )
+      .then((keys) => Promise.all(keys.filter((key) => ![STATIC_CACHE, API_CACHE].includes(key)).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   )
+})
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting()
+  }
 })
 
 function isApiGet(request) {
@@ -74,6 +83,42 @@ async function networkFirstForApi(request) {
   }
 }
 
+async function cachedSpaShell() {
+  const cache = await caches.open(STATIC_CACHE)
+  return (await cache.match(SPA_SHELL)) || (await cache.match('/'))
+}
+
+async function cachedOfflinePage() {
+  const cache = await caches.open(STATIC_CACHE)
+  return cache.match(OFFLINE_URL)
+}
+
+async function handleNavigateRequest(request) {
+  const cache = await caches.open(STATIC_CACHE)
+
+  try {
+    const response = await fetch(request)
+    if (response && response.ok) {
+      cache.put(SPA_SHELL, response.clone())
+      return response
+    }
+
+    const shell = await cachedSpaShell()
+    if (shell) return shell
+    return response
+  } catch {
+    const shell = await cachedSpaShell()
+    if (shell) return shell
+
+    if (self.navigator && self.navigator.onLine === false) {
+      const offline = await cachedOfflinePage()
+      if (offline) return offline
+    }
+
+    return new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } })
+  }
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
@@ -90,11 +135,6 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request).catch(async () => {
-        const cache = await caches.open(STATIC_CACHE)
-        return cache.match(OFFLINE_URL) || cache.match('/index.html')
-      })
-    )
+    event.respondWith(handleNavigateRequest(request))
   }
 })

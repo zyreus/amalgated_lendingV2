@@ -86,6 +86,7 @@ function iconKeyForItem(item) {
   if (path === '/admin/soa') return 'soa'
   if (path === '/admin/reports') return 'reports'
   if (path === '/admin/credit-wellness') return 'wellness'
+  if (path === '/admin/collector-wellness') return 'wellness'
   if (path === '/admin/feedback') return 'feedback'
   if (path === '/admin/newsletter') return 'news'
   return item?.icon_key || 'dash'
@@ -270,7 +271,7 @@ export default function AdminLayout() {
     return () => {
       cancelled = true
     }
-  }, [can])
+  }, [can, user?.permissions])
 
   useEffect(() => {
     if (!location.pathname.startsWith('/admin/chat-crm')) return

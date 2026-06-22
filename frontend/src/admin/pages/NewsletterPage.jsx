@@ -485,20 +485,16 @@ export default function NewsletterPage() {
       </div>
 
       {deleteTarget ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-5 shadow-2xl">
-            <h3 className="text-base font-semibold text-neutral-900">Delete item?</h3>
-            <p className="mt-2 text-sm text-neutral-600">
+        <div className={admin.modalOverlay}>
+          <div className={`${admin.modalCard} max-w-md`}>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Delete item?</h3>
+            <p className={`mt-2 text-sm ${admin.textMuted}`}>
               You are deleting{' '}
-              <span className="font-semibold text-neutral-900">{deleteTarget.title}</span>. This action cannot be
-              undone.
+              <span className="font-semibold text-gray-900 dark:text-gray-100">{deleteTarget.title}</span>. This action
+              cannot be undone.
             </p>
             <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setDeleteTarget(null)}
-                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-              >
+              <button type="button" onClick={() => setDeleteTarget(null)} className={admin.btnSecondary}>
                 Cancel
               </button>
               <button
@@ -507,7 +503,7 @@ export default function NewsletterPage() {
                   deleteItem(deleteTarget.kind, deleteTarget.id)
                   setDeleteTarget(null)
                 }}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                className={admin.btnPrimary}
               >
                 Delete
               </button>

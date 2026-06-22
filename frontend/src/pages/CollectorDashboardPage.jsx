@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../admin/api/client.js'
 import { admin as ui } from '../admin/components/AdminUi.jsx'
 import { DarkTableSkeleton } from '../components/AppSkeletons.jsx'
 import { getAuthUser } from '../auth/session.js'
 import { logoutAndRedirect } from '../components/ProtectedRoute.jsx'
+import CollectorWellnessView from '../components/wellness/CollectorWellnessView.jsx'
 
 export default function CollectorDashboardPage() {
   const navigate = useNavigate()
@@ -34,9 +35,7 @@ export default function CollectorDashboardPage() {
   }
 
   useEffect(() => {
-    ;(async () => {
-      await loadPayments()
-    })()
+    void loadPayments()
   }, [])
 
   const saveStatus = async (paymentId) => {
@@ -46,7 +45,7 @@ export default function CollectorDashboardPage() {
     try {
       await api(`/payments/${paymentId}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, auto_mint_receipt_numbers: true }),
       })
       await loadPayments()
     } finally {
@@ -60,11 +59,18 @@ export default function CollectorDashboardPage() {
         <div className="rounded-2xl border border-white/10 bg-[#0a0a0a] p-6">
           <p className="text-xs uppercase tracking-[0.2em] text-red-400">Collector Dashboard</p>
           <h1 className="mt-2 text-2xl font-semibold">Hello, {user?.name || 'Collector'}</h1>
-          <p className="mt-2 text-sm text-white/60">Monitor due installments and record incoming payments.</p>
+          <p className="mt-2 text-sm text-white/60">Monitor borrower wellness, due dates, and collection priorities.</p>
+          <Link to="/admin/collector-wellness" className="mt-3 inline-block text-sm font-semibold text-red-400 hover:underline">
+            Open collector wellness view →
+          </Link>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white p-1">
+          <CollectorWellnessView canViewPortfolio={false} />
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-[#0a0a0a] p-5">
-          <h2 className="text-sm font-semibold">Recent Payment Records</h2>
+          <h2 className="text-sm font-semibold">Recent payment records</h2>
           {loading ? (
             <DarkTableSkeleton rows={5} cols={5} />
           ) : payments.length === 0 ? (
@@ -74,21 +80,11 @@ export default function CollectorDashboardPage() {
               <table className={`${ui.tableBase} min-w-[720px] text-left text-white`}>
                 <thead>
                   <tr className="border-b border-white/10 text-white/50">
-                    <th className={`${ui.tableCell} text-left text-[11px] font-semibold uppercase tracking-wider`}>
-                      Loan #
-                    </th>
-                    <th className={`${ui.tableCell} text-left text-[11px] font-semibold uppercase tracking-wider`}>
-                      Due Date
-                    </th>
-                    <th className={`${ui.tableCell} text-left text-[11px] font-semibold uppercase tracking-wider`}>
-                      Amount
-                    </th>
-                    <th className={`${ui.tableCell} text-left text-[11px] font-semibold uppercase tracking-wider`}>
-                      Status
-                    </th>
-                    <th className={`${ui.tableCell} text-left text-[11px] font-semibold uppercase tracking-wider`}>
-                      Action
-                    </th>
+                    <th className={`${ui.tableCell} text-left text-[11px] font-semibold uppercase tracking-wider`}>Loan #</th>
+                    <th className={`${ui.tableCell} text-left text-[11px] font-semibold uppercase tracking-wider`}>Due date</th>
+                    <th className={`${ui.tableCell} text-left text-[11px] font-semibold uppercase tracking-wider`}>Amount</th>
+                    <th className={`${ui.tableCell} text-left text-[11px] font-semibold uppercase tracking-wider`}>Status</th>
+                    <th className={`${ui.tableCell} text-left text-[11px] font-semibold uppercase tracking-wider`}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -100,9 +96,7 @@ export default function CollectorDashboardPage() {
                       <td className={ui.tableCell}>
                         <select
                           value={statusById[p.id] || 'pending'}
-                          onChange={(e) =>
-                            setStatusById((prev) => ({ ...prev, [p.id]: e.target.value }))
-                          }
+                          onChange={(e) => setStatusById((prev) => ({ ...prev, [p.id]: e.target.value }))}
                           className="rounded border border-white/15 bg-black px-2 py-1 text-xs text-white"
                         >
                           <option value="pending">Pending</option>

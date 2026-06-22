@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\AuthSecurityRecorder;
+use App\Services\BorrowerChatLeadService;
 use App\Services\BorrowerOtpService;
 use App\Support\AuthRateLimit;
 use App\Support\PublicStorageUrl;
@@ -110,6 +111,8 @@ class BorrowerAuthController extends Controller
 
             return $user->refresh();
         });
+
+        app(BorrowerChatLeadService::class)->ensureForUser($user);
 
         $logger->log($user, 'auth.borrower_register');
         $otpResult = $otp->requestCode($user);

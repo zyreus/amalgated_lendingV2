@@ -1,96 +1,43 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import {
+  Archive,
+  Bot,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
+  Globe,
+  Loader2,
+  MessagesSquare,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Star,
+  Trash2,
+} from 'lucide-react'
 import { api } from '../api/client.js'
 import ConfirmModal from '../components/ConfirmModal.jsx'
+import { useToast } from '../context/ToastContext.jsx'
+import {
+  FEEDBACK_TYPES,
+  QUICK_TABS,
+  avatarText,
+  countByFeedbackType,
+  formatTimestamp,
+  priorityMeta,
+  publicationMeta,
+  resolveFeedbackType,
+  statusMeta,
+} from '../utils/feedbackInboxMeta.js'
+import { starFillLevels } from '../../utils/feedbackRating.js'
 
-const QUICK_TABS = [
-  { id: 'all', label: 'All' },
-  { id: 'new', label: 'New' },
-  { id: 'read', label: 'Read' },
-  { id: 'replied', label: 'Replied' },
-  { id: 'high_rating', label: 'High Rating' },
-  { id: 'low_rating', label: 'Low Rating' },
-]
+const TYPE_TAB_ORDER = ['all', 'testimonial', 'complaint', 'inquiry', 'chatbot', 'general']
 
-function formatTimestamp(ts) {
-  if (!ts) return '—'
-  const date = new Date(ts)
-  if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
-
-function avatarText(name, email) {
-  const base = String(name || email || '?').trim()
-  return (base[0] || '?').toUpperCase()
-}
-
-function priorityPill(priority) {
-  const p = String(priority || '').toLowerCase()
-  if (p.includes('urgent')) return 'bg-rose-600 text-white'
-  if (p.includes('high')) return 'bg-orange-600 text-white'
-  if (p.includes('medium')) return 'bg-amber-100 text-amber-900 ring-1 ring-amber-200'
-  if (p.includes('low')) return 'bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200'
-  if (p.includes('legal')) return 'bg-purple-700 text-white'
-  if (p.includes('escalated')) return 'bg-fuchsia-700 text-white'
-  return 'bg-gray-100 text-gray-800 ring-1 ring-gray-200'
-}
-
-function statusPill(status) {
-  const s = String(status || '').toLowerCase()
-  if (s === 'new') return 'bg-red-50 text-red-700 ring-1 ring-red-200'
-  if (s === 'read') return 'bg-gray-100 text-gray-700 ring-1 ring-gray-200'
-  if (s === 'replied') return 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-  if (s === 'in progress') return 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'
-  if (s === 'escalated') return 'bg-fuchsia-50 text-fuchsia-800 ring-1 ring-fuchsia-200'
-  if (s === 'resolved') return 'bg-teal-50 text-teal-800 ring-1 ring-teal-200'
-  if (s === 'closed' || s === 'archived') return 'bg-gray-100 text-gray-700 ring-1 ring-gray-200'
-  return 'bg-gray-100 text-gray-700 ring-1 ring-gray-200'
-}
-
-function publicationPill(pub, featured) {
-  const p = String(pub || 'pending').toLowerCase()
-  if (p === 'approved') {
-    return featured
-      ? 'bg-amber-50 text-amber-900 ring-1 ring-amber-300'
-      : 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200'
-  }
-  if (p === 'rejected') return 'bg-white text-rose-800 ring-1 ring-rose-400'
-  return 'bg-slate-50 text-slate-600 ring-1 ring-slate-200'
-}
-
-function ticketListAccent(row) {
-  const pub = String(row?.publication_status || 'pending').toLowerCase()
-  if (pub === 'approved' && row?.featured) return 'border-l-amber-500'
-  if (pub === 'approved') return 'border-l-emerald-500'
-  if (pub === 'rejected') return 'border-l-rose-500'
-  const s = String(row?.status || '').toLowerCase()
-  if (s === 'new') return 'border-l-red-500'
-  if (s === 'read') return 'border-l-gray-400'
-  return 'border-l-transparent'
-}
-
-function TicketListSkeleton() {
-  return (
-    <div className="space-y-2.5" aria-hidden>
-      {[0, 1, 2, 3, 4].map((i) => (
-        <div key={i} className="animate-pulse rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-3">
-          <div className="flex gap-2">
-            <div className="h-9 w-9 shrink-0 rounded-full bg-gray-200" />
-            <div className="min-w-0 flex-1 space-y-2">
-              <div className="h-3.5 w-[72%] rounded bg-gray-200" />
-              <div className="h-3 w-[55%] rounded bg-gray-100" />
-              <div className="h-3 w-full rounded bg-gray-100" />
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
+const listItemVariants = {
+  hidden: { opacity: 0, y: 10 },
+  show: (i) => ({ opacity: 1, y: 0, transition: { delay: i * 0.04, duration: 0.28, ease: [0.22, 1, 0.36, 1] } }),
+  exit: { opacity: 0, x: -8, transition: { duration: 0.15 } },
 }
 
 function buildQuery(params) {
@@ -115,8 +62,80 @@ function resolveApprovePublicLabel(selected, inputValue) {
   return undefined
 }
 
+function StarRating({ value, size = 'sm' }) {
+  const fills = starFillLevels(value)
+  const iconClass = size === 'lg' ? 'size-5' : 'size-3.5'
+  return (
+    <span className="inline-flex items-center gap-0.5" aria-label={`${value} out of 5 stars`}>
+      {fills.map((fill, index) => (
+        <span key={index} className="relative inline-block">
+          <Star className={`${iconClass} text-gray-200`} strokeWidth={1.75} />
+          <span className="absolute inset-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
+            <Star className={`${iconClass} fill-amber-400 text-amber-400`} strokeWidth={1.75} />
+          </span>
+        </span>
+      ))}
+      {typeof value === 'number' ? (
+        <span className={`ml-1 font-semibold tabular-nums text-amber-600 ${size === 'lg' ? 'text-base' : 'text-xs'}`}>
+          {value}/5
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
+function TypeIcon({ typeId, className = 'size-4' }) {
+  const meta = FEEDBACK_TYPES[typeId] || FEEDBACK_TYPES.general
+  const Icon = meta.icon
+  return <Icon className={className} strokeWidth={2} />
+}
+
+function FeedbackTypeBadge({ row, compact = false, onDark = false }) {
+  const typeId = resolveFeedbackType(row)
+  const meta = FEEDBACK_TYPES[typeId] || FEEDBACK_TYPES.general
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${
+        onDark ? 'bg-white/15 text-white ring-white/25' : meta.chip
+      } ${compact ? '' : 'uppercase tracking-wide'}`}
+    >
+      <TypeIcon typeId={typeId} className="size-3" />
+      {meta.shortLabel}
+    </span>
+  )
+}
+
+function HeaderMetaPill({ label }) {
+  return (
+    <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/25 backdrop-blur-sm">
+      {label}
+    </span>
+  )
+}
+
+function TicketListSkeleton() {
+  return (
+    <div className="space-y-2.5" aria-hidden>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <div key={i} className="animate-pulse rounded-2xl border border-gray-100 bg-white/80 px-3.5 py-3.5">
+          <div className="flex gap-3">
+            <div className="h-10 w-10 shrink-0 rounded-xl bg-gray-200" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-3.5 w-[72%] rounded bg-gray-200" />
+              <div className="h-3 w-[55%] rounded bg-gray-100" />
+              <div className="h-3 w-full rounded bg-gray-100" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function AdminFeedbackPage() {
+  const { showToast } = useToast()
   const [quick, setQuick] = useState('all')
+  const [typeFilter, setTypeFilter] = useState('all')
   const [searchInput, setSearchInput] = useState('')
   const [searchDebounced, setSearchDebounced] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -147,8 +166,6 @@ export default function AdminFeedbackPage() {
   const [listLoading, setListLoading] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [error, setError] = useState('')
-  const [toast, setToast] = useState('')
-  /** { id, subject } when delete confirmation modal is open */
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const publicAuthorLabelRef = useRef(null)
 
@@ -235,13 +252,16 @@ export default function AdminFeedbackPage() {
     loadTicket(selectedId)
   }, [selectedId, loadTicket])
 
-  useEffect(() => {
-    if (!toast) return undefined
-    const timer = setTimeout(() => setToast(''), 2600)
-    return () => clearTimeout(timer)
-  }, [toast])
+  const typeCounts = useMemo(() => countByFeedbackType(items), [items])
+
+  const visibleItems = useMemo(() => {
+    if (typeFilter === 'all') return items
+    return items.filter((row) => resolveFeedbackType(row) === typeFilter)
+  }, [items, typeFilter])
 
   const selectedSummary = useMemo(() => items.find((x) => x.id === selectedId) || null, [items, selectedId])
+  const selectedType = selected ? resolveFeedbackType(selected) : null
+  const selectedTypeMeta = selectedType ? FEEDBACK_TYPES[selectedType] : null
 
   const onPatchTicket = useCallback(
     async (patch) => {
@@ -254,7 +274,7 @@ export default function AdminFeedbackPage() {
           body: JSON.stringify(patch),
         })
         setSelected(res?.data || null)
-        setToast('Ticket updated.')
+        showToast('Ticket updated.', 'success')
         await loadTickets()
       } catch (err) {
         setError(err?.message || 'Unable to update ticket.')
@@ -262,7 +282,7 @@ export default function AdminFeedbackPage() {
         setBusy(false)
       }
     },
-    [loadTickets, selectedId],
+    [loadTickets, selectedId, showToast],
   )
 
   const onPublicationAction = useCallback(
@@ -277,9 +297,9 @@ export default function AdminFeedbackPage() {
         })
         setSelected(res?.data || null)
         if (path === '/approve') {
-          setToast('Feedback approved and published to website successfully.')
+          showToast('Feedback approved and published to website successfully.', 'success')
         } else {
-          setToast('Publication updated.')
+          showToast('Publication updated.', 'success')
         }
         await loadTicket(selectedId)
         await loadTickets()
@@ -289,7 +309,7 @@ export default function AdminFeedbackPage() {
         setBusy(false)
       }
     },
-    [loadTicket, loadTickets, selectedId],
+    [loadTicket, loadTickets, selectedId, showToast],
   )
 
   const onSetStatus = useCallback(
@@ -303,7 +323,7 @@ export default function AdminFeedbackPage() {
           body: JSON.stringify({ status }),
         })
         setSelected(res?.data || null)
-        setToast(`Status set to ${status}.`)
+        showToast(`Status set to ${status}.`, 'success')
         await loadTickets()
       } catch (err) {
         setError(err?.message || 'Unable to update status.')
@@ -311,7 +331,7 @@ export default function AdminFeedbackPage() {
         setBusy(false)
       }
     },
-    [loadTickets, selectedId],
+    [loadTickets, selectedId, showToast],
   )
 
   const openDeleteModal = useCallback(() => {
@@ -326,7 +346,7 @@ export default function AdminFeedbackPage() {
     setError('')
     try {
       await api(`/feedbacks/${id}`, { method: 'DELETE' })
-      setToast('Ticket deleted.')
+      showToast('Ticket deleted.', 'success')
       if (selectedId === id) {
         setSelected(null)
         setSelectedId(null)
@@ -336,619 +356,675 @@ export default function AdminFeedbackPage() {
       setError(err?.message || 'Unable to delete ticket.')
       throw err
     }
-  }, [deleteConfirm?.id, loadTickets, selectedId])
+  }, [deleteConfirm?.id, loadTickets, selectedId, showToast])
 
   const customer = selected?.contact || null
   const loan = selected?.loan_context || null
-
-  const workflowAside = selectedId && selected
-  const asidePlaceholder =
-    !selectedId
-      ? 'Select a ticket from the inbox to manage publication and website visibility.'
-      : detailLoading
-        ? 'Loading ticket details…'
-        : 'Workflow controls appear once this ticket is available.'
+  const submitterName =
+    customer?.full_name ||
+    selected?.full_name ||
+    selectedSummary?.full_name ||
+    selectedSummary?.borrower?.name ||
+    'Unknown customer'
 
   return (
     <>
-    <div className="grid min-h-[72vh] grid-cols-1 gap-6 lg:grid-cols-[minmax(240px,34%)_minmax(0,1fr)] lg:grid-rows-[auto_auto] lg:items-stretch xl:grid-cols-[minmax(0,24fr)_minmax(0,46fr)_minmax(0,30fr)] xl:grid-rows-[1fr] xl:items-stretch">
-      <section className="flex h-full min-h-0 max-h-none flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-black/[0.04] lg:row-span-2 lg:max-h-[calc(100dvh-6rem)] xl:row-span-1 xl:max-h-[calc(100dvh-8.5rem)] xl:min-h-0 xl:sticky xl:top-20">
-        <div className="shrink-0 space-y-4 border-b border-gray-100 p-5 pb-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 className="truncate text-base font-semibold leading-snug text-gray-900">Feedback inbox</h2>
-              <p className="mt-1 text-[11px] leading-snug text-gray-500">Complaints, inquiries, and testimonial pipeline</p>
+      <div className="grid min-h-[calc(100dvh-8.5rem)] grid-cols-1 gap-4 xl:grid-cols-[minmax(280px,26rem)_minmax(0,1fr)] xl:items-stretch">
+        {/* —— Inbox sidebar —— */}
+        <section className="flex min-h-[420px] flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-lg ring-1 ring-black/[0.04] xl:sticky xl:top-20 xl:max-h-[calc(100dvh-8.5rem)]">
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-brand-primary via-red-700 to-[#7F1D1D] px-5 pb-5 pt-5 text-white">
+            <div className="pointer-events-none absolute -right-6 -top-6 size-28 rounded-full bg-white/10 blur-2xl" />
+            <div className="pointer-events-none absolute -bottom-8 left-4 size-24 rounded-full bg-black/10 blur-2xl" />
+            <div className="relative flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-red-100/90">CRM</p>
+                <h2 className="mt-1 truncate text-lg font-semibold tracking-tight">Feedback inbox</h2>
+                <p className="mt-1 text-xs leading-snug text-red-100/85">Complaints, inquiries & testimonial pipeline</p>
+              </div>
+              <motion.span
+                key={unreadCount}
+                initial={{ scale: 0.85, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="inline-flex shrink-0 items-center rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-white ring-1 ring-white/25 backdrop-blur-sm"
+              >
+                {unreadCount} new
+              </motion.span>
             </div>
-            <span className="inline-flex shrink-0 items-center rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-red-700 ring-1 ring-red-100">
-              {unreadCount} new
-            </span>
+
+            <div className="relative mt-4">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-red-200/80" />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') setSearchDebounced(searchInput.trim())
+                }}
+                placeholder="Search subject, message, email…"
+                className="h-10 w-full rounded-xl border border-white/20 bg-white/10 pl-10 pr-3 text-sm text-white placeholder:text-red-100/70 outline-none backdrop-blur-sm transition focus:border-white/40 focus:bg-white/15 focus:ring-2 focus:ring-white/20"
+              />
+            </div>
           </div>
 
-          <label className="block">
-            <span className="sr-only">Search tickets</span>
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') setSearchDebounced(searchInput.trim())
-              }}
-              placeholder="Search subject, message, email, phone…"
-              className="h-10 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm outline-none transition focus:border-red-300 focus:bg-white focus:ring-2 focus:ring-red-100"
-            />
-          </label>
+          <div className="shrink-0 space-y-3 border-b border-gray-100 bg-[#fff9ed]/60 px-4 py-3">
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+              {TYPE_TAB_ORDER.map((typeId) => {
+                const meta = typeId === 'all' ? null : FEEDBACK_TYPES[typeId]
+                const active = typeFilter === typeId
+                const count = typeCounts[typeId] ?? 0
+                const Icon = typeId === 'all' ? MessagesSquare : meta?.icon || MessagesSquare
+                return (
+                  <button
+                    key={typeId}
+                    type="button"
+                    onClick={() => setTypeFilter(typeId)}
+                    className={`inline-flex min-w-0 items-center justify-center gap-1 rounded-xl px-2 py-2 text-[10px] font-semibold transition-all duration-200 sm:text-[11px] ${
+                      active
+                        ? 'bg-brand-primary text-white shadow-md shadow-brand-primary/20'
+                        : 'border border-gray-200 bg-white text-gray-700 hover:border-brand-primary/30 hover:bg-red-50/50'
+                    }`}
+                  >
+                    <Icon className="size-3 shrink-0" strokeWidth={2.25} />
+                    <span className="truncate">{typeId === 'all' ? 'All' : meta?.label}</span>
+                    <span className={`shrink-0 rounded-full px-1 py-0.5 text-[9px] tabular-nums ${active ? 'bg-white/20' : 'bg-gray-100 text-gray-600'}`}>
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
 
-          <div className="grid w-full grid-cols-4 gap-2">
-            {QUICK_TABS.map((tab) => (
+            <div className="flex gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {QUICK_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setQuick(tab.id)}
+                  className={`rounded-lg px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition ${
+                    quick === tab.id
+                      ? 'bg-brand-primary text-white'
+                      : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
               <button
-                key={tab.id}
                 type="button"
-                onClick={() => setQuick(tab.id)}
-                className={`inline-flex h-9 min-w-0 items-center justify-center rounded-lg px-2 text-center text-[11px] font-semibold leading-tight transition sm:px-3 sm:text-xs ${
-                  quick === tab.id ? 'bg-red-600 text-white shadow-sm' : 'border border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                onClick={() => setFiltersOpen((v) => !v)}
+                className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition ${
+                  filtersOpen ? 'bg-brand-primary text-white' : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50'
                 }`}
               >
-                {tab.label}
+                <Filter className="size-3" />
+                Filters
               </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => setFiltersOpen((v) => !v)}
-              className={`inline-flex h-9 min-w-0 items-center justify-center rounded-lg px-2 text-center text-[11px] font-semibold leading-tight transition sm:px-3 sm:text-xs ${
-                filtersOpen ? 'bg-gray-900 text-white' : 'border border-gray-200 bg-white text-gray-800 hover:bg-gray-50'
-              }`}
-            >
-              Filters
-            </button>
-            <button
-              type="button"
-              disabled={listLoading}
-              onClick={() => loadTickets()}
-              className="inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-gray-200 bg-white px-2 text-center text-[11px] font-semibold leading-tight text-gray-800 transition hover:bg-gray-50 disabled:opacity-60 sm:px-3 sm:text-xs"
-            >
-              Refresh
-            </button>
-          </div>
-        </div>
-
-        {filtersOpen ? (
-          <div className="shrink-0 border-b border-gray-100 bg-gray-50/90 px-5 py-4">
-            <div className="grid gap-2 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Date from</span>
-                <input
-                  type="date"
-                  value={filters.date_from}
-                  onChange={(e) => setFilters((p) => ({ ...p, date_from: e.target.value }))}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm outline-none focus:ring-2 focus:ring-red-200"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Date to</span>
-                <input
-                  type="date"
-                  value={filters.date_to}
-                  onChange={(e) => setFilters((p) => ({ ...p, date_to: e.target.value }))}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm outline-none focus:ring-2 focus:ring-red-200"
-                />
-              </label>
-            </div>
-
-            <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-gray-800">
-              <input
-                type="checkbox"
-                checked={!!filters.featured_only}
-                onChange={(e) => setFilters((p) => ({ ...p, featured_only: e.target.checked }))}
-                className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
-              />
-              <span>Featured only</span>
-            </label>
-
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Publication</span>
-                <select
-                  value={filters.pub_status}
-                  onChange={(e) => setFilters((p) => ({ ...p, pub_status: e.target.value }))}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm outline-none focus:ring-2 focus:ring-red-200"
-                >
-                  <option value="">All</option>
-                  <option value="pending">Pending</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Audience</span>
-                <select
-                  value={filters.audience}
-                  onChange={(e) => setFilters((p) => ({ ...p, audience: e.target.value }))}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm outline-none focus:ring-2 focus:ring-red-200"
-                >
-                  <option value="">All</option>
-                  <option value="borrower">Borrower (linked)</option>
-                  <option value="customer">Customer (public)</option>
-                </select>
-              </label>
-            </div>
-
-            <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-gray-800">
-              <input
-                type="checkbox"
-                checked={!!filters.include_archived}
-                onChange={(e) => setFilters((p) => ({ ...p, include_archived: e.target.checked }))}
-                className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
-              />
-              <span>Show archived tickets</span>
-            </label>
-
-            <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
+                disabled={listLoading}
                 onClick={() => loadTickets()}
-                className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-black"
+                className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600 ring-1 ring-gray-200 transition hover:bg-gray-50 disabled:opacity-60"
               >
-                Apply
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setFilters({
-                    department: '',
-                    date_from: '',
-                    date_to: '',
-                    rating_min: '',
-                    rating_max: '',
-                    location: '',
-                    risk_level: '',
-                    payment_status: '',
-                    include_archived: false,
-                    pub_status: '',
-                    audience: '',
-                    featured_only: false,
-                  })
-                  setQuick('all')
-                }}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 transition hover:bg-gray-50"
-              >
-                Reset
+                <RefreshCw className={`size-3 ${listLoading ? 'animate-spin' : ''}`} />
+                Refresh
               </button>
             </div>
           </div>
-        ) : null}
 
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 pr-3">
-            {listLoading ? <TicketListSkeleton /> : null}
-            {!listLoading && items.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
-                <p className="text-sm font-medium text-gray-700">No tickets on this page</p>
-                <p className="mt-1 text-xs text-gray-500">Try another tab, page, or search.</p>
+          <AnimatePresence>
+            {filtersOpen ? (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="shrink-0 overflow-hidden border-b border-gray-100 bg-gray-50/90"
+              >
+                <div className="space-y-3 px-4 py-4">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Date from</span>
+                      <input
+                        type="date"
+                        value={filters.date_from}
+                        onChange={(e) => setFilters((p) => ({ ...p, date_from: e.target.value }))}
+                        className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-primary/20"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Date to</span>
+                      <input
+                        type="date"
+                        value={filters.date_to}
+                        onChange={(e) => setFilters((p) => ({ ...p, date_to: e.target.value }))}
+                        className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-primary/20"
+                      />
+                    </label>
+                  </div>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800">
+                    <input
+                      type="checkbox"
+                      checked={!!filters.featured_only}
+                      onChange={(e) => setFilters((p) => ({ ...p, featured_only: e.target.checked }))}
+                      className="size-4 rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
+                    />
+                    Featured only
+                  </label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Publication</span>
+                      <select
+                        value={filters.pub_status}
+                        onChange={(e) => setFilters((p) => ({ ...p, pub_status: e.target.value }))}
+                        className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-primary/20"
+                      >
+                        <option value="">All</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Audience</span>
+                      <select
+                        value={filters.audience}
+                        onChange={(e) => setFilters((p) => ({ ...p, audience: e.target.value }))}
+                        className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-primary/20"
+                      >
+                        <option value="">All</option>
+                        <option value="borrower">Borrower (linked)</option>
+                        <option value="customer">Customer (public)</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800">
+                    <input
+                      type="checkbox"
+                      checked={!!filters.include_archived}
+                      onChange={(e) => setFilters((p) => ({ ...p, include_archived: e.target.checked }))}
+                      className="size-4 rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
+                    />
+                    Show archived tickets
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => loadTickets()} className="rounded-lg bg-brand-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-brand-primary-hover">
+                      Apply
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilters({
+                          department: '',
+                          date_from: '',
+                          date_to: '',
+                          rating_min: '',
+                          rating_max: '',
+                          location: '',
+                          risk_level: '',
+                          payment_status: '',
+                          include_archived: false,
+                          pub_status: '',
+                          audience: '',
+                          featured_only: false,
+                        })
+                        setQuick('all')
+                        setTypeFilter('all')
+                      }}
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 transition hover:bg-gray-50"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-3">
+              {listLoading ? <TicketListSkeleton /> : null}
+              {!listLoading && visibleItems.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-gray-300 bg-[#fff9ed]/50 p-8 text-center">
+                  <MessagesSquare className="mx-auto size-8 text-gray-300" />
+                  <p className="mt-3 text-sm font-medium text-gray-700">No feedback in this view</p>
+                  <p className="mt-1 text-xs text-gray-500">Try another type, tab, or search term.</p>
+                </div>
+              ) : null}
+
+              <AnimatePresence mode="popLayout">
+                {!listLoading
+                  ? visibleItems.map((row, index) => {
+                      const who = row?.full_name || row?.borrower?.name || row?.email || 'Unknown customer'
+                      const letter = avatarText(row?.full_name || row?.borrower?.name, row?.email)
+                      const typeId = resolveFeedbackType(row)
+                      const typeMeta = FEEDBACK_TYPES[typeId] || FEEDBACK_TYPES.general
+                      const status = statusMeta(row.status)
+                      const pub = publicationMeta(row.publication_status, row.featured)
+                      const isActive = selectedId === row.id
+
+                      return (
+                        <motion.button
+                          key={row.id}
+                          type="button"
+                          layout
+                          custom={index}
+                          variants={listItemVariants}
+                          initial="hidden"
+                          animate="show"
+                          exit="exit"
+                          onClick={() => setSelectedId(row.id)}
+                          whileHover={{ y: -2, transition: { duration: 0.15 } }}
+                          whileTap={{ scale: 0.99 }}
+                          className={`group flex w-full flex-col rounded-2xl border-l-4 border bg-white p-3.5 text-left shadow-sm transition-all duration-200 ${
+                            isActive
+                              ? `${typeMeta.border} border-brand-primary/30 bg-gradient-to-r from-red-50/80 to-white ring-2 ring-brand-primary/20`
+                              : `${typeMeta.border} border-gray-200/90 hover:border-gray-300 hover:shadow-md`
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div
+                              className={`flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${typeMeta.accent} text-xs font-bold text-white shadow-sm`}
+                            >
+                              {letter}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900">{row.subject || 'General Feedback'}</p>
+                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${status.className}`}>
+                                  {status.label}
+                                </span>
+                              </div>
+                              <p className="mt-1 line-clamp-1 text-xs font-medium text-gray-700">{who}</p>
+                              <p className="mt-1 line-clamp-2 text-xs leading-snug text-gray-500">{row.message || 'No message body'}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                            <FeedbackTypeBadge row={row} compact />
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${priorityMeta(row.priority).className}`}>
+                              {row.priority || 'Medium'}
+                            </span>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${pub.className}`}>{pub.label}</span>
+                            {typeof row.rating === 'number' ? <StarRating value={row.rating} /> : null}
+                            <span className="ml-auto shrink-0 text-[10px] font-medium tabular-nums text-gray-400">{formatTimestamp(row.created_at)}</span>
+                          </div>
+                        </motion.button>
+                      )
+                    })
+                  : null}
+              </AnimatePresence>
+            </div>
+
+            {pageMeta.last_page > 1 ? (
+              <div className="flex shrink-0 items-center justify-between gap-2 border-t border-gray-100 bg-gray-50/80 px-4 py-3">
+                <button
+                  type="button"
+                  disabled={listLoading || page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 transition hover:bg-gray-50 disabled:opacity-40"
+                >
+                  <ChevronLeft className="size-3.5" />
+                  Prev
+                </button>
+                <p className="text-center text-[11px] text-gray-600">
+                  Page <span className="font-semibold text-gray-900">{pageMeta.current_page}</span> of{' '}
+                  <span className="font-semibold text-gray-900">{pageMeta.last_page}</span>
+                </p>
+                <button
+                  type="button"
+                  disabled={listLoading || page >= pageMeta.last_page}
+                  onClick={() => setPage((p) => Math.min(pageMeta.last_page, p + 1))}
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 transition hover:bg-gray-50 disabled:opacity-40"
+                >
+                  Next
+                  <ChevronRight className="size-3.5" />
+                </button>
               </div>
             ) : null}
-
-            {!listLoading
-              ? items.map((row) => {
-                  const who = row?.full_name || row?.borrower?.name || row?.email || 'Unknown customer'
-                  const letter = avatarText(row?.full_name || row?.borrower?.name, row?.email)
-                  const pub = String(row?.publication_status || 'pending').toLowerCase()
-                  return (
-                    <button
-                      key={row.id}
-                      type="button"
-                      onClick={() => setSelectedId(row.id)}
-                      className={`flex min-h-[7.75rem] w-full flex-col rounded-xl border-l-4 border border-gray-200 bg-white p-3.5 text-left shadow-sm ring-1 ring-black/[0.03] transition hover:border-gray-300 hover:shadow-md ${
-                        selectedId === row.id
-                          ? 'border-l-red-500 bg-red-50/40 ring-2 ring-red-400/90 ring-offset-1 ring-offset-white'
-                          : ticketListAccent(row)
-                      }`}
-                    >
-                      <div className="flex min-h-0 flex-1 flex-col gap-2.5">
-                        <div className="flex items-start gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-gray-100 to-gray-200 text-xs font-bold text-gray-700">
-                            {letter}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900">{row.subject || 'General Feedback'}</p>
-                              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusPill(row.status)}`}>
-                                {row.status || 'New'}
-                              </span>
-                            </div>
-                            <p className="mt-1 line-clamp-1 text-xs text-gray-600">{who}</p>
-                            <p className="mt-1 line-clamp-2 text-xs leading-snug text-gray-500">{row.message || 'No message body'}</p>
-                          </div>
-                        </div>
-                        <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1">
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${priorityPill(row.priority)}`}>
-                            {row.priority || 'Medium'}
-                          </span>
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${publicationPill(row.publication_status, row.featured)}`}>
-                            {row.featured ? 'Featured' : pub === 'approved' ? 'Approved' : pub === 'rejected' ? 'Rejected' : 'Pending'}
-                          </span>
-                          {row.verified_borrower ? (
-                            <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800 ring-1 ring-sky-200">
-                              Verified
-                            </span>
-                          ) : null}
-                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-700 ring-1 ring-gray-200">
-                            {row.borrower_id ? 'Borrower' : 'Customer'}
-                          </span>
-                          <span className="ml-auto shrink-0 text-[10px] font-medium tabular-nums text-gray-400">{formatTimestamp(row.created_at)}</span>
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })
-              : null}
           </div>
+        </section>
 
-          {pageMeta.last_page > 1 ? (
-            <div className="flex shrink-0 items-center justify-between gap-2 border-t border-gray-100 bg-gray-50/80 px-4 py-3">
-              <button
-                type="button"
-                disabled={listLoading || page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 transition hover:bg-gray-50 disabled:opacity-40"
-              >
-                Previous
-              </button>
-              <p className="text-center text-[11px] text-gray-600">
-                Page <span className="font-semibold text-gray-900">{pageMeta.current_page}</span> of{' '}
-                <span className="font-semibold text-gray-900">{pageMeta.last_page}</span>
-                <span className="hidden sm:inline"> · {pageMeta.total} total</span>
+        {/* —— Workspace: detail + actions —— */}
+        <div className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-lg ring-1 ring-black/[0.04] xl:max-h-[calc(100dvh-8.5rem)]">
+          {!selectedId ? (
+            <div className="grid flex-1 place-items-center bg-[#fff9ed]/30 p-8 text-center">
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+                <MessagesSquare className="mx-auto size-10 text-brand-primary/40" />
+                <p className="mt-4 text-base font-semibold text-gray-800">Select feedback to review</p>
+                <p className="mt-1 max-w-sm text-sm text-gray-500">Pick an item from the inbox to read the message and manage publication.</p>
+              </motion.div>
+            </div>
+          ) : detailLoading ? (
+            <div className="flex-1 space-y-4 p-6">
+              <div className="h-7 w-[55%] animate-pulse rounded-lg bg-gray-200" />
+              <div className="h-4 w-[38%] animate-pulse rounded-lg bg-gray-100" />
+              <div className="h-44 animate-pulse rounded-2xl bg-gray-100" />
+              <p className="flex items-center gap-2 text-xs text-gray-500">
+                <Loader2 className="size-4 animate-spin text-brand-primary" />
+                Loading ticket details…
               </p>
-              <button
-                type="button"
-                disabled={listLoading || page >= pageMeta.last_page}
-                onClick={() => setPage((p) => Math.min(pageMeta.last_page, p + 1))}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 transition hover:bg-gray-50 disabled:opacity-40"
-              >
-                Next
-              </button>
             </div>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="flex h-full min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm ring-1 ring-black/[0.04] lg:col-start-2 lg:row-start-1 xl:col-start-2 xl:row-start-1">
-        {!selectedId ? (
-          <div className="grid min-h-[420px] place-items-center rounded-xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
-            <div>
-              <p className="text-base font-semibold text-gray-800">No ticket selected</p>
-              <p className="mt-1 text-sm text-gray-500">Pick an item from the inbox to manage it.</p>
-            </div>
-          </div>
-        ) : detailLoading ? (
-          <div className="min-h-[420px] space-y-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/80 p-6">
-            <div className="h-6 w-[55%] animate-pulse rounded-md bg-gray-200" />
-            <div className="h-4 w-[38%] animate-pulse rounded-md bg-gray-100" />
-            <div className="h-40 animate-pulse rounded-xl bg-gray-100" />
-            <p className="text-xs text-gray-500">Loading ticket details…</p>
-          </div>
-        ) : !selected ? (
-          <div className="grid min-h-[320px] place-items-center rounded-xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
-            <div>
+          ) : !selected ? (
+            <div className="grid flex-1 place-items-center p-8 text-center">
               <p className="text-sm font-semibold text-gray-800">Could not load this ticket</p>
               <p className="mt-1 text-xs text-gray-500">Refresh the list or pick another item.</p>
             </div>
-          </div>
-        ) : (
-          <div className="space-y-5">
-            <div className="flex flex-col gap-4 border-b border-gray-100 pb-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-              <div className="min-w-0 flex-1 space-y-1.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="min-w-0 truncate text-xl font-semibold tracking-tight text-gray-900">{selected.subject || 'General Feedback'}</h3>
-                  {selected.is_vip ? <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[11px] font-semibold text-yellow-900">VIP</span> : null}
-                  {selected.is_sensitive ? (
-                    <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[11px] font-semibold text-purple-900">Sensitive</span>
-                  ) : null}
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(280px,22rem)] lg:grid-rows-1">
+              {/* Detail column */}
+              <motion.div
+                key={selectedId}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                className="flex min-h-0 min-w-0 flex-col overflow-y-auto border-b border-gray-100 lg:border-b-0 lg:border-r"
+              >
+                <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-brand-primary via-red-700 to-[#7F1D1D] px-5 py-5 text-white">
+                  <div className="pointer-events-none absolute -right-6 -top-6 size-28 rounded-full bg-white/10 blur-2xl" />
+                  <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <FeedbackTypeBadge row={selected} onDark />
+                        {selected.is_vip ? (
+                          <span className="rounded-full bg-amber-300/90 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-950">VIP</span>
+                        ) : null}
+                        {selected.is_sensitive ? (
+                          <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold uppercase backdrop-blur-sm">Sensitive</span>
+                        ) : null}
+                      </div>
+                      <h3 className="text-xl font-semibold tracking-tight">{selected.subject || 'General Feedback'}</h3>
+                      <p className="text-sm font-medium text-white/90">{submitterName}</p>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/75">
+                        <span className="break-all">{customer?.email || selectedSummary?.email || 'No email'}</span>
+                        <span aria-hidden>·</span>
+                        <span className="tabular-nums">{formatTimestamp(selected.created_at)}</span>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+                      <div className="flex flex-wrap gap-2">
+                        <HeaderMetaPill label={selected.priority || 'Medium'} />
+                        <HeaderMetaPill label={selected.status || 'New'} />
+                      </div>
+                      {typeof selected.rating === 'number' ? (
+                        <div className="rounded-xl bg-white/15 px-3 py-1.5 backdrop-blur-sm">
+                          <StarRating value={selected.rating} size="lg" />
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
-                <p className="text-sm font-medium text-gray-800">{customer?.full_name || selectedSummary?.email || 'Customer'}</p>
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
-                  <span className="break-all">{customer?.email || 'No email'}</span>
-                  <span className="hidden text-gray-300 sm:inline" aria-hidden>
-                    ·
-                  </span>
-                  <span className="tabular-nums text-gray-500">{formatTimestamp(selected.created_at)}</span>
-                </div>
-                <p className="text-[11px] leading-relaxed text-gray-500">
-                  Publication: <span className="font-semibold text-gray-700">{selected.publication_status || 'pending'}</span>
-                  {selected.featured ? (
-                    <span className="ml-1.5 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">Featured</span>
-                  ) : null}
-                </p>
-                {selected.publication_approved_at ? (
-                  <p className="mt-1 text-[11px] text-gray-500">
-                    Website approval: <span className="font-medium text-gray-700">{formatTimestamp(selected.publication_approved_at)}</span>
-                  </p>
-                ) : null}
-                {selected.rejected_at ? (
-                  <p className="mt-0.5 text-[11px] text-rose-600">
-                    Rejected: <span className="font-medium">{formatTimestamp(selected.rejected_at)}</span>
-                  </p>
-                ) : null}
-                {selected.archived_at ? (
-                  <p className="mt-0.5 text-[11px] text-gray-600">
-                    Archived: <span className="font-medium">{formatTimestamp(selected.archived_at)}</span>
-                  </p>
-                ) : null}
-                <p className="mt-1.5 text-[11px] leading-relaxed text-gray-600">
-                  <span className="font-semibold text-gray-800">{selected.customer_type_label || (selected.contact?.borrower_id ? 'Borrower' : 'Customer')}</span>
-                  <span className="text-gray-400"> · </span>
-                  Public homepage:{' '}
-                  <span className={selected.public_site_live ? 'font-semibold text-emerald-700' : 'font-medium text-gray-600'}>
-                    {selected.public_site_live ? 'Visible (synced)' : 'Not visible'}
-                  </span>
-                  <span className="text-gray-400"> · </span>
-                  Consent {selected.consent_public_display ? 'on' : 'off'}
-                  <span className="text-gray-400"> · </span>
-                  Website flag {selected.website_visible ? 'on' : 'off'}
-                </p>
-                {!selected.public_site_live &&
-                String(selected.publication_status || '').toLowerCase() === 'approved' ? (
-                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
-                    <p className="font-semibold">Approved but hidden from the homepage</p>
-                    {Array.isArray(selected.homepage_blockers) && selected.homepage_blockers.length > 0 ? (
-                      <ul className="mt-1.5 list-disc space-y-1 pl-4">
-                        {selected.homepage_blockers.map((reason) => (
-                          <li key={reason}>{reason}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-1.5">
-                        Check publication settings below, then click <span className="font-semibold">Approve</span> again to sync.
-                      </p>
-                    )}
-                    {Array.isArray(selected.homepage_blockers) &&
-                    selected.homepage_blockers.some((reason) =>
-                      String(reason).toLowerCase().includes('public display name'),
-                    ) ? (
-                      <p className="mt-1.5">
-                        Add a <span className="font-semibold">public display name</span> below (or click Approve to auto-fill
-                        &ldquo;Verified Customer&rdquo; for anonymous chatbot feedback).
-                      </p>
+
+                <div className="space-y-4 p-5">
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">Publication snapshot</p>
+                    <p className="mt-2 text-sm leading-relaxed text-gray-700">
+                      <span className="font-semibold text-gray-900">{selected.customer_type_label || (selected.contact?.borrower_id ? 'Borrower' : 'Customer')}</span>
+                      {' · '}
+                      Homepage:{' '}
+                      <span className={selected.public_site_live ? 'font-semibold text-emerald-700' : 'font-medium text-gray-600'}>
+                        {selected.public_site_live ? 'Visible (synced)' : 'Not visible'}
+                      </span>
+                      {' · '}
+                      Consent {selected.consent_public_display ? 'on' : 'off'}
+                    </p>
+                    {!selected.public_site_live && String(selected.publication_status || '').toLowerCase() === 'approved' ? (
+                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-900">
+                        <p className="font-semibold">Approved but hidden from homepage</p>
+                        {Array.isArray(selected.homepage_blockers) && selected.homepage_blockers.length > 0 ? (
+                          <ul className="mt-1.5 list-disc space-y-1 pl-4">
+                            {selected.homepage_blockers.map((reason) => (
+                              <li key={reason}>{reason}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
-                ) : null}
-              </div>
-              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:items-center">
-                <div className="flex flex-wrap justify-end gap-2 sm:justify-end">
-                  <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${priorityPill(selected.priority)}`}>{selected.priority}</span>
-                  <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusPill(selected.status)}`}>{selected.status}</span>
-                </div>
-                {typeof selected.rating === 'number' ? (
-                  <span className="text-sm font-semibold tabular-nums text-amber-600">★ {selected.rating}/5</span>
-                ) : null}
-              </div>
-            </div>
 
-            <div className="grid gap-5 xl:grid-cols-1">
-              <div className="space-y-5">
-                <div className="rounded-xl border border-gray-200 bg-gradient-to-b from-white to-gray-50/80 p-5 shadow-sm ring-1 ring-black/[0.03]">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    {selected.customer_type_label === 'Borrower' ? 'Borrower' : 'Customer'} details
-                  </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-gray-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">
-                      {selected.source || 'unknown'}
-                    </span>
-                    {typeof selected.rating === 'number' ? (
-                      <span className="text-sm font-semibold tabular-nums text-amber-600">★ {selected.rating}/5</span>
-                    ) : null}
+                  <div className="rounded-2xl border border-gray-200 bg-[#fff9ed]/40 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">Source & product</p>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-brand-primary px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+                        {(selected.source === 'chatbot' || String(selected.source || '').toLowerCase().includes('chat')) && <Bot className="size-3" />}
+                        {selected.source || 'unknown'}
+                      </span>
+                    </div>
                     {loan?.loan_product_applied ? (
-                      <span className="text-xs text-gray-600">Product: {loan.loan_product_applied}</span>
+                      <p className="mt-2 text-sm text-gray-600">
+                        Product: <span className="font-medium text-gray-900">{loan.loan_product_applied}</span>
+                      </p>
+                    ) : null}
+                    {selectedTypeMeta ? (
+                      <p className="mt-2 text-xs leading-relaxed text-gray-600">{selectedTypeMeta.description}</p>
                     ) : null}
                   </div>
-                </div>
 
-                <div className="rounded-xl border border-gray-200 bg-gray-50/90 p-5 ring-1 ring-black/[0.03]">
-                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Customer message</p>
-                  <textarea
-                    key={`msg-main-${selectedId}`}
-                    rows={6}
-                    defaultValue={selected.message || ''}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim()
-                      const prev = String(selected.message || '').trim()
-                      if (v === prev) return
-                      onPatchTicket({ message: v })
-                    }}
+                  <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <p className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                      <Sparkles className="size-3.5 text-brand-primary" />
+                      Customer message
+                    </p>
+                    <div className="mb-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm leading-relaxed text-gray-800">
+                      {selected.message || 'No message body'}
+                    </div>
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">Edit message (optional)</p>
+                    <textarea
+                      key={`msg-main-${selectedId}`}
+                      rows={4}
+                      defaultValue={selected.message || ''}
+                      onBlur={(e) => {
+                        const v = e.target.value.trim()
+                        const prev = String(selected.message || '').trim()
+                        if (v === prev) return
+                        onPatchTicket({ message: v })
+                      }}
+                      disabled={busy}
+                      className="min-h-[96px] w-full resize-y rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm leading-relaxed text-gray-800 outline-none transition focus:border-brand-primary/40 focus:ring-2 focus:ring-brand-primary/15 disabled:opacity-60"
+                    />
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Actions column */}
+              <aside className="flex min-h-0 flex-col overflow-y-auto bg-[#fff9ed]/20">
+              <div className="border-b border-gray-100 bg-gradient-to-r from-[#fff9ed] to-white px-5 py-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-primary">Actions</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
                     disabled={busy}
-                    className="max-h-[min(280px,42vh)] min-h-[120px] w-full resize-y rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm leading-relaxed text-gray-800 outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-60"
-                  />
+                    onClick={() => onSetStatus('Archived')}
+                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-800 transition hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    <Archive className="size-4" />
+                    Archive
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={openDeleteModal}
+                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-brand-primary transition hover:bg-red-100 disabled:opacity-60"
+                  >
+                    <Trash2 className="size-4" />
+                    Delete
+                  </button>
                 </div>
               </div>
+
+              <div className="space-y-4 p-5">
+                <div className="rounded-2xl border border-dashed border-brand-primary/25 bg-gradient-to-b from-red-50/50 to-white p-4">
+                  <div className="flex items-start gap-2">
+                    <Globe className="mt-0.5 size-4 shrink-0 text-brand-primary" />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">Public website testimonials</p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-gray-600">
+                        Approved items with consent appear on the homepage (max 3 featured).{' '}
+                        <span className="font-semibold tabular-nums text-brand-primary">
+                          {featuredSlots.used}/{featuredSlots.max}
+                        </span>{' '}
+                        featured slots used.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-800 transition hover:border-brand-primary/20">
+                      <input
+                        type="checkbox"
+                        checked={!!selected.consent_public_display}
+                        disabled={busy}
+                        onChange={(e) => onPatchTicket({ consent_public_display: e.target.checked })}
+                        className="mt-0.5 size-4 rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
+                      />
+                      <span>Borrower consented to public display</span>
+                    </label>
+                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-800 transition hover:border-brand-primary/20">
+                      <input
+                        type="checkbox"
+                        checked={!!selected.website_visible}
+                        disabled={busy}
+                        onChange={(e) => onPatchTicket({ website_visible: e.target.checked })}
+                        className="mt-0.5 size-4 rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
+                      />
+                      <span>Legacy “show on website” flag</span>
+                    </label>
+
+                    <div>
+                      <label htmlFor="public-author-label" className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                        Public display name
+                      </label>
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        Shown on the homepage — not the submitter name (
+                        <span className="font-medium text-gray-700">{submitterName}</span>).
+                      </p>
+                      <input
+                        id="public-author-label"
+                        key={`pub-label-${selectedId}`}
+                        ref={publicAuthorLabelRef}
+                        type="text"
+                        defaultValue={selected.public_author_label || ''}
+                        placeholder="e.g. Maria S. or Verified Customer"
+                        disabled={busy}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim()
+                          const prev = String(selected.public_author_label || '').trim()
+                          if (v === prev) return
+                          onPatchTicket({ public_author_label: v || null })
+                        }}
+                        className="mt-1.5 h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm outline-none focus:border-brand-primary/40 focus:ring-2 focus:ring-brand-primary/15 disabled:opacity-60"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="loan-type-label" className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                        Loan type label
+                      </label>
+                      <input
+                        id="loan-type-label"
+                        key={`loan-type-${selectedId}`}
+                        type="text"
+                        defaultValue={selected.loan_type || ''}
+                        placeholder="e.g. Salary loan, Personal loan"
+                        disabled={busy}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim()
+                          const prev = String(selected.loan_type || '').trim()
+                          if (v === prev) return
+                          onPatchTicket({ loan_type: v || null })
+                        }}
+                        className="mt-1.5 h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm outline-none focus:border-brand-primary/40 focus:ring-2 focus:ring-brand-primary/15 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <motion.button
+                        type="button"
+                        disabled={busy}
+                        whileHover={{ scale: busy ? 1 : 1.02 }}
+                        whileTap={{ scale: busy ? 1 : 0.98 }}
+                        onClick={() =>
+                          onPublicationAction('/approve', {
+                            consent_public_display: !!selected.consent_public_display,
+                            featured: !!selected.featured,
+                            public_author_label: resolveApprovePublicLabel(selected, publicAuthorLabelRef.current?.value),
+                          })
+                        }
+                        className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-brand-primary text-sm font-semibold text-white shadow-md shadow-brand-primary/20 transition hover:bg-brand-primary-hover disabled:opacity-60"
+                      >
+                        <CheckCircle2 className="size-4" />
+                        Approve
+                      </motion.button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => onPublicationAction('/reject', {})}
+                        className="h-10 rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-brand-primary transition hover:bg-red-100 disabled:opacity-60"
+                      >
+                        Reject
+                      </button>
+                      <button
+                        type="button"
+                        disabled={
+                          busy ||
+                          String(selected.publication_status || '').toLowerCase() !== 'approved' ||
+                          (!selected.featured && featuredSlots.used >= featuredSlots.max)
+                        }
+                        onClick={() => onPublicationAction('/feature', {})}
+                        className="h-10 rounded-xl border border-amber-200 bg-amber-50 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-60"
+                      >
+                        Feature
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => onPublicationAction('/unfeature', {})}
+                        className="h-10 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-800 transition hover:bg-gray-50 disabled:opacity-60"
+                      >
+                        Unfeature
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={busy || !!selected.verified_borrower}
+                      onClick={() => onPublicationAction('/verify-borrower', {})}
+                      className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-brand-primary/25 bg-red-50 text-sm font-semibold text-brand-primary transition hover:bg-red-100 disabled:opacity-60"
+                    >
+                      {selected.verified_borrower ? (
+                        <>
+                          <CheckCircle2 className="size-4" />
+                          Verified borrower
+                        </>
+                      ) : (
+                        'Mark verified borrower'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              </aside>
             </div>
-          </div>
-        )}
-      </section>
+          )}
+        </div>
 
-      <aside
-        className={`flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm ring-1 ring-black/[0.04] lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1 ${workflowAside ? '' : 'hidden lg:block'} h-full xl:max-h-[calc(100dvh-8.5rem)] xl:overflow-y-auto xl:overflow-x-hidden xl:sticky xl:top-20`}
-      >
-        {workflowAside ? (
-          <>
-            <div className="grid min-h-0 flex-1 auto-rows-min gap-3">
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onSetStatus('Archived')}
-                  className="h-10 w-full min-w-0 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-gray-800 transition hover:bg-gray-50 disabled:opacity-60"
-                >
-                  Archive
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={openDeleteModal}
-                  className="h-10 w-full min-w-0 rounded-lg border border-red-200 bg-red-50 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
-                >
-                  Delete
-                </button>
-              </div>
+        {error ? (
+          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="col-span-full text-sm font-medium text-brand-primary">
+            {error}
+          </motion.p>
+        ) : null}
+      </div>
 
-              <div className="space-y-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/90 p-4">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Public website testimonials</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
-                    Approved items with borrower consent appear on the homepage (max three). Order:{' '}
-                    <span className="font-semibold text-gray-700">featured</span> first, then highest rating, then most recently approved.
-                    Up to <span className="font-semibold text-gray-700">three</span> items can be featured at once (
-                    <span className="tabular-nums">{featuredSlots.used}</span> / {featuredSlots.max} used).
-                    Archive hides tickets from the default inbox (enable “Show archived” in Filters to find them).
-                  </p>
-                </div>
-                <label className="flex cursor-pointer items-start gap-3 text-sm text-gray-800">
-                  <input
-                    type="checkbox"
-                    checked={!!selected.consent_public_display}
-                    disabled={busy}
-                    onChange={(e) => onPatchTicket({ consent_public_display: e.target.checked })}
-                    className="mt-0.5 h-5 w-5 shrink-0 rounded border-gray-300 text-red-600 focus:ring-red-500"
-                  />
-                  <span>Borrower consented to public display</span>
-                </label>
-                <label className="flex cursor-pointer items-start gap-3 text-sm text-gray-800">
-                  <input
-                    type="checkbox"
-                    checked={!!selected.website_visible}
-                    disabled={busy}
-                    onChange={(e) => onPatchTicket({ website_visible: e.target.checked })}
-                    className="mt-0.5 h-5 w-5 shrink-0 rounded border-gray-300 text-red-600 focus:ring-red-500"
-                  />
-                  <span>Legacy “show on website” flag</span>
-                </label>
-                <div>
-                  <label htmlFor="public-author-label" className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Public display name
-                  </label>
-                  <input
-                    id="public-author-label"
-                    key={`pub-label-${selectedId}`}
-                    ref={publicAuthorLabelRef}
-                    type="text"
-                    defaultValue={selected.public_author_label || ''}
-                    placeholder="e.g. Maria S. or Verified Customer"
-                    disabled={busy}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim()
-                      const prev = String(selected.public_author_label || '').trim()
-                      if (v === prev) return
-                      onPatchTicket({ public_author_label: v || null })
-                    }}
-                    className="mt-1.5 h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-60"
-                  />
-                  <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
-                    Shown on the homepage. Required when the customer has no name or email (typical for chatbot feedback).
-                  </p>
-                </div>
-                <div>
-                  <label htmlFor="loan-type-label" className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                    Loan type label
-                  </label>
-                  <input
-                    id="loan-type-label"
-                    key={`loan-type-${selectedId}`}
-                    type="text"
-                    defaultValue={selected.loan_type || ''}
-                    placeholder="e.g. Personal loan, Salary loan"
-                    disabled={busy}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim()
-                      const prev = String(selected.loan_type || '').trim()
-                      if (v === prev) return
-                      onPatchTicket({ loan_type: v || null })
-                    }}
-                    className="mt-1.5 h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-60"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      onPublicationAction('/approve', {
-                        consent_public_display: !!selected.consent_public_display,
-                        featured: !!selected.featured,
-                        public_author_label: resolveApprovePublicLabel(
-                          selected,
-                          publicAuthorLabelRef.current?.value,
-                        ),
-                      })
-                    }
-                    className="h-10 w-full min-w-0 rounded-lg bg-emerald-600 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => onPublicationAction('/reject', {})}
-                    className="h-10 w-full min-w-0 rounded-lg border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-800 transition hover:bg-rose-100 disabled:opacity-60"
-                  >
-                    Reject
-                  </button>
-                  <button
-                    type="button"
-                    disabled={
-                      busy ||
-                      String(selected.publication_status || '').toLowerCase() !== 'approved' ||
-                      (!selected.featured && featuredSlots.used >= featuredSlots.max)
-                    }
-                    onClick={() => onPublicationAction('/feature', {})}
-                    className="h-10 w-full min-w-0 rounded-lg border border-amber-200 bg-amber-50 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-60"
-                  >
-                    Feature
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => onPublicationAction('/unfeature', {})}
-                    className="h-10 w-full min-w-0 rounded-lg border border-gray-200 bg-white text-sm font-semibold text-gray-800 transition hover:bg-gray-50 disabled:opacity-60"
-                  >
-                    Unfeature
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  disabled={busy || !!selected.verified_borrower}
-                  onClick={() => onPublicationAction('/verify-borrower', {})}
-                  className="h-10 w-full rounded-lg border border-sky-200 bg-sky-50 text-sm font-semibold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
-                >
-                  {selected.verified_borrower ? 'Verified borrower' : 'Mark verified borrower'}
-                </button>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="flex min-h-[12rem] flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/80 p-6 text-center">
-            <p className="max-w-[16rem] text-sm leading-relaxed text-gray-600">{asidePlaceholder}</p>
-          </div>
-        )}
-      </aside>
-
-      {error ? <p className="col-span-full mt-1 text-sm font-medium text-red-600">{error}</p> : null}
-      {toast ? (
-        <div className="fixed bottom-4 right-4 z-50 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white shadow-xl">{toast}</div>
-      ) : null}
-    </div>
-
-    <ConfirmModal
-      open={deleteConfirm != null}
-      onClose={() => setDeleteConfirm(null)}
-      title="Delete feedback ticket?"
-      description={
-        deleteConfirm
-          ? `This permanently removes “${deleteConfirm.subject}” (ticket #${deleteConfirm.id}) and its CRM thread. You cannot undo this action.`
-          : ''
-      }
-      confirmLabel="Delete permanently"
-      cancelLabel="Cancel"
-      tone="danger"
-      onConfirm={performDeleteTicket}
-    />
+      <ConfirmModal
+        open={deleteConfirm != null}
+        onClose={() => setDeleteConfirm(null)}
+        title="Delete feedback ticket?"
+        description={
+          deleteConfirm
+            ? `This permanently removes “${deleteConfirm.subject}” (ticket #${deleteConfirm.id}) and its CRM thread. You cannot undo this action.`
+            : ''
+        }
+        confirmLabel="Delete permanently"
+        cancelLabel="Cancel"
+        tone="danger"
+        onConfirm={performDeleteTicket}
+      />
     </>
   )
 }

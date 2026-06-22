@@ -8,7 +8,7 @@ export const APPLICATION_STATUSES = [
 ]
 
 export function normalizeApplicationStatus(status) {
-  const value = String(status || 'all').toLowerCase()
+  const value = String(status || 'all').toLowerCase().replace(/_/g, '-')
   if (value === 'ongoing') return 'approved'
   return APPLICATION_STATUSES.some((s) => s.value === value) ? value : 'all'
 }

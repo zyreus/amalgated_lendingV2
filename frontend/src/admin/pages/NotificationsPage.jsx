@@ -10,6 +10,7 @@ import { isWebsiteChatNotification } from '../utils/websiteChatNotificationEffec
 
 const CATEGORY_LABELS = {
   loan_application_submitted: 'New application',
+  loan_application_pre_approved: 'Pre-approved',
   loan_application_approved: 'Loan approved',
   loan_application_rejected: 'Loan rejected',
   borrower_payment_submitted: 'Payment submitted',

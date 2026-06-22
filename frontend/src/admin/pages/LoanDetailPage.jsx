@@ -7,6 +7,9 @@ import { admin } from '../components/AdminUi.jsx'
 import { AdminPageSkeleton } from '../../components/AppSkeletons.jsx'
 import { getLaravelStorageFileUrl, resolvePublicFileUrl } from '../../utils/lendingLaravelApi.js'
 import ConfirmModal from '../components/ConfirmModal.jsx'
+import { applicationStatusLabel, normalizeApplicationStatus } from '../components/applications/applicationStatus.js'
+import { clearApplicationsCache } from '../services/applicationsService.js'
+import CreditWellnessSummaryPanel from '../../components/wellness/CreditWellnessSummaryPanel.jsx'
 
 function mergeLoanFromApi(res) {
   if (!res?.loan) return null
@@ -275,6 +278,7 @@ export default function LoanDetailPage() {
         body: JSON.stringify({ admin_notes: notes?.trim() ? notes.trim() : null }),
       })
       setLoan(mergeLoanFromApi(res))
+      clearApplicationsCache()
       const em = res?.last_loan_decision_email
       showToast(
         `Loan approved & schedule generated. ${em ? describeDecisionEmailStatus(em) : 'Borrower email queued.'}`,
@@ -294,7 +298,14 @@ export default function LoanDetailPage() {
         body: JSON.stringify({ admin_notes: notes?.trim() ? notes.trim() : null }),
       })
       setLoan(mergeLoanFromApi(res))
-      showToast('Application pre-approved.', 'success')
+      clearApplicationsCache()
+      const em = res.last_loan_pre_approval_email
+      showToast(
+        em
+          ? `Application pre-approved. ${describeDecisionEmailStatus(em)}`
+          : 'Application pre-approved. Borrower portal and email notifications queued.',
+        'success',
+      )
       void load()
     } catch (e) {
       showToast(e.message, 'error')
@@ -309,6 +320,7 @@ export default function LoanDetailPage() {
         body: JSON.stringify({ admin_notes: notes?.trim() ? notes.trim() : null }),
       })
       setLoan(mergeLoanFromApi(res))
+      clearApplicationsCache()
       showToast('Application returned to pending.', 'success')
       void load()
     } catch (e) {
@@ -346,6 +358,7 @@ export default function LoanDetailPage() {
         body: JSON.stringify({ rejection_reason: reason }),
       })
       setLoan(mergeLoanFromApi(res))
+      clearApplicationsCache()
       const em = res?.last_loan_decision_email
       showToast(
         `Loan rejected. ${em ? describeDecisionEmailStatus(em) : 'Borrower email queued.'}`,
@@ -413,11 +426,14 @@ export default function LoanDetailPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className={admin.pageTitle}>Loan #{loan.id}</h1>
-          <p className={`mt-1 text-sm capitalize ${admin.textMuted}`}>Status: {loan.status}</p>
+          <p className={`mt-1 text-sm ${admin.textMuted}`}>
+            Status:{' '}
+            <span className="font-semibold text-gray-900 dark:text-gray-100">{applicationStatusLabel(loan.status)}</span>
+          </p>
         </div>
       </div>
 
-      {['pending', 'pre-approved'].includes(loan.status) && can('loans.approve') && (
+      {['pending', 'pre-approved'].includes(normalizeApplicationStatus(loan.status)) && can('loans.approve') && (
         <div className={`grid gap-4 p-5 lg:grid-cols-2 ${admin.cardNoHover}`}>
           <div>
             <label className={`text-xs font-medium ${admin.textMuted}`}>Admin notes (optional)</label>
@@ -429,12 +445,12 @@ export default function LoanDetailPage() {
             />
             <button
               type="button"
-              onClick={() => setConfirmLoanAction(loan.status === 'pending' ? 'pre-approve' : 'approve')}
+              onClick={() => setConfirmLoanAction(normalizeApplicationStatus(loan.status) === 'pending' ? 'pre-approve' : 'approve')}
               className="mt-3 rounded-xl bg-[#DC2626] px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-red-700"
             >
-              {loan.status === 'pending' ? 'Pre-Approve' : 'Approve & generate schedule'}
+              {normalizeApplicationStatus(loan.status) === 'pending' ? 'Pre-Approve' : 'Approve & generate schedule'}
             </button>
-            {loan.status === 'pre-approved' ? (
+            {normalizeApplicationStatus(loan.status) === 'pre-approved' ? (
               <button
                 type="button"
                 onClick={() => setConfirmLoanAction('return-pending')}
@@ -558,6 +574,10 @@ export default function LoanDetailPage() {
           )}
         </div>
       </div>
+
+      {loan.borrower?.id && can('borrowers.view') ? (
+        <CreditWellnessSummaryPanel borrowerId={loan.borrower.id} variant="full" />
+      ) : null}
 
       {applicantUploads.length > 0 ? (
         <div className={`text-sm ${admin.cardNoHover}`}>
@@ -769,9 +789,9 @@ export default function LoanDetailPage() {
         open={confirmLoanAction === 'pre-approve'}
         onClose={() => setConfirmLoanAction(null)}
         title="Pre-approve this application?"
-        description="This will move the application into the pre-approved queue for final approval or rejection."
+        description="This will move the application into the pre-approved queue. The borrower will be notified in their portal and by email to wait for final approval and schedule an office visit to confirm their loan application."
         confirmLabel="Pre-Approve"
-        tone="default"
+        tone="success"
         onConfirm={runPreApprove}
       />
       <ConfirmModal
@@ -780,7 +800,7 @@ export default function LoanDetailPage() {
         title="Approve this loan?"
         description="This will generate the repayment schedule, mark the application approved, and queue a decision email to the borrower. Continue?"
         confirmLabel="Approve"
-        tone="default"
+        tone="success"
         onConfirm={runApprove}
       />
       <ConfirmModal

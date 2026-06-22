@@ -375,11 +375,11 @@ export default function BorrowerStatementsPage() {
       </PortalCard>
 
       {selectedStatement ? (
-        <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-labelledby="borrower-statement-title">
-          <div className="w-full max-w-2xl rounded-2xl border border-red-100 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-[#111827]">
-            <div className="flex items-start justify-between gap-4 border-b border-red-50 pb-4 dark:border-white/10">
+        <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-labelledby="borrower-statement-title">
+          <div className="w-full max-w-2xl rounded-2xl border border-gray-200 border-t-[3px] border-t-brand-primary bg-white p-6 shadow-2xl dark:border-[#1F2937] dark:border-t-brand-primary dark:bg-[#111827]">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-200 pb-4 dark:border-[#1F2937]">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Statement of Account</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-primary">Statement of account</p>
                 <h2 id="borrower-statement-title" className="mt-1 text-xl font-semibold text-brand-text dark:text-white">
                   {selectedStatement.statement_number || selectedStatement.period_label}
                 </h2>

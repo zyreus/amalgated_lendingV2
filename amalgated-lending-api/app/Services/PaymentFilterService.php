@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Payment;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -99,11 +100,11 @@ class PaymentFilterService
 
         if ($request->query('loan_scope') === 'assigned') {
             $user = $request->user();
-            $primary = (string) ($user->role ?? '');
-            $derived = $user->derivePrimaryRoleFromRoles();
-            if ($primary === 'loan_officer' || $derived === 'loan_officer') {
-                $query->whereHas('loan', fn ($loanQuery) => $loanQuery->where('assigned_officer_id', $user->id));
+            if ($user instanceof User) {
+                app(StaffScopeService::class)->applyAssignedLoanScopeViaRelation($query, $user);
             }
+        } elseif ($request->user() instanceof User) {
+            app(StaffScopeService::class)->applyAssignedLoanScopeViaRelation($query, $request->user());
         }
     }
 

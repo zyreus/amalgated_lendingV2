@@ -1,0 +1,1 @@
+import{j as n}from"./vendor-BtcmqPL7.js";import{P as i}from"./PublicLoanProductPage-Baf_1mR-.js";import{g as r}from"./publicLoanProductConfig-BiI_FaGF.js";import"./index-C-RgKnOB.js";function u(){const o=r("gsis-pension-loan");return o?n.jsx(i,{config:o}):null}export{u as default};

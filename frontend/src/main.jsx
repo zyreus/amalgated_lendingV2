@@ -18,16 +18,40 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  const registerWorker = () => {
-    navigator.serviceWorker.register('/service-worker.js').catch(() => {
-      // Ignore registration errors to avoid impacting app boot.
-    })
-  }
+function isLoopbackHost() {
+  if (typeof window === 'undefined') return false
+  const host = window.location.hostname.toLowerCase()
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]'
+}
 
-  if ('requestIdleCallback' in window) {
-    window.requestIdleCallback(registerWorker, { timeout: 3000 })
-  } else {
-    window.setTimeout(registerWorker, 1200)
+if ('serviceWorker' in navigator) {
+  if (import.meta.env.DEV) {
+    // Vite dev must never keep a stale production SW (it breaks /borrower/* routes).
+    navigator.serviceWorker.getRegistrations().then((regs) => Promise.all(regs.map((r) => r.unregister())))
+  } else if (import.meta.env.PROD) {
+    const registerWorker = () => {
+      navigator.serviceWorker
+        .register('/service-worker.js')
+        .then((registration) => {
+          registration.update().catch(() => {})
+          if (registration.waiting) {
+            registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+          }
+        })
+        .catch(() => {
+          // Ignore registration errors to avoid impacting app boot.
+        })
+    }
+
+    if (isLoopbackHost()) {
+      // Local preview: drop legacy SW caches that served the old dark offline.html.
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        Promise.all(regs.map((r) => r.unregister())).finally(registerWorker)
+      })
+    } else if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(registerWorker, { timeout: 3000 })
+    } else {
+      window.setTimeout(registerWorker, 1200)
+    }
   }
 }

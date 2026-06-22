@@ -1,0 +1,1 @@
+import{ak as s,W as e,j as o,w as p}from"./vendor-BZND0k4O.js";import{b as u}from"./index-D4tJw2Yk.js";function n(){const{slug:r}=s(),[a]=e(),t=r||a.get("product")||"";return o.jsx(p,{to:u(t),replace:!0})}export{n as default};

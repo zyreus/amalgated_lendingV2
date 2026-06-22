@@ -214,7 +214,7 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
     private const ADMIN_PRIMARY_ROLES = ['admin', 'loan_officer', 'collector', 'accountant'];
 
     /** Role slugs that may use the admin portal (RBAC). */
-    private const ADMIN_ROLE_SLUGS = ['super-admin', 'admin-staff', 'loan-officer', 'collector', 'accountant'];
+    private const ADMIN_ROLE_SLUGS = ['super-admin', 'admin', 'admin-staff', 'loan-officer', 'collector', 'accountant'];
 
     public function canAccessAdminPortal(): bool
     {
@@ -284,6 +284,16 @@ class User extends Authenticatable implements CanResetPasswordContract, JWTSubje
         }
 
         return 'borrower';
+    }
+
+    /** Keep legacy `users.role` column aligned with RBAC role assignments from admin Users. */
+    public function syncPrimaryRoleFromRoles(): void
+    {
+        $derived = $this->derivePrimaryRoleFromRoles();
+        if ($derived !== '' && $derived !== (string) ($this->role ?? '')) {
+            $this->role = $derived;
+            $this->save();
+        }
     }
 
     /** Queue transactional verification email (JWT API — Laravel's default Mail notification is bypassed). */

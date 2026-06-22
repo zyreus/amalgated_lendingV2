@@ -75,6 +75,8 @@ class UserController extends Controller
 
         if (! empty($data['role_ids'])) {
             $user->roles()->sync($data['role_ids']);
+            $user->load('roles');
+            $user->syncPrimaryRoleFromRoles();
         } elseif ($resolvedRole === 'borrower') {
             $borrowerRole = Role::where('slug', 'borrower')->first();
             if ($borrowerRole) {
@@ -84,7 +86,7 @@ class UserController extends Controller
 
         $logger->log($request->user(), 'users.create', $user, ['email' => $user->email]);
 
-        return response()->json(['ok' => true, 'user' => $user->load('roles')], 201);
+        return response()->json(['ok' => true, 'user' => $user->load('roles.permissions')], 201);
     }
 
     public function show(User $user): JsonResponse
@@ -135,10 +137,8 @@ class UserController extends Controller
 
         if (isset($data['role_ids'])) {
             $user->roles()->sync($data['role_ids']);
-            if (! isset($data['role'])) {
-                $user->role = $this->deriveRoleFromRoleIds($data['role_ids']) ?? $user->role ?? 'borrower';
-                $user->save();
-            }
+            $user->load('roles');
+            $user->syncPrimaryRoleFromRoles();
         } elseif (($user->role ?? '') === 'borrower') {
             $borrowerRole = Role::where('slug', 'borrower')->first();
             if ($borrowerRole) {
@@ -148,7 +148,7 @@ class UserController extends Controller
 
         $logger->log($request->user(), 'users.update', $user);
 
-        return response()->json(['ok' => true, 'user' => $user->fresh()->load('roles')]);
+        return response()->json(['ok' => true, 'user' => $user->fresh()->load('roles.permissions')]);
     }
 
     public function verifyBorrowerEmail(Request $request, User $user, ActivityLogger $logger): JsonResponse

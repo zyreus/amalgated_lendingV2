@@ -80,6 +80,9 @@ const ApplicationFlowPage = lazy(() => import('./pages/ApplicationFlowPage.jsx')
 const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage.jsx'))
 const AdminCollectionsPipelinePage = lazy(() => import('./admin/pages/AdminCollectionsPipelinePage.jsx'))
 const AdminCreditWellnessPage = lazy(() => import('./admin/pages/AdminCreditWellnessPage.jsx'))
+const CollectorWellnessPage = lazy(() => import('./admin/pages/CollectorWellnessPage.jsx'))
+const LoanOfficerDashboardPage = lazy(() => import('./pages/LoanOfficerDashboardPage.jsx'))
+const CollectorDashboardPage = lazy(() => import('./pages/CollectorDashboardPage.jsx'))
 const BorrowerCreditHealthPage = lazy(() => import('./borrower/pages/BorrowerCreditHealthPage.jsx'))
 const BorrowerHelpCenterPage = lazy(() => import('./borrower/pages/BorrowerHelpCenterPage.jsx'))
 const BorrowerTicketsPage = lazy(() => import('./borrower/pages/BorrowerTicketsPage.jsx'))
@@ -211,6 +214,7 @@ export default function Root() {
                     <Route path="printable-forms" element={<PrintableFormsPage />} />
                     <Route path="collections" element={<AdminCollectionsPipelinePage />} />
                     <Route path="credit-wellness" element={<AdminCreditWellnessPage />} />
+                    <Route path="collector-wellness" element={<CollectorWellnessPage />} />
                     <Route path="reports" element={<ReportsPage />} />
                     <Route path="leads" element={<Navigate to="/admin/chat-crm?view=leads" replace />} />
                     <Route path="payments" element={<PaymentsPage />} />
@@ -288,6 +292,8 @@ export default function Root() {
               <Route path="/loans/sss-pension-loan" element={<SssPensionLoanPage />} />
               <Route path="/loans/gsis-pension-loan" element={<GsisPensionLoanPage />} />
               <Route path="/login" element={<BorrowerLoginPage />} />
+              <Route path="/officer/dashboard" element={<LoanOfficerDashboardPage />} />
+              <Route path="/collector/dashboard" element={<CollectorDashboardPage />} />
               <Route path="/unauthorized" element={<UnauthorizedPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
                   </Routes>

@@ -17,6 +17,8 @@ class EmailLog extends Model
 
     public const NOTIFICATION_LOAN_DECISION = 'loan_decision';
 
+    public const NOTIFICATION_LOAN_PRE_APPROVED = 'loan_pre_approved';
+
     public const NOTIFICATION_PAYMENT_RECEIPT = 'payment_receipt';
 
     public const NOTIFICATION_SOA_STATEMENT = 'soa_statement';

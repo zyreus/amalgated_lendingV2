@@ -109,22 +109,31 @@ final class BorrowerVerificationUrl
     }
 
     /**
-     * Origin embedded in outbound verification emails — never loopback (mobile inboxes cannot reach dev machine).
+     * Public marketing site for outbound email CTAs (e.g. newsletter "Visit our website").
+     */
+    public static function marketingSiteUrlForEmail(): string
+    {
+        return rtrim(self::publicBaseUrlForEmail(), '/');
+    }
+
+    /**
+     * Origin embedded in outbound verification emails — never loopback or api.* (mobile inboxes cannot reach dev machine).
      */
     public static function publicBaseUrlForEmail(): string
     {
         $candidates = [
             trim((string) config('services.borrower_verify.base_url', '')),
             trim((string) config('app.frontend_url', '')),
+            trim((string) config('lending.public_base_url', '')),
             trim((string) config('app.url', '')),
         ];
 
         foreach ($candidates as $candidate) {
-            if ($candidate === '' || self::isLoopbackUrl($candidate)) {
+            if (self::isUnusablePublicOrigin($candidate)) {
                 continue;
             }
 
-            return self::ensureHttps($candidate);
+            return rtrim(self::ensureHttps($candidate), '/');
         }
 
         return self::PRODUCTION_PUBLIC_ORIGIN;
@@ -170,6 +179,18 @@ final class BorrowerVerificationUrl
         $host = strtolower((string) $parts['host']);
 
         return in_array($host, ['localhost', '127.0.0.1', '0.0.0.0', '[::1]'], true);
+    }
+
+    private static function looksLikeApiHost(string $url): bool
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+
+        return is_string($host) && str_starts_with(strtolower($host), 'api.');
+    }
+
+    private static function isUnusablePublicOrigin(string $url): bool
+    {
+        return $url === '' || self::isLoopbackUrl($url) || self::looksLikeApiHost($url);
     }
 
     private static function originKey(string $url): string

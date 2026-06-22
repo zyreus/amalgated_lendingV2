@@ -24,6 +24,7 @@ use App\Services\PaymentFilterService;
 use App\Services\PaymentReceiptComplianceService;
 use App\Services\PaymentReceiptMutationService;
 use App\Services\PaymentReceiptPdfService;
+use App\Support\BorrowerContactEmail;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -84,22 +85,46 @@ class PaymentController extends Controller
             'borrower_id' => 'required|integer|exists:users,id',
         ]);
 
+        $loanTypeLabels = config('amalgated_loans.general_loan_types', []);
+
         $loans = Loan::query()
             ->where('borrower_id', (int) $data['borrower_id'])
             ->whereIn('status', [Loan::STATUS_APPROVED, Loan::STATUS_ONGOING])
-            ->with(['payments' => function ($query): void {
-                $query->whereNotIn('status', [Payment::STATUS_PAID, Payment::STATUS_WAIVED])
-                    ->whereRaw('(amount_due - COALESCE(amount_paid, 0)) > 0.009')
-                    ->orderBy('due_date')
-                    ->orderBy('installment_no');
-            }])
+            ->with([
+                'loanApplication:id,loan_id,loan_type',
+                'payments' => function ($query): void {
+                    $query->whereNotIn('status', [Payment::STATUS_PAID, Payment::STATUS_WAIVED])
+                        ->whereRaw('(amount_due - COALESCE(amount_paid, 0)) > 0.009')
+                        ->orderBy('due_date')
+                        ->orderBy('installment_no');
+                },
+            ])
             ->orderByDesc('id')
             ->get()
-            ->map(function (Loan $loan): array {
+            ->map(function (Loan $loan) use ($loanTypeLabels): array {
+                $payload = is_array($loan->application_payload) ? $loan->application_payload : [];
+                $loanType = $loan->loanApplication?->loan_type
+                    ?? ($payload['loan_type'] ?? ($payload['loan_product_slug'] ?? 'chattel'));
+                if (is_string($loanType) && str_contains($loanType, '-')) {
+                    $slugMap = [
+                        'salary-loan' => 'salary',
+                        'chattel-mortgage' => 'chattel',
+                        'real-estate-mortgage' => 'real_estate',
+                        'pension-loan' => 'sss_pension',
+                        'sss-pension-loan' => 'sss_pension',
+                        'travel-assistance' => 'travel_assistance',
+                    ];
+                    $loanType = $slugMap[$loanType] ?? 'chattel';
+                }
+
                 return [
                     'id' => $loan->id,
                     'loan_number' => $loan->loan_number,
                     'status' => $loan->status,
+                    'loan_type' => $loanType,
+                    'loan_type_label' => $loanTypeLabels[$loanType] ?? ucwords(str_replace('_', ' ', (string) $loanType)),
+                    'principal' => (float) ($loan->principal ?? 0),
+                    'monthly_payment' => (float) ($loan->monthly_payment ?? 0),
                     'outstanding_balance' => (float) ($loan->outstanding_balance ?? 0),
                     'payments' => $loan->payments->map(fn (Payment $payment): array => [
                         'id' => $payment->id,
@@ -318,10 +343,7 @@ class PaymentController extends Controller
                 ['context' => 'payments.record']
             );
             $this->queuePaymentReceiptEmail($freshPayment, $request->user());
-            $borrowerEmail = trim((string) ($freshPayment->loan?->borrower?->email ?? ''));
-            $receiptEmail = filter_var($borrowerEmail, FILTER_VALIDATE_EMAIL)
-                ? ['sent' => true, 'note' => 'queued']
-                : ['sent' => false, 'note' => 'no_borrower_email'];
+            $receiptEmail = $this->receiptEmailResult($freshPayment);
             $this->deferPaymentPaidNotifications($freshPayment, $request->user());
             $freshPayment = $freshPayment->fresh([
                 'loan.borrower',
@@ -395,7 +417,7 @@ class PaymentController extends Controller
 
                         return;
                     }
-                    if (! $this->hasPaymentEvidence($p)) {
+                    if (! $this->hasPaymentEvidence($p, $user)) {
                         throw ValidationException::withMessages([
                             'payment' => ['Borrower proof, reference number, or recorded payment amount is required before confirmation.'],
                         ]);
@@ -531,10 +553,7 @@ class PaymentController extends Controller
                 ['context' => 'payments.status_update']
             );
             $this->queuePaymentReceiptEmail($freshPayment, $request->user());
-            $borrowerEmail = trim((string) ($freshPayment->loan?->borrower?->email ?? ''));
-            $receiptEmail = filter_var($borrowerEmail, FILTER_VALIDATE_EMAIL)
-                ? ['sent' => true, 'note' => 'queued']
-                : ['sent' => false, 'note' => 'no_borrower_email'];
+            $receiptEmail = $this->receiptEmailResult($freshPayment);
             $this->deferPaymentPaidNotifications($freshPayment, $request->user());
             $freshPayment = $freshPayment->fresh([
                 'loan.borrower',
@@ -898,7 +917,7 @@ class PaymentController extends Controller
 
     private function queuePaymentReceiptEmail(Payment $payment, User $admin): void
     {
-        $payment->loadMissing(['loan.borrower:id,name,email']);
+        $payment->loadMissing(['loan.borrower']);
         $or = trim((string) ($payment->official_receipt_number ?? ''));
         if ($or === '') {
             return;
@@ -906,8 +925,8 @@ class PaymentController extends Controller
 
         $dedupeKey = SendPaymentReceiptJob::dedupeKey($payment->id, $or);
         $borrower = $payment->loan?->borrower;
-        $email = trim((string) ($borrower?->email ?? ''));
-        $validEmail = $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL);
+        $email = BorrowerContactEmail::forPayment($payment);
+        $validEmail = BorrowerContactEmail::isValid($email);
 
         try {
             app(PaymentReceiptPdfService::class)->ensureOfficialPdf($payment, (int) $admin->id);
@@ -963,6 +982,41 @@ class PaymentController extends Controller
         } catch (\Throwable $e) {
             report($e);
         }
+    }
+
+    /**
+     * @return array{sent: bool, note: string|null}
+     */
+    private function receiptEmailResult(Payment $payment): array
+    {
+        $or = trim((string) ($payment->official_receipt_number ?? ''));
+        if ($or === '') {
+            return ['sent' => false, 'note' => 'no_receipt_number'];
+        }
+
+        $email = BorrowerContactEmail::forPayment($payment);
+        if (! BorrowerContactEmail::isValid($email)) {
+            return ['sent' => false, 'note' => 'no_borrower_email'];
+        }
+
+        $log = EmailLog::query()
+            ->where('dedupe_key', SendPaymentReceiptJob::dedupeKey($payment->id, $or))
+            ->first();
+
+        if ($log?->status === EmailLog::STATUS_SENT) {
+            return ['sent' => true, 'note' => 'sent'];
+        }
+
+        if ($log?->status === EmailLog::STATUS_FAILED) {
+            $detail = strtolower((string) ($log->transport_detail ?? $log->error_message ?? ''));
+
+            return [
+                'sent' => false,
+                'note' => str_contains($detail, 'log') ? 'mail_logged_only' : 'mail_transport_failed',
+            ];
+        }
+
+        return ['sent' => false, 'note' => 'send_incomplete'];
     }
 
     /**
@@ -1127,11 +1181,20 @@ class PaymentController extends Controller
         return $cur === Payment::STATUS_PAID && $prev !== Payment::STATUS_PAID;
     }
 
-    private function hasPaymentEvidence(Payment $payment): bool
+    private function hasPaymentEvidence(Payment $payment, ?User $confirmingStaff = null): bool
     {
-        return (float) ($payment->amount_paid ?? 0) > 0
+        if ((float) ($payment->amount_paid ?? 0) > 0
             || trim((string) ($payment->reference_number ?? '')) !== ''
-            || trim((string) ($payment->receipt_path ?? '')) !== '';
+            || trim((string) ($payment->receipt_path ?? '')) !== '') {
+            return true;
+        }
+
+        // Staff attestation when admin, loan officer, or collector confirms a payment manually.
+        if ($confirmingStaff?->hasPermission('payments.manage')) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

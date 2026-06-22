@@ -47,9 +47,14 @@ export const admin = {
   insetPanel:
     'rounded-xl border border-gray-200 bg-gray-50 p-4 transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#0F172A]/50',
   modalOverlay:
-    'fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/60 p-4 backdrop-blur-sm transition-colors duration-300 sm:items-center',
+    'fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/50 p-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] backdrop-blur-sm transition-colors duration-300 sm:items-center sm:p-6',
   modalCard:
-    'w-full max-w-xl rounded-xl border border-gray-200 bg-white p-6 shadow-2xl transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827]',
+    'w-full max-w-xl rounded-2xl border border-gray-200 border-t-[3px] border-t-brand-primary bg-white p-6 shadow-2xl transition-colors duration-300 dark:border-[#1F2937] dark:border-t-brand-primary dark:bg-[#111827]',
+  modalEyebrow:
+    'text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-primary',
+  /** Highlight panel inside modals (success / info callouts). */
+  modalSuccessPanel:
+    'rounded-xl border border-red-100 bg-red-50/80 px-3 py-3 text-sm text-red-900 transition-colors duration-300 dark:border-red-800/40 dark:bg-red-950/20 dark:text-red-100',
   paginationBtn:
     'rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 transition-colors duration-300 hover:bg-gray-100 disabled:opacity-40 dark:border-[#1F2937] dark:bg-[#111827] dark:text-gray-100 dark:hover:bg-[#1F2937]',
   filterInactive:

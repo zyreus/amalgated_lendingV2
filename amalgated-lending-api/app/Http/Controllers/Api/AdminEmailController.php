@@ -246,6 +246,7 @@ class AdminEmailController extends Controller
         return match ($row->notification_type) {
             EmailLog::NOTIFICATION_PAYMENT_RECEIPT => $this->rebuildPaymentReceipt($class, $row),
             EmailLog::NOTIFICATION_LOAN_DECISION => $this->rebuildLoanDecision($class, $row),
+            EmailLog::NOTIFICATION_LOAN_PRE_APPROVED => $this->rebuildLoanPreApproved($class, $row),
             EmailLog::NOTIFICATION_BORROWER_VERIFY => $this->rebuildBorrowerVerify($class, $row),
             EmailLog::NOTIFICATION_BORROWER_OTP => throw new \RuntimeException('OTP codes expire; ask the borrower to request a new code.'),
             EmailLog::NOTIFICATION_PASSWORD_RESET => throw new \RuntimeException('Password reset links expire; use forgot-password to resend.'),
@@ -278,6 +279,19 @@ class AdminEmailController extends Controller
         }
 
         return new $class($loan, (string) $loan->borrower->name, $decision, $adminMessage);
+    }
+
+    private function rebuildLoanPreApproved(string $class, EmailLog $row): Mailable
+    {
+        $loan = Loan::query()->with('borrower')->find($row->loan_id);
+        if (! $loan || ! $loan->borrower) {
+            throw new \RuntimeException('Loan not found.');
+        }
+
+        $trimmed = trim((string) ($loan->admin_notes ?? ''));
+        $adminMessage = $trimmed !== '' ? $trimmed : null;
+
+        return new $class($loan, (string) $loan->borrower->name, $adminMessage);
     }
 
     private function rebuildBorrowerVerify(string $class, EmailLog $row): Mailable

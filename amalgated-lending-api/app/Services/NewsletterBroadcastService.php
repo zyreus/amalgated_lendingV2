@@ -6,6 +6,7 @@ use App\Mail\NewsletterUpdateMail;
 use App\Models\CmsContent;
 use App\Models\EmailLog;
 use App\Models\Lead;
+use App\Support\BorrowerVerificationUrl;
 
 class NewsletterBroadcastService
 {
@@ -108,7 +109,7 @@ class NewsletterBroadcastService
             return ['sent' => 0, 'failed' => 0, 'subscriber_count' => 0];
         }
 
-        $siteUrl = rtrim((string) config('app.frontend_url', 'https://amalgatedlending.com'), '/');
+        $siteUrl = BorrowerVerificationUrl::marketingSiteUrlForEmail();
         $subject = 'News & announcements — '.config('app.name');
 
         $subscribers = Lead::query()

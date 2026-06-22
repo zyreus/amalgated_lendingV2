@@ -1,0 +1,1 @@
+import{j as t}from"./vendor-B8Hm_0p6.js";import{P as a}from"./ProductLoanApplicationPage-he65wfXi.js";import"./index-CuYOv0nc.js";import"./LoanApplicationUi-CKRPLCpQ.js";function i(){return t.jsx(a,{loanType:"real_estate"})}export{i as default};

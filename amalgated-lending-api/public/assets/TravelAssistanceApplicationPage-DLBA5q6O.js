@@ -1,0 +1,1 @@
+import{j as t}from"./vendor-BtcmqPL7.js";import{P as a}from"./ProductLoanApplicationPage-ibF4AvYc.js";import"./index-DU6Gsv7p.js";import"./LoanApplicationUi-DnfLUgjc.js";function e(){return t.jsx(a,{loanType:"travel_assistance"})}export{e as default};

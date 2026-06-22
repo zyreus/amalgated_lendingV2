@@ -5,6 +5,7 @@ import { useAdminApiAuth } from '../context/useAdminApiAuth.js'
 import { useToast } from '../context/ToastContext.jsx'
 import { admin, TableSkeletonRows } from '../components/AdminUi.jsx'
 import ConfirmModal from '../components/ConfirmModal.jsx'
+import ManualPaymentModal from '../components/ManualPaymentModal.jsx'
 import { getLaravelStorageFileUrl } from '../../utils/lendingLaravelApi.js'
 
 function formatDueDate(value) {
@@ -809,19 +810,20 @@ export default function PaymentsPage() {
     }
   }
 
-  const confirmPayment = async () => {
-    if (!confirmTarget?.id) return
-    if (!hasBorrowerPaymentEvidence(confirmTarget)) {
+  const confirmPayment = async (payment) => {
+    const target = payment ?? confirmTarget
+    if (!target?.id) return
+    if (!hasBorrowerPaymentEvidence(target)) {
       showToast('Borrower must submit payment first before confirmation.', 'error')
       return
     }
-    setConfirmingId(confirmTarget.id)
+    setConfirmingId(target.id)
     try {
       const body = {
         status: 'paid',
         auto_mint_receipt_numbers: true,
       }
-      const res = await api(`/payments/${confirmTarget.id}/status`, {
+      const res = await api(`/payments/${target.id}/status`, {
         method: 'PATCH',
         body: JSON.stringify(body),
       })
@@ -854,6 +856,17 @@ export default function PaymentsPage() {
     } finally {
       setConfirmingId(null)
     }
+  }
+
+  const startConfirmPayment = () => {
+    if (!confirmTarget?.id) return
+    if (!hasBorrowerPaymentEvidence(confirmTarget)) {
+      showToast('Borrower must submit payment first before confirmation.', 'error')
+      return
+    }
+    const target = confirmTarget
+    setConfirmTarget(null)
+    void confirmPayment(target)
   }
 
   const openManualModal = () => {
@@ -1563,242 +1576,40 @@ export default function PaymentsPage() {
         </div>
       </div>
 
-      {manualOpen ? (
-        <div
-          className={admin.modalOverlay}
-          role="presentation"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget && !manualSaving) setManualOpen(false)
-          }}
-        >
-          <div
-            className={`${admin.modalCard} max-w-3xl`}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="manual-payment-title"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h3 id="manual-payment-title" className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  Manual Payment Entry
-                </h3>
-                <p className={`mt-1 text-sm ${admin.textMuted}`}>
-                  Encode a staff-processed payment directly to the borrower ledger. The authenticated user is saved as the processor.
-                </p>
-              </div>
-              {selectedManualBorrower ? (
-                <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
-                  {selectedManualBorrower.name}
-                </span>
-              ) : null}
-            </div>
-
-            <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-              <label className="block">
-                <span className={`text-xs font-medium ${admin.textMuted}`}>Borrower</span>
-                <select
-                  value={manualForm.borrower_id}
-                  onChange={(e) => void loadManualOptions(e.target.value)}
-                  className={`mt-1 w-full ${admin.input}`}
-                  disabled={manualSaving}
-                >
-                  <option value="">Select borrower</option>
-                  {borrowerOptions.map((borrower) => (
-                    <option key={borrower.id} value={borrower.id}>
-                      {borrower.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block">
-                <span className={`text-xs font-medium ${admin.textMuted}`}>Active loan</span>
-                <select
-                  value={manualForm.loan_id}
-                  onChange={(e) => changeManualLoan(e.target.value)}
-                  className={`mt-1 w-full ${admin.input}`}
-                  disabled={manualLoading || manualSaving || manualLoans.length === 0}
-                >
-                  <option value="">{manualLoading ? 'Loading loans...' : 'Select active loan'}</option>
-                  {manualLoans.map((loan) => (
-                    <option key={loan.id} value={loan.id}>
-                      {loan.loan_number || `LN-${String(loan.id).padStart(6, '0')}`} · {roleLabel(loan.status)} · Outstanding {formatPeso(loan.outstanding_balance)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block">
-                <span className={`text-xs font-medium ${admin.textMuted}`}>Installment</span>
-                <select
-                  value={manualForm.payment_id}
-                  onChange={(e) => changeManualPayment(e.target.value)}
-                  className={`mt-1 w-full ${admin.input}`}
-                  disabled={!selectedManualLoan || manualSaving}
-                >
-                  <option value="">Select installment</option>
-                  {(selectedManualLoan?.payments || []).map((payment) => (
-                    <option key={payment.id} value={payment.id}>
-                      Inst. {payment.installment_no} · Due {formatDueDate(payment.due_date)} · Balance {formatPeso(payment.remaining_due)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block">
-                <span className={`text-xs font-medium ${admin.textMuted}`}>Payment amount</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={manualForm.amount_paid}
-                  onChange={(e) => setManualForm((current) => ({ ...current, amount_paid: e.target.value }))}
-                  className={`mt-1 w-full ${admin.input}`}
-                  disabled={manualSaving}
-                />
-                {selectedManualPayment ? (
-                  <span className={`mt-1 block text-[11px] ${admin.textMuted}`}>
-                    Remaining after save: {formatPeso(manualNewRemaining)}
-                  </span>
-                ) : null}
-              </label>
-
-              <label className="block">
-                <span className={`text-xs font-medium ${admin.textMuted}`}>Payment date</span>
-                <input
-                  type="date"
-                  value={manualForm.payment_date}
-                  onChange={(e) => setManualForm((current) => ({ ...current, payment_date: e.target.value }))}
-                  className={`mt-1 w-full ${admin.input}`}
-                  disabled={manualSaving}
-                />
-              </label>
-
-              <label className="block">
-                <span className={`text-xs font-medium ${admin.textMuted}`}>Payment method</span>
-                <select
-                  value={manualForm.payment_method}
-                  onChange={(e) => setManualForm((current) => ({ ...current, payment_method: e.target.value }))}
-                  className={`mt-1 w-full ${admin.input}`}
-                  disabled={manualSaving}
-                >
-                  <option value="cash">Cash</option>
-                  <option value="gcash">GCash</option>
-                  <option value="bank">Bank Transfer</option>
-                </select>
-              </label>
-
-              <label className="block">
-                <span className={`text-xs font-medium ${admin.textMuted}`}>Payment type</span>
-                <select
-                  value={manualForm.payment_type}
-                  onChange={(e) => setManualForm((current) => ({ ...current, payment_type: e.target.value }))}
-                  className={`mt-1 w-full ${admin.input}`}
-                  disabled={manualSaving}
-                >
-                  <option value="partial">Partial</option>
-                  <option value="full">Full</option>
-                  <option value="advance">Advance</option>
-                </select>
-              </label>
-
-              <label className="block">
-                <span className={`text-xs font-medium ${admin.textMuted}`}>Penalty amount</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={manualForm.penalty_amount}
-                  onChange={(e) => setManualForm((current) => ({ ...current, penalty_amount: e.target.value }))}
-                  className={`mt-1 w-full ${admin.input}`}
-                  disabled={manualSaving}
-                />
-              </label>
-
-              <label className="block md:col-span-2">
-                <span className={`text-xs font-medium ${admin.textMuted}`}>Reference number</span>
-                <input
-                  value={manualForm.reference_number}
-                  onChange={(e) => setManualForm((current) => ({ ...current, reference_number: e.target.value }))}
-                  placeholder="Receipt, GCash, bank trace, or internal reference"
-                  className={`mt-1 w-full ${admin.input}`}
-                  disabled={manualSaving}
-                />
-              </label>
-
-              <div className="md:col-span-2 rounded-2xl border border-rose-100 bg-rose-50/60 p-4 dark:border-rose-500/20 dark:bg-rose-950/10">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700 dark:text-rose-200">
-                  Receipt Numbers
-                </p>
-                <p className={`mt-1 text-xs ${admin.textMuted}`}>
-                  Enter official OR/AR numbers manually. The system prevents duplicates across existing payments.
-                </p>
-                <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <label className="block">
-                    <span className={`text-xs font-medium ${admin.textMuted}`}>Official Receipt Number</span>
-                    <input
-                      value={manualForm.official_receipt_number}
-                      onChange={(e) => setManualForm((current) => ({ ...current, official_receipt_number: e.target.value.toUpperCase() }))}
-                      placeholder="OR-2026-0001"
-                      className={`mt-1 w-full font-mono uppercase ${admin.input}`}
-                      disabled={manualSaving}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className={`text-xs font-medium ${admin.textMuted}`}>Acknowledgement Receipt Number</span>
-                    <input
-                      value={manualForm.acknowledgement_receipt_number}
-                      onChange={(e) => setManualForm((current) => ({ ...current, acknowledgement_receipt_number: e.target.value.toUpperCase() }))}
-                      placeholder="AR-2026-0001"
-                      className={`mt-1 w-full font-mono uppercase ${admin.input}`}
-                      disabled={manualSaving}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              <label className="block md:col-span-2">
-                <span className={`text-xs font-medium ${admin.textMuted}`}>Remarks</span>
-                <textarea
-                  rows={3}
-                  value={manualForm.notes}
-                  onChange={(e) => setManualForm((current) => ({ ...current, notes: e.target.value }))}
-                  className={`mt-1 w-full ${admin.input}`}
-                  placeholder="Optional notes for audit and borrower statement context"
-                  disabled={manualSaving}
-                />
-              </label>
-            </div>
-
-            {manualForm.borrower_id && !manualLoading && manualLoans.length === 0 ? (
-              <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                This borrower has no active unpaid loan installments available for manual encoding.
-              </p>
-            ) : null}
-
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <button type="button" className={admin.btnSecondary} onClick={() => setManualOpen(false)} disabled={manualSaving}>
-                Cancel
-              </button>
-              <button type="button" className={admin.btnPrimary} onClick={() => void submitManualPayment()} disabled={manualSaving || manualLoading}>
-                {manualSaving ? 'Saving...' : 'Save Manual Payment'}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ManualPaymentModal
+        open={manualOpen}
+        onClose={() => setManualOpen(false)}
+        borrowerOptions={borrowerOptions}
+        manualForm={manualForm}
+        setManualForm={setManualForm}
+        manualLoans={manualLoans}
+        manualLoading={manualLoading}
+        manualSaving={manualSaving}
+        loadManualOptions={loadManualOptions}
+        changeManualLoan={changeManualLoan}
+        changeManualPayment={changeManualPayment}
+        submitManualPayment={submitManualPayment}
+        selectedManualLoan={selectedManualLoan}
+        selectedManualPayment={selectedManualPayment}
+        selectedManualBorrower={selectedManualBorrower}
+        manualRemaining={manualRemaining}
+        manualNewRemaining={manualNewRemaining}
+        formatPeso={formatPeso}
+        formatDueDate={formatDueDate}
+        roleLabel={roleLabel}
+      />
 
       {manualResult ? (
         <div className={admin.modalOverlay} role="presentation">
           <div className={admin.modalCard} role="dialog" aria-modal="true" aria-labelledby="manual-payment-success-title">
-            <h3 id="manual-payment-success-title" className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Payment posted
+            <p className={admin.modalEyebrow}>Payment posted</p>
+            <h3 id="manual-payment-success-title" className="mt-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Receipt details
             </h3>
             <p className={`mt-2 text-sm ${admin.textMuted}`}>
               Payment successfully posted and receipt sent to borrower.
             </p>
-            <div className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-3 text-sm text-green-900 dark:border-green-900/40 dark:bg-green-950/20 dark:text-green-100">
+            <div className={`mt-4 ${admin.modalSuccessPanel}`}>
               <p>
                 <span className="font-medium">OR:</span>{' '}
                 <span className="font-mono">{manualResult.payment?.official_receipt_number || '—'}</span>
@@ -1895,17 +1706,15 @@ export default function PaymentsPage() {
                 type="button"
                 onClick={() => setConfirmTarget(null)}
                 className={admin.btnSecondary}
-                disabled={confirmingId === confirmTarget.id}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={confirmPayment}
-                disabled={confirmingId === confirmTarget.id}
-                className={`${admin.btnPrimary} disabled:opacity-60`}
+                onClick={startConfirmPayment}
+                className={admin.btnPrimary}
               >
-                {confirmingId === confirmTarget.id ? 'Confirming...' : 'Confirm as Paid'}
+                Confirm as Paid
               </button>
             </div>
           </div>
@@ -1995,7 +1804,6 @@ export default function PaymentsPage() {
       <ConfirmModal
         open={adjustConfirmOpen}
         onClose={() => {
-          if (adjustSaving) return
           setAdjustConfirmOpen(false)
           setAdjustPaymentId(null)
         }}

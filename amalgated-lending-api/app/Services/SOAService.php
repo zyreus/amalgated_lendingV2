@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Jobs\SendSoaStatementEmailJob;
 use App\Models\Loan;
 use App\Models\SoaLog;
 use App\Models\SoaStatement;
@@ -63,10 +62,33 @@ class SOAService
         $this->notifyBorrowerInApp($statement);
 
         if ($sendEmail) {
-            SendSoaStatementEmailJob::dispatch($statement->id, $createdBy);
+            $this->deferBorrowerEmail($statement, $createdBy);
         }
 
         return $statement->fresh(['borrower', 'loan']);
+    }
+
+    /** Send SOA email after the HTTP response — works without a queue worker. */
+    private function deferBorrowerEmail(SoaStatement $statement, ?int $createdBy): void
+    {
+        $statementId = (int) $statement->id;
+        app()->terminating(function () use ($statementId, $createdBy): void {
+            try {
+                $fresh = SoaStatement::query()->with(['borrower', 'loan'])->find($statementId);
+                if (! $fresh) {
+                    return;
+                }
+                app(EmailNotificationService::class)->sendSoa($fresh, $createdBy);
+            } catch (\Throwable $e) {
+                report($e);
+                SoaLog::query()->create([
+                    'soa_id' => $statementId,
+                    'action' => 'email_failed',
+                    'description' => 'Deferred SOA email failed: '.$e->getMessage(),
+                    'created_by' => $createdBy,
+                ]);
+            }
+        });
     }
 
     /**

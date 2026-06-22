@@ -246,7 +246,7 @@ export default function RolesPage() {
 
       {editingRole && (
         <div className={admin.modalOverlay}>
-          <div className="my-6 max-h-[min(90vh,880px)] w-full max-w-lg overflow-y-auto overscroll-y-contain rounded-xl border border-gray-200 bg-white p-6 shadow-2xl transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827]">
+          <div className={`${admin.modalCard} my-6 max-h-[min(90vh,880px)] max-w-lg overflow-y-auto overscroll-y-contain`}>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Edit — {editingRole.name}</h3>
             <p className={`mt-1 text-xs ${admin.textMuted}`}>{editingRole.slug}</p>
             <div className="mt-4 space-y-2">

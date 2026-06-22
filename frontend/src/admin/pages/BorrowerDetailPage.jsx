@@ -8,6 +8,7 @@ import { AdminPageSkeleton } from '../../components/AppSkeletons.jsx'
 import { getLaravelStorageFileUrl, resolvePublicFileUrl } from '../../utils/lendingLaravelApi.js'
 import { applicationPayloadRows } from '../utils/loanApplicationPayloadDisplay.js'
 import BorrowerUploadedFilesPanel from '../components/BorrowerUploadedFilesPanel.jsx'
+import CreditWellnessSummaryPanel from '../../components/wellness/CreditWellnessSummaryPanel.jsx'
 
 function formatDateTime(iso) {
   if (iso == null || iso === '') return '—'
@@ -223,6 +224,10 @@ export default function BorrowerDetailPage() {
           <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">{loans.length}</p>
         </div>
       </div>
+
+      {can('borrowers.view') ? (
+        <CreditWellnessSummaryPanel borrowerId={id} variant="full" />
+      ) : null}
 
       {can('borrowers.delete') ? (
         <div className="rounded-xl border border-red-200 bg-red-50/80 p-4 dark:border-red-900/50 dark:bg-red-950/25">

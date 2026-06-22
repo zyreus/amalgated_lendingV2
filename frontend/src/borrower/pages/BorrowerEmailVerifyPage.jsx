@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { getLaravelPublicOrigin } from '../../utils/lendingLaravelApi.js'
 
 /** Laravel origin for signed verify web routes (not /api/v1 — signature is route-specific). */
@@ -32,11 +32,30 @@ function resolveVerifyTarget() {
   return null
 }
 
+/** Same-origin API login URLs → SPA client route (avoids full reload + stale SW offline page). */
+function normalizeLoginUrl(loginUrl, fallback = '/login?verified=1') {
+  const raw = typeof loginUrl === 'string' && loginUrl !== '' ? loginUrl : fallback
+  try {
+    const parsed = new URL(raw, window.location.origin)
+    if (parsed.origin === window.location.origin) {
+      let path = `${parsed.pathname}${parsed.search}${parsed.hash}`
+      if (path.includes('/borrower/login')) {
+        path = path.replace('/borrower/login', '/login')
+      }
+      return path
+    }
+    return raw
+  } catch {
+    return raw.startsWith('/') ? raw : fallback
+  }
+}
+
 /**
  * SPA landing when /borrower/email/verify is served by the React app (e.g. amalgatedlending.com).
  * Completes verification via Laravel JSON on the API/public host, then redirects to /login?verified=1.
  */
 export default function BorrowerEmailVerifyPage() {
+  const navigate = useNavigate()
   const [state, setState] = useState({
     phase: 'loading',
     title: 'Verifying your email',
@@ -63,10 +82,15 @@ export default function BorrowerEmailVerifyPage() {
 
     const finish = (next) => {
       if (cancelled) return
-      setState(next)
-      if (next.loginUrl && next.phase !== 'loading') {
+      const loginUrl = normalizeLoginUrl(next.loginUrl, loginFallback)
+      setState({ ...next, loginUrl })
+      if (loginUrl && next.phase !== 'loading') {
         redirectTimer = window.setTimeout(() => {
-          window.location.replace(next.loginUrl)
+          if (loginUrl.startsWith('http')) {
+            window.location.replace(loginUrl)
+            return
+          }
+          navigate(loginUrl, { replace: true })
         }, 4000)
       }
     }
@@ -78,12 +102,7 @@ export default function BorrowerEmailVerifyPage() {
           credentials: 'omit',
         })
         const data = await res.json().catch(() => ({}))
-        let loginUrl =
-          typeof data.login_url === 'string' && data.login_url !== '' ? data.login_url : loginFallback
-        // Normalize API-relative login paths to SPA /login
-        if (loginUrl.includes('/borrower/login')) {
-          loginUrl = loginUrl.replace('/borrower/login', '/login')
-        }
+        const loginUrl = normalizeLoginUrl(data.login_url, loginFallback)
         const message =
           typeof data.message === 'string' && data.message !== ''
             ? data.message
@@ -120,7 +139,7 @@ export default function BorrowerEmailVerifyPage() {
       cancelled = true
       if (redirectTimer) window.clearTimeout(redirectTimer)
     }
-  }, [])
+  }, [navigate])
 
   const isOk = state.phase === 'ok'
 

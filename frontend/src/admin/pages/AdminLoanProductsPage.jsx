@@ -4,7 +4,26 @@ import { useToast } from '../context/ToastContext.jsx'
 import { useAdminApiAuth } from '../context/useAdminApiAuth.js'
 import { admin } from '../components/AdminUi.jsx'
 import ConfirmModal from '../components/ConfirmModal.jsx'
+import LoanProductWizardModal from '../components/LoanProductWizardModal.jsx'
 import { SkeletonLine } from '../../components/AppSkeletons.jsx'
+import {
+  calculatorConfigToForm,
+  emptyCalculatorConfig,
+  emptyRulesConfig,
+  formToCalculatorConfig,
+  formToRulesConfig,
+  rulesConfigToForm,
+} from '../utils/loanProductConfigSchema.js'
+
+const TIER_BADGE = {
+  green: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200',
+  blue: 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-200',
+  orange: 'bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200',
+}
+
+function tierBadgeClass(tier) {
+  return TIER_BADGE[tier] || 'bg-gray-100 text-gray-700 dark:bg-[#0F172A]/40 dark:text-gray-300'
+}
 
 const emptyForm = {
   code: '',
@@ -26,17 +45,15 @@ const emptyForm = {
   icon_key: '',
   sample_monthly_pension: '',
   sample_computation_note: '',
-  calculator_config_json: '{}',
-  rules_json: '{}',
   sort_order: '0',
 }
 
-function parseConfig(json) {
-  if (!json || !String(json).trim()) return {}
-  try {
-    return JSON.parse(json)
-  } catch {
-    return null
+function emptyConfigState() {
+  return {
+    calculatorConfig: emptyCalculatorConfig(),
+    rulesConfig: emptyRulesConfig(),
+    calcExtra: {},
+    rulesExtra: {},
   }
 }
 
@@ -48,6 +65,7 @@ export default function AdminLoanProductsPage() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(null)
   const [form, setForm] = useState(emptyForm)
+  const [configState, setConfigState] = useState(emptyConfigState)
   const [saving, setSaving] = useState(false)
   /** { id, name } when delete confirmation modal is open */
   const [deleteTarget, setDeleteTarget] = useState(null)
@@ -72,9 +90,12 @@ export default function AdminLoanProductsPage() {
   const openNew = () => {
     setModal('new')
     setForm(emptyForm)
+    setConfigState(emptyConfigState())
   }
 
   const openEdit = (row) => {
+    const calcParsed = calculatorConfigToForm(row.calculator_config || {})
+    const rulesParsed = rulesConfigToForm(row.rules || {})
     setModal('edit')
     setForm({
       slug: row.slug || '',
@@ -96,25 +117,21 @@ export default function AdminLoanProductsPage() {
       icon_key: row.icon_key || '',
       sample_monthly_pension: row.sample_monthly_pension != null ? String(row.sample_monthly_pension) : '',
       sample_computation_note: row.sample_computation_note || '',
-      calculator_config_json: JSON.stringify(row.calculator_config || {}, null, 2),
-      rules_json: JSON.stringify(row.rules || {}, null, 2),
       sort_order: row.sort_order != null ? String(row.sort_order) : '0',
       _id: row.id,
+    })
+    setConfigState({
+      calculatorConfig: calcParsed.form,
+      rulesConfig: rulesParsed.form,
+      calcExtra: calcParsed.extra,
+      rulesExtra: rulesParsed.extra,
     })
   }
 
   const save = async (e) => {
     e.preventDefault()
-    const cfg = parseConfig(form.calculator_config_json)
-    const rules = parseConfig(form.rules_json)
-    if (cfg === null) {
-      showToast('Calculator config must be valid JSON.', 'error')
-      return
-    }
-    if (rules === null) {
-      showToast('Rules must be valid JSON.', 'error')
-      return
-    }
+    const cfg = formToCalculatorConfig(configState.calculatorConfig, configState.calcExtra)
+    const rules = formToRulesConfig(configState.rulesConfig, configState.rulesExtra)
     const payload = {
       code: form.code.trim() || null,
       slug: form.slug.trim(),
@@ -148,6 +165,7 @@ export default function AdminLoanProductsPage() {
       showToast('Interest rate must be between 0 and 100.', 'error')
       return
     }
+    setModal(null)
     setSaving(true)
     try {
       if (modal === 'new') {
@@ -157,7 +175,6 @@ export default function AdminLoanProductsPage() {
         await api(`/admin/loan-products/${form._id}`, { method: 'PUT', body: JSON.stringify(payload) })
         showToast('Loan product updated.', 'success')
       }
-      setModal(null)
       load()
     } catch (err) {
       showToast(err.message, 'error')
@@ -191,6 +208,9 @@ export default function AdminLoanProductsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className={admin.pageTitle}>Loan products</h1>
+          <p className={`mt-1 text-sm ${admin.textMuted}`}>
+            Manage loan types, rates, and calculator settings for the public site and approvals.
+          </p>
         </div>
         <button type="button" onClick={openNew} className={admin.btnPrimary}>
           Add product
@@ -220,17 +240,34 @@ export default function AdminLoanProductsPage() {
             {/* Card view on small + tablets */}
             <div className="space-y-3 lg:hidden">
               {rows.map((r) => (
-                <div key={r.id} className={`${admin.cardNoHover} space-y-2 p-4`}>
+                <div key={r.id} className={`${admin.cardNoHover} space-y-3 p-4`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{r.name}</p>
-                      <p className={`mt-0.5 text-xs ${admin.textMuted}`}>{r.rate_type || '—'} · {r.interest_rate != null ? `${r.interest_rate}%` : '—'}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {r.code ? (
+                          <span className="rounded-md bg-brand-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-primary">
+                            {r.code}
+                          </span>
+                        ) : null}
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${tierBadgeClass(r.tier)}`}>
+                          {r.tier || 'default'}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{r.name}</p>
+                      <p className={`mt-0.5 text-xs ${admin.textMuted}`}>
+                        {r.interest_rate != null ? `${r.interest_rate}%` : '—'} · {r.rate_type || 'monthly'} · max {r.max_term != null ? `${r.max_term} mo` : '—'}
+                      </p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold capitalize text-gray-700 dark:bg-[#0F172A]/40 dark:text-gray-200">
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize ${
+                        r.status === 'active'
+                          ? 'bg-red-50 text-brand-primary ring-1 ring-brand-primary/20'
+                          : 'bg-gray-100 text-gray-600 dark:bg-[#0F172A]/40 dark:text-gray-400'
+                      }`}
+                    >
                       {r.status}
                     </span>
                   </div>
-                  <p className={`text-xs ${admin.textMuted}`}>Max term: {r.max_term != null ? `${r.max_term} mo` : '—'}</p>
                   {r.collateral ? <p className={`text-xs ${admin.textMuted}`}>Collateral: {r.collateral}</p> : null}
                   <div className="flex flex-wrap gap-2 pt-1">
                     <button type="button" onClick={() => openEdit(r)} className={admin.btnSecondary}>
@@ -258,11 +295,11 @@ export default function AdminLoanProductsPage() {
               <table className={`${admin.tableBase} ${admin.tableText} ${admin.tableMin900}`}>
             <thead>
               <tr className={admin.thead}>
-                <th className={`${admin.tableCell} text-left`}>Name</th>
+                <th className={`${admin.tableCell} text-left`}>Product</th>
                 <th className={`${admin.tableCell} text-left`}>Rate</th>
-                <th className={`${admin.tableCell} text-left`}>Rate type</th>
                 <th className={`${admin.tableCell} text-left`}>Collateral</th>
                 <th className={`${admin.tableCell} text-left`}>Max term</th>
+                <th className={`${admin.tableCell} text-left`}>Tier</th>
                 <th className={`${admin.tableCell} text-left`}>Status</th>
                 <th className={`${admin.tableCell} text-right`}>Actions</th>
               </tr>
@@ -270,14 +307,43 @@ export default function AdminLoanProductsPage() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className={admin.tbodyRow}>
-                  <td className={`${admin.tableCell} font-medium ${admin.tableText}`}>{r.name}</td>
-                  <td className={admin.tableCell}>{r.interest_rate != null ? `${r.interest_rate}%` : '—'}</td>
-                  <td className={`${admin.tableCell} capitalize`}>{r.rate_type || '—'}</td>
+                  <td className={admin.tableCell}>
+                    <div className="flex items-center gap-2">
+                      {r.code ? (
+                        <span className="hidden rounded-md bg-brand-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-brand-primary xl:inline">
+                          {r.code}
+                        </span>
+                      ) : null}
+                      <span className={`font-medium ${admin.tableText}`}>{r.name}</span>
+                    </div>
+                    <p className={`mt-0.5 text-[11px] ${admin.tableMuted}`}>{r.slug}</p>
+                  </td>
+                  <td className={admin.tableCell}>
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      {r.interest_rate != null ? `${r.interest_rate}%` : '—'}
+                    </span>
+                    <p className={`text-[11px] capitalize ${admin.tableMuted}`}>{r.rate_type || '—'}</p>
+                  </td>
                   <td className={`max-w-[10rem] truncate sm:max-w-[180px] ${admin.tableCell} ${admin.tableMuted}`} title={r.collateral}>
                     {r.collateral || '—'}
                   </td>
                   <td className={admin.tableCell}>{r.max_term != null ? `${r.max_term} mo` : '—'}</td>
-                  <td className={`${admin.tableCell} capitalize`}>{r.status}</td>
+                  <td className={admin.tableCell}>
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${tierBadgeClass(r.tier)}`}>
+                      {r.tier || '—'}
+                    </span>
+                  </td>
+                  <td className={admin.tableCell}>
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${
+                        r.status === 'active'
+                          ? 'bg-red-50 text-brand-primary dark:bg-red-950/30'
+                          : 'bg-gray-100 text-gray-600 dark:bg-[#0F172A]/40'
+                      }`}
+                    >
+                      {r.status}
+                    </span>
+                  </td>
                   <td className={`${admin.tableCell} text-right`}>
                       <div className="flex flex-col items-end gap-2 sm:flex-row sm:justify-end">
                         <button type="button" onClick={() => openEdit(r)} className={`${admin.btnSecondary} w-full sm:mr-2 sm:w-auto`}>
@@ -323,146 +389,17 @@ export default function AdminLoanProductsPage() {
         onConfirm={performDelete}
       />
 
-      {modal ? (
-        <div className={admin.modalOverlay}>
-          <div className={`${admin.modalCard} max-h-[90vh] overflow-y-auto`}>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              {modal === 'new' ? 'Add loan product' : 'Edit loan product'}
-            </h2>
-            <form onSubmit={save} className="mt-4 space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className={`text-xs ${admin.textMuted}`}>Product code</label>
-                  <input className={`mt-1 w-full ${admin.input}`} value={form.code} onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))} />
-                </div>
-                <div>
-                  <label className={`text-xs ${admin.textMuted}`}>Slug</label>
-                  <input className={`mt-1 w-full ${admin.input}`} value={form.slug} onChange={(e) => setForm((s) => ({ ...s, slug: e.target.value }))} required />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className={`text-xs ${admin.textMuted}`}>Sort order</label>
-                  <input className={`mt-1 w-full ${admin.input}`} value={form.sort_order} onChange={(e) => setForm((s) => ({ ...s, sort_order: e.target.value }))} />
-                </div>
-              </div>
-              <div>
-                <label className={`text-xs ${admin.textMuted}`}>Loan name</label>
-                <input className={`mt-1 w-full ${admin.input}`} value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} required />
-              </div>
-              <div>
-                <label className={`text-xs ${admin.textMuted}`}>Description</label>
-                <textarea className={`mt-1 w-full ${admin.input}`} rows={3} value={form.description} onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))} />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className={`text-xs ${admin.textMuted}`}>Interest rate (%)</label>
-                  <input className={`mt-1 w-full ${admin.input}`} value={form.interest_rate} onChange={(e) => setForm((s) => ({ ...s, interest_rate: e.target.value }))} required />
-                </div>
-                <div>
-                  <label className={`text-xs ${admin.textMuted}`}>Rate type</label>
-                  <select className={`mt-1 w-full ${admin.input}`} value={form.rate_type} onChange={(e) => setForm((s) => ({ ...s, rate_type: e.target.value }))}>
-                    <option value="monthly">monthly</option>
-                    <option value="fixed">fixed</option>
-                    <option value="annual">annual</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className={`text-xs ${admin.textMuted}`}>Collateral</label>
-                <input className={`mt-1 w-full ${admin.input}`} value={form.collateral} onChange={(e) => setForm((s) => ({ ...s, collateral: e.target.value }))} />
-              </div>
-              <div>
-                <label className={`text-xs ${admin.textMuted}`}>Collateral type</label>
-                <input className={`mt-1 w-full ${admin.input}`} value={form.collateral_type} onChange={(e) => setForm((s) => ({ ...s, collateral_type: e.target.value }))} />
-              </div>
-              <div>
-                <label className={`text-xs ${admin.textMuted}`}>Requirements</label>
-                <textarea className={`mt-1 w-full ${admin.input}`} rows={2} value={form.requirements} onChange={(e) => setForm((s) => ({ ...s, requirements: e.target.value }))} />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div>
-                  <label className={`text-xs ${admin.textMuted}`}>Max term (months)</label>
-                  <input className={`mt-1 w-full ${admin.input}`} value={form.max_term} onChange={(e) => setForm((s) => ({ ...s, max_term: e.target.value }))} />
-                </div>
-                <div>
-                  <label className={`text-xs ${admin.textMuted}`}>Max loan amount</label>
-                  <input className={`mt-1 w-full ${admin.input}`} value={form.max_amount} onChange={(e) => setForm((s) => ({ ...s, max_amount: e.target.value }))} />
-                </div>
-                <div>
-                  <label className={`text-xs ${admin.textMuted}`}>Age limit</label>
-                  <input className={`mt-1 w-full ${admin.input}`} value={form.age_limit} onChange={(e) => setForm((s) => ({ ...s, age_limit: e.target.value }))} />
-                </div>
-                <div>
-                  <label className={`text-xs ${admin.textMuted}`}>Safe age</label>
-                  <input className={`mt-1 w-full ${admin.input}`} value={form.safe_age} onChange={(e) => setForm((s) => ({ ...s, safe_age: e.target.value }))} />
-                </div>
-              </div>
-              <div>
-                <label className={`text-xs ${admin.textMuted}`}>Downpayment (optional)</label>
-                <input className={`mt-1 w-full ${admin.input}`} value={form.downpayment} onChange={(e) => setForm((s) => ({ ...s, downpayment: e.target.value }))} />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div>
-                  <label className={`text-xs ${admin.textMuted}`}>Status</label>
-                  <select className={`mt-1 w-full ${admin.input}`} value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
-                    <option value="active">active</option>
-                    <option value="inactive">inactive</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={`text-xs ${admin.textMuted}`}>Tier (UI)</label>
-                  <select className={`mt-1 w-full ${admin.input}`} value={form.tier} onChange={(e) => setForm((s) => ({ ...s, tier: e.target.value }))}>
-                    <option value="green">green</option>
-                    <option value="blue">blue</option>
-                    <option value="orange">orange</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={`text-xs ${admin.textMuted}`}>Icon key</label>
-                  <input className={`mt-1 w-full ${admin.input}`} value={form.icon_key} onChange={(e) => setForm((s) => ({ ...s, icon_key: e.target.value }))} placeholder="home, vehicle, …" />
-                </div>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className={`text-xs ${admin.textMuted}`}>Sample monthly pension</label>
-                  <input className={`mt-1 w-full ${admin.input}`} value={form.sample_monthly_pension} onChange={(e) => setForm((s) => ({ ...s, sample_monthly_pension: e.target.value }))} />
-                </div>
-              </div>
-              <div>
-                <label className={`text-xs ${admin.textMuted}`}>Sample computation note</label>
-                <textarea className={`mt-1 w-full ${admin.input}`} rows={2} value={form.sample_computation_note} onChange={(e) => setForm((s) => ({ ...s, sample_computation_note: e.target.value }))} />
-              </div>
-              <div>
-                <label className={`text-xs ${admin.textMuted}`}>Calculator config (JSON)</label>
-                <textarea
-                  className={`mt-1 w-full font-mono text-xs ${admin.input}`}
-                  rows={4}
-                  value={form.calculator_config_json}
-                  onChange={(e) => setForm((s) => ({ ...s, calculator_config_json: e.target.value }))}
-                  placeholder='{"pension_multiplier":10,"max_principal":500000}'
-                />
-              </div>
-              <div>
-                <label className={`text-xs ${admin.textMuted}`}>Rules / formula controls (JSON)</label>
-                <textarea
-                  className={`mt-1 w-full font-mono text-xs ${admin.input}`}
-                  rows={6}
-                  value={form.rules_json}
-                  onChange={(e) => setForm((s) => ({ ...s, rules_json: e.target.value }))}
-                  placeholder='{"service_charge_rate":0.035,"doc_stamp_per_200":1.5}'
-                />
-              </div>
-              <div className="flex flex-wrap gap-2 pt-2">
-                <button type="button" onClick={() => setModal(null)} className={admin.btnSecondary}>
-                  Cancel
-                </button>
-                <button type="submit" disabled={saving} className={`${admin.btnPrimary} disabled:opacity-50`}>
-                  {saving ? 'Saving…' : 'Save'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
+      <LoanProductWizardModal
+        open={modal != null}
+        mode={modal === 'new' ? 'new' : 'edit'}
+        form={form}
+        setForm={setForm}
+        configState={configState}
+        setConfigState={setConfigState}
+        saving={saving}
+        onClose={() => setModal(null)}
+        onSave={save}
+      />
     </div>
   )
 }

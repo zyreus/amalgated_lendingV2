@@ -49,3 +49,11 @@ export async function returnApplicationToPending(id, body = {}) {
     body: JSON.stringify(body),
   })
 }
+
+export async function approveApplication(id, body = {}) {
+  clearApplicationsCache()
+  return api(`/loans/${id}/approve`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}

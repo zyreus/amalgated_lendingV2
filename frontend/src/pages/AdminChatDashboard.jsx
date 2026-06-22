@@ -14,6 +14,8 @@ import {
 import { api as adminApi, getToken as getAdminToken } from '../admin/api/client.js'
 import { downloadCsv } from '../admin/utils/export.js'
 import { chatOutgoingReceiptLabel, formatChatTime, formatCrmInboxDate, formatCrmLog, getResolvedDisplayTimeZone } from '../utils/timestamps.js'
+import { admin } from '../admin/components/AdminUi.jsx'
+import { scrollChatToBottom, sortChatMessagesChronological } from '../utils/chatMessageOrder.js'
 
 const STATUS_BADGE = {
   ai_active: 'bg-emerald-500/15 text-emerald-900 ring-1 ring-emerald-500/25',
@@ -498,6 +500,7 @@ export default function AdminChatDashboard({
   const [conversationWarehouseBusy, setConversationWarehouseBusy] = useState(false)
   const socketRef = useRef(null)
   const scrollRef = useRef(null)
+  const borrowerThreadRef = useRef(null)
   const inputRef = useRef(null)
   const typingTimeout = useRef(null)
   const prevActiveId = useRef(null)
@@ -603,7 +606,7 @@ export default function AdminChatDashboard({
     if (!leadId) return
     try {
       const rows = await fetchCrmLeadMessages(leadId)
-      setBorrowerMessages(rows)
+      setBorrowerMessages(sortChatMessagesChronological(rows))
     } catch {
       setBorrowerMessages([])
     }
@@ -1283,12 +1286,7 @@ export default function AdminChatDashboard({
 
   useEffect(() => {
     if (view !== 'chats' || chatInboxTab !== 'borrower') return
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: 'smooth',
-      })
-    })
+    scrollChatToBottom(borrowerThreadRef, 'smooth')
   }, [borrowerMessages, view, chatInboxTab])
 
   const goToView = useCallback(
@@ -4017,7 +4015,12 @@ Amalgated Lending Inc. Team`
           {view === 'chats' &&
             chatInboxTab === 'borrower' &&
             activeBorrowerLeadId &&
-            borrowerMessages.map((msg, index) => {
+            borrowerMessages.length > 0 && (
+            <div
+              ref={borrowerThreadRef}
+              className="max-h-[min(480px,calc(100dvh-20rem))] space-y-0 overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/60 px-2 py-3 shadow-inner sm:px-3"
+            >
+            {borrowerMessages.map((msg, index) => {
               const isBorrower = msg.sender_type === 'borrower'
               return (
                 <div
@@ -4060,10 +4063,22 @@ Amalgated Lending Inc. Team`
                 </div>
               )
             })}
+            </div>
+          )}
+
+          {view === 'chats' &&
+            chatInboxTab === 'borrower' &&
+            activeBorrowerLeadId &&
+            borrowerMessages.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-white/90 px-5 py-10 text-center">
+                <p className="text-sm font-semibold text-slate-900">No messages yet</p>
+                <p className="mt-1 text-xs text-slate-500">Borrower portal chat messages will appear here.</p>
+              </div>
+            )}
 
         </div>
 
-        {/* Reply input */}
+          {/* Reply input */}
         {view === 'chats' &&
           chatInboxTab === 'visitor' &&
           activeId &&
@@ -4466,11 +4481,11 @@ Amalgated Lending Inc. Team`
 
       {/* Delete conversation modal */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-6 shadow-xl">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+        <div className={admin.modalOverlay}>
+          <div className={`${admin.modalCard} max-w-sm`}>
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-50 ring-1 ring-brand-primary/20">
               <svg
-                className="h-6 w-6 text-red-600"
+                className="h-6 w-6 text-brand-primary"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -4482,22 +4497,23 @@ Amalgated Lending Inc. Team`
                 <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-[var(--admin-text)]">
+            <p className={admin.modalEyebrow}>Confirm action</p>
+            <h3 className="mt-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
               Delete conversation
             </h3>
-            <p className="mt-2 text-sm leading-relaxed text-[color:var(--admin-muted)]">
+            <p className={`mt-2 text-sm leading-relaxed ${admin.textMuted}`}>
               Delete this conversation permanently?
             </p>
             <div className="mt-6 flex gap-3">
               <button
                 onClick={() => setDeleteTarget(null)}
-                className="flex-1 rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-4 py-2.5 text-sm font-semibold text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)]"
+                className={`${admin.btnSecondary} flex-1`}
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteConfirm}
-                className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
+                className={`${admin.btnPrimary} flex-1`}
               >
                 Delete
               </button>
@@ -4509,18 +4525,19 @@ Amalgated Lending Inc. Team`
       {/* Email lead (SMTP via Laravel) */}
       {leadEmailModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          className={admin.modalOverlay}
           role="dialog"
           aria-modal="true"
           aria-labelledby="lead-email-title"
         >
-          <div className="w-full max-w-lg rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-6 shadow-xl">
-            <h3 id="lead-email-title" className="text-lg font-semibold text-[var(--admin-text)]">
+          <div className={`${admin.modalCard} max-w-lg`}>
+            <p className={admin.modalEyebrow}>CRM</p>
+            <h3 id="lead-email-title" className="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">
               Email lead
             </h3>
-            <p className="mt-1 text-sm text-[color:var(--admin-muted)]">
+            <p className={`mt-1 text-sm ${admin.textMuted}`}>
               To:{' '}
-              <span className="font-medium text-[var(--admin-text)]">
+              <span className="font-medium text-gray-900 dark:text-gray-100">
                 {leadEmailModal.email || '—'}
               </span>
               {leadEmailModal.name ? ` (${leadEmailModal.name})` : ''}
@@ -4533,7 +4550,7 @@ Amalgated Lending Inc. Team`
                 {leadEmailError}
               </p>
             ) : null}
-            <label htmlFor="lead-email-subject" className="mt-4 block text-xs font-medium text-[color:var(--admin-muted)]">
+            <label htmlFor="lead-email-subject" className={`mt-4 block text-xs font-medium ${admin.textMuted}`}>
               Subject
             </label>
             <input
@@ -4541,9 +4558,9 @@ Amalgated Lending Inc. Team`
               type="text"
               value={leadEmailSubject}
               onChange={(e) => setLeadEmailSubject(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-bg)] px-3 py-2 text-sm text-[var(--admin-text)]"
+              className={`mt-1 w-full ${admin.input}`}
             />
-            <label htmlFor="lead-email-body" className="mt-3 block text-xs font-medium text-[color:var(--admin-muted)]">
+            <label htmlFor="lead-email-body" className={`mt-3 block text-xs font-medium ${admin.textMuted}`}>
               Message
             </label>
             <textarea
@@ -4551,7 +4568,7 @@ Amalgated Lending Inc. Team`
               value={leadEmailBody}
               onChange={(e) => setLeadEmailBody(e.target.value)}
               rows={12}
-              className="mt-1 w-full rounded-lg border border-[var(--admin-border)] bg-[var(--admin-bg)] px-3 py-2 text-sm text-[var(--admin-text)]"
+              className={`mt-1 w-full ${admin.input}`}
             />
             <div className="mt-6 flex flex-wrap gap-3">
               <button
@@ -4560,7 +4577,7 @@ Amalgated Lending Inc. Team`
                   setLeadEmailModal(null)
                   setLeadEmailError('')
                 }}
-                className="flex-1 rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-4 py-2.5 text-sm font-semibold text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)]"
+                className={`${admin.btnSecondary} flex-1`}
               >
                 Cancel
               </button>
@@ -4573,7 +4590,7 @@ Amalgated Lending Inc. Team`
                   !leadEmailBody.trim()
                 }
                 onClick={sendLeadEmail}
-                className="flex-1 rounded-lg bg-[color:var(--admin-accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
+                className={`${admin.btnPrimary} flex-1 disabled:cursor-not-allowed disabled:opacity-50`}
               >
                 {leadEmailSending ? 'Sending…' : 'Send email'}
               </button>
@@ -4584,11 +4601,11 @@ Amalgated Lending Inc. Team`
 
       {/* Delete feedback modal */}
       {deleteFeedbackTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-6 shadow-xl">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+        <div className={admin.modalOverlay}>
+          <div className={`${admin.modalCard} max-w-sm`}>
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-50 ring-1 ring-brand-primary/20">
               <svg
-                className="h-6 w-6 text-red-600"
+                className="h-6 w-6 text-brand-primary"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -4600,22 +4617,23 @@ Amalgated Lending Inc. Team`
                 <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-[var(--admin-text)]">
+            <p className={admin.modalEyebrow}>Confirm action</p>
+            <h3 className="mt-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
               Delete feedback
             </h3>
-            <p className="mt-2 text-sm leading-relaxed text-[color:var(--admin-muted)]">
+            <p className={`mt-2 text-sm leading-relaxed ${admin.textMuted}`}>
               Permanently delete this feedback submission? This cannot be undone.
             </p>
             <div className="mt-6 flex gap-3">
               <button
                 onClick={() => setDeleteFeedbackTarget(null)}
-                className="flex-1 rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-4 py-2.5 text-sm font-semibold text-[color:var(--admin-muted)] transition hover:bg-[var(--admin-surface-2)] hover:text-[var(--admin-text)]"
+                className={`${admin.btnSecondary} flex-1`}
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteFeedback}
-                className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
+                className={`${admin.btnPrimary} flex-1`}
               >
                 Delete
               </button>

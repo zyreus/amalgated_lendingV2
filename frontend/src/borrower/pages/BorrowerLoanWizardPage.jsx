@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { ArrowLeft, ChevronRight } from 'lucide-react'
 import { loanTypeFromProductSlug } from '../../utils/borrowerAuthApplyPath.js'
 import { borrowerApi } from '../api/client.js'
 import { admin as ui } from '../../admin/components/AdminUi.jsx'
 import PrivacyPolicyModal from '../../components/privacy/PrivacyPolicyModal.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog.jsx'
 import PrivacyConsentCheckbox from '../../components/privacy/PrivacyConsentCheckbox.jsx'
+import { PRIVACY_POLICY_VERSION } from '../../components/privacy/PrivacyPolicyContent.jsx'
 import { resolvePublicFileUrl } from '../../utils/lendingLaravelApi.js'
+import { AlertBanner, LoanTypeSelector } from '../components/LoanApplicationUi.jsx'
+import { useToast } from '../../admin/context/ToastContext.jsx'
 
 const STEPS = [
   { id: 1, title: 'Personal, employment, and loan details' },
@@ -46,6 +51,7 @@ function resolveInitialLoanType(searchParams) {
 }
 
 export default function BorrowerLoanWizardPage() {
+  const { showToast } = useToast()
   const { applicationId } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -57,11 +63,12 @@ export default function BorrowerLoanWizardPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [toast, setToast] = useState('')
   const [privacyModalOpen, setPrivacyModalOpen] = useState(false)
   const [draggingDocKey, setDraggingDocKey] = useState('')
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+
+  const [starting, setStarting] = useState(false)
 
   const loadSchema = useCallback(async () => {
     const res = await borrowerApi('/borrower/loan-applications/wizard/schema')
@@ -183,6 +190,7 @@ export default function BorrowerLoanWizardPage() {
 
   const startApplication = async () => {
     setError('')
+    setStarting(true)
     try {
       const res = await borrowerApi('/borrower/loan-applications', {
         method: 'POST',
@@ -192,6 +200,8 @@ export default function BorrowerLoanWizardPage() {
       navigate(`/borrower/loan-application/${slug}?application_id=${res.data.id}`, { replace: true })
     } catch (e) {
       setError(e.message || 'Could not start application.')
+    } finally {
+      setStarting(false)
     }
   }
 
@@ -289,7 +299,7 @@ export default function BorrowerLoanWizardPage() {
         method: 'POST',
         body: '{}',
       })
-      setToast(res.message || 'Submitted.')
+      showToast(res.message || 'Submitted.', 'success')
       navigate('/borrower/applications', { replace: true })
     } catch (e) {
       const body = e.body || {}
@@ -321,42 +331,57 @@ export default function BorrowerLoanWizardPage() {
 
   if (!applicationId) {
     return (
-      <div className="space-y-4">
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-[#1F2937] dark:bg-[#111827]">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">New loan application</h2>
-          <p className={`mt-1 text-sm ${ui.textMuted}`}>Choose a loan type, then continue to the multi-step form.</p>
-          <div className="mt-4 flex flex-wrap items-end gap-3">
-            <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
-              Loan type
-              <select
-                value={loanType}
-                onChange={(e) => setLoanType(e.target.value)}
-                className={`mt-1 block w-full min-w-[220px] rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-[#0F172A] ${ui.input}`}
-              >
-                {schema
-                  ? Object.entries(schema.loan_types).map(([k, v]) => (
-                      <option key={k} value={k}>
-                        {v}
-                      </option>
-                    ))
-                  : null}
-              </select>
-            </label>
+      <div className="space-y-6">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand-primary">Apply for a loan</p>
+          <h1 className="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100 sm:text-2xl">Choose your loan type</h1>
+          <p className="mt-2 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
+            Select the product that matches your need. You will complete a guided multi-step application with document upload and review.
+          </p>
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35 }}
+          className="rounded-3xl border border-gray-200 bg-white p-5 shadow-xl dark:border-[#1F2937] dark:bg-[#111827] sm:p-6"
+        >
+          {schema ? (
+            <LoanTypeSelector
+              loanTypes={schema.loan_types}
+              value={loanType}
+              onChange={setLoanType}
+              disabled={starting}
+            />
+          ) : (
+            <p className={`text-sm ${ui.textMuted}`}>Loading loan products…</p>
+          )}
+
+          {error ? (
+            <div className="mt-5">
+              <AlertBanner type="error">{error}</AlertBanner>
+            </div>
+          ) : null}
+
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-gray-100 pt-5 dark:border-[#1F2937]">
+            <Link
+              to="/borrower/dashboard"
+              className="inline-flex items-center gap-2 text-sm text-gray-500 transition hover:text-brand-primary dark:text-gray-400"
+            >
+              <ArrowLeft className="size-4" />
+              Back to dashboard
+            </Link>
             <button
               type="button"
+              disabled={!schema || starting}
               onClick={startApplication}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+              className="inline-flex items-center gap-2 rounded-xl bg-brand-primary px-6 py-3 text-sm font-semibold text-white transition hover:bg-brand-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Start application
+              {starting ? 'Starting…' : 'Continue to application'}
+              <ChevronRight className="size-4" />
             </button>
           </div>
-          {error ? (
-            <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>
-          ) : null}
-        </div>
-        <Link to="/borrower/dashboard" className="text-sm font-medium text-red-600 hover:underline dark:text-red-400">
-          ← Back to dashboard
-        </Link>
+        </motion.div>
       </div>
     )
   }
@@ -416,10 +441,6 @@ export default function BorrowerLoanWizardPage() {
       {error ? (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>
       ) : null}
-      {toast ? (
-        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-green-500/10 dark:text-green-300">{toast}</p>
-      ) : null}
-
       {step === 1 ? (
         <div className="grid gap-6 md:grid-cols-2">
           <div className="md:col-span-2 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#1F2937] dark:bg-[#111827]">

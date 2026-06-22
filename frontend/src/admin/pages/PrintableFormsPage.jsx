@@ -391,8 +391,8 @@ export default function PrintableFormsPage() {
       )}
 
       {edit ? (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
-          <div className={`max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl dark:bg-[#111827]`}>
+        <div className={admin.modalOverlay}>
+          <div className={`${admin.modalCard} max-h-[90vh] max-w-lg overflow-y-auto`}>
             <h3 className="text-lg font-semibold">Edit form</h3>
             <div className="mt-4 space-y-3">
               <label className="block text-xs font-semibold uppercase text-gray-500">Title</label>
@@ -439,8 +439,8 @@ export default function PrintableFormsPage() {
       ) : null}
 
       {createOpen ? (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
-          <div className={`max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl dark:bg-[#111827]`}>
+        <div className={admin.modalOverlay}>
+          <div className={`${admin.modalCard} max-h-[90vh] max-w-lg overflow-y-auto`}>
             <h3 className="text-lg font-semibold">New form definition</h3>
             <p className="mt-1 text-xs text-gray-500">
               <code>form_key</code> must match a Blade template mapping (e.g. main_loan_application) or defaults to the main loan layout.

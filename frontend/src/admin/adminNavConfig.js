@@ -19,6 +19,7 @@ export const ADMIN_NAV_GROUPS = [
       { to: '/admin/applications', end: true, label: 'Applications', perm: 'loans.view', icon_key: 'loans' },
       { to: '/admin/payments', label: 'Payments', perm: 'payments.manage', icon_key: 'pay' },
       { to: '/admin/collections', label: 'Collections', perm: 'payments.manage', icon_key: 'pay' },
+      { to: '/admin/collector-wellness', label: 'Collector wellness', perm: 'payments.manage', icon_key: 'wellness' },
       { to: '/admin/soa', label: 'SOA Management', perm: 'soa.view', icon_key: 'report' },
     ],
   },
@@ -27,7 +28,7 @@ export const ADMIN_NAV_GROUPS = [
     label: 'Operations',
     items: [
       { to: '/admin/reports', label: 'Reports', perm: 'reports.view', icon_key: 'report' },
-      { to: '/admin/credit-wellness', label: 'Credit & wellness', perm: 'reports.view', icon_key: 'report' },
+      { to: '/admin/credit-wellness', label: 'Credit & wellness', perm: 'reports.view', icon_key: 'wellness' },
       { to: '/admin/chat-crm', label: 'CRM & Chat', perm: null, icon_key: 'chat' },
       { to: '/admin/feedback', label: 'Feedback', perm: null, icon_key: 'bell' },
       { to: '/admin/newsletter', label: 'News & announcements', perm: 'cms.manage', icon_key: 'bell' },

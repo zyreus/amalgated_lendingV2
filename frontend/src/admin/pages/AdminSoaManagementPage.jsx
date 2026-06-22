@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { api, getToken } from '../api/client.js'
 import { useToast } from '../context/ToastContext.jsx'
-import { EmptyTableRow, TableSkeletonRows } from '../components/AdminUi.jsx'
+import { EmptyTableRow, TableSkeletonRows, admin } from '../components/AdminUi.jsx'
 import { laravelApiBases, laravelApiUrl } from '../../utils/lendingLaravelApi.js'
 
 const cardClass = 'rounded-2xl border border-[#D8D8D8] bg-[#F8F8F8] shadow-sm transition-all duration-200 hover:shadow-md'
@@ -286,7 +286,7 @@ export default function AdminSoaManagementPage() {
           send_email: form.send_email,
         }),
       })
-      showToast('SOA generated, saved, and email delivery queued.', 'success')
+      showToast('SOA generated and saved. Email delivery to borrower is in progress.', 'success')
       await load()
     } catch (err) {
       showToast(err.message || 'SOA generation failed.', 'error')
@@ -315,7 +315,7 @@ export default function AdminSoaManagementPage() {
     setBusy(`resend-${statement.id}`)
     try {
       await api(`/soa/${statement.id}/resend-email`, { method: 'POST', body: '{}' })
-      showToast('SOA email queued.', 'success')
+      showToast('SOA email sent to borrower.', 'success')
       await load()
     } catch (err) {
       showToast(err.message || 'Could not queue email.', 'error')
@@ -552,15 +552,15 @@ export default function AdminSoaManagementPage() {
       ) : null}
 
       {preview ? (
-        <div className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/60 p-4 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-labelledby="soa-preview-title">
-          <div className="w-full max-w-6xl rounded-2xl border border-[#D8D8D8] bg-[#F8F8F8] p-5 shadow-2xl">
-            <div className="flex flex-col gap-3 border-b border-[#D8D8D8] pb-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className={admin.modalOverlay} role="dialog" aria-modal="true" aria-labelledby="soa-preview-title">
+          <div className={`${admin.modalCard} max-w-6xl`}>
+            <div className="flex flex-col gap-3 border-b border-gray-200 pb-4 sm:flex-row sm:items-start sm:justify-between dark:border-[#1F2937]">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Statement Preview</p>
-                <h2 id="soa-preview-title" className="mt-1 text-xl font-semibold text-[#0F172A]">{preview.statement_number || `SOA #${preview.id}`}</h2>
-                <p className="text-[#64748B]">{preview.statement_month_label || preview.statement_month} · {preview.borrower?.name || 'Borrower'}</p>
+                <p className={admin.modalEyebrow}>Statement preview</p>
+                <h2 id="soa-preview-title" className="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100">{preview.statement_number || `SOA #${preview.id}`}</h2>
+                <p className={admin.textMuted}>{preview.statement_month_label || preview.statement_month} · {preview.borrower?.name || 'Borrower'}</p>
               </div>
-              <button type="button" onClick={closePreview} className={secondaryBtn}>Close</button>
+              <button type="button" onClick={closePreview} className={admin.btnSecondary}>Close</button>
             </div>
             <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {[
@@ -569,13 +569,13 @@ export default function AdminSoaManagementPage() {
                 ['Penalties', peso(preview.penalties)],
                 ['Total due', peso(preview.total_due)],
               ].map(([label, value]) => (
-                <div key={label} className="rounded-xl border border-[#D8D8D8] bg-white/60 p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6B7280]">{label}</p>
-                  <p className="mt-1 text-base font-semibold text-[#0F172A]">{value}</p>
+                <div key={label} className={`${admin.insetPanel} p-4`}>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p>
+                  <p className="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">{value}</p>
                 </div>
               ))}
             </div>
-            <div className="mt-5 overflow-hidden rounded-2xl border border-[#D8D8D8] bg-white">
+            <div className="mt-5 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[#1F2937] dark:bg-[#0F172A]/50">
               <iframe title="SOA PDF preview" src={preview.pdfUrl} className="h-[70vh] w-full" />
             </div>
           </div>

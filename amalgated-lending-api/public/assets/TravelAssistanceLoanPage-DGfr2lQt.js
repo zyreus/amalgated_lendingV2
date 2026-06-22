@@ -1,0 +1,1 @@
+import{j as t}from"./vendor-BZND0k4O.js";import{P as r}from"./PublicLoanProductPage-BFbOIBAu.js";import{g as a}from"./publicLoanProductConfig-Ke_ie1AQ.js";import"./index-CGp3KVIH.js";function u(){const o=a("travel-assistance-loan");return o?t.jsx(r,{config:o}):null}export{u as default};

@@ -9,7 +9,7 @@ import { applicationStatusLabel, normalizeApplicationStatus } from '../component
 import { useAdminApiAuth } from '../context/useAdminApiAuth.js'
 import { useToast } from '../context/ToastContext.jsx'
 import { useApplications } from '../hooks/useApplications.js'
-import { clearApplicationsCache, preApproveApplication, returnApplicationToPending } from '../services/applicationsService.js'
+import { clearApplicationsCache, preApproveApplication, returnApplicationToPending, approveApplication } from '../services/applicationsService.js'
 import { downloadCsv, openPrintPdf } from '../utils/export.js'
 
 const PER_PAGE = 15
@@ -33,6 +33,20 @@ export default function LoansPage() {
   useEffect(() => {
     if (error) showToast(error.message, 'error')
   }, [error, showToast])
+
+  useEffect(() => {
+    const refreshList = () => {
+      if (document.visibilityState !== 'visible') return
+      clearApplicationsCache()
+      setRefreshKey((key) => key + 1)
+    }
+    window.addEventListener('focus', refreshList)
+    document.addEventListener('visibilitychange', refreshList)
+    return () => {
+      window.removeEventListener('focus', refreshList)
+      document.removeEventListener('visibilitychange', refreshList)
+    }
+  }, [])
 
   const setQuery = (next) => {
     setSearchParams((current) => {
@@ -122,6 +136,17 @@ export default function LoansPage() {
     }
   }
 
+  const handleApprove = async (loan) => {
+    try {
+      await approveApplication(loan.id)
+      clearApplicationsCache()
+      showToast(`${loan.loan_number || `Loan #${loan.id}`} approved.`, 'success')
+      setRefreshKey((key) => key + 1)
+    } catch (e) {
+      showToast(e.message, 'error')
+    }
+  }
+
   const lastPage = Number(meta?.last_page || 1)
   const from = Number(meta?.from || 0)
   const to = Number(meta?.to || 0)
@@ -154,6 +179,7 @@ export default function LoansPage() {
         canApprove={can('loans.approve')}
         onPreApprove={handlePreApprove}
         onReturnToPending={handleReturnToPending}
+        onApprove={handleApprove}
       />
 
       <div className="flex flex-col gap-3 text-sm text-gray-600 dark:text-gray-300 sm:flex-row sm:items-center sm:justify-between">

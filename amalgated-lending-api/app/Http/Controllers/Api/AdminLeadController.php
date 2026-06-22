@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\LeadContactMail;
 use App\Models\Lead;
 use App\Models\LeadMessage;
+use App\Services\BorrowerChatLeadService;
 use App\Services\SmtpMailService;
 use App\Services\TransactionalMailSender;
 use App\Support\PublicStorageUrl;
@@ -20,6 +21,11 @@ class AdminLeadController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $loanType = (string) $request->query('loan_type', '');
+        if ($loanType === BorrowerChatLeadService::LOAN_TYPE) {
+            app(BorrowerChatLeadService::class)->syncMissingIfNeeded();
+        }
+
         $q = Lead::query();
         if ($status = $request->query('status')) {
             $status === 'archived'
@@ -272,6 +278,7 @@ class AdminLeadController extends Controller
     private function leadMessagesQuery(Lead $lead)
     {
         return $lead->messages()
+            ->reorder()
             ->select([
                 'id',
                 'lead_id',

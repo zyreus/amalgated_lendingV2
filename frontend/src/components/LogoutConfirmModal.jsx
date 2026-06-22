@@ -97,15 +97,15 @@ export default function LogoutConfirmModal({ open, busy = false, onCancel, onCon
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descId}
-        className="logout-modal-panel w-full max-w-[22rem] rounded-2xl border border-gray-100 bg-white p-6 shadow-[0_24px_48px_-12px_rgba(15,23,42,0.18)] sm:max-w-md sm:p-8"
+        className="logout-modal-panel w-full max-w-[22rem] rounded-2xl border border-gray-100 border-t-[3px] border-t-brand-primary bg-white p-6 shadow-[0_24px_48px_-12px_rgba(15,23,42,0.18)] sm:max-w-md sm:p-8"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex flex-col items-center">
           <div
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-red-50 ring-1 ring-red-100"
+            className="flex h-14 w-14 items-center justify-center rounded-full bg-red-50 ring-1 ring-brand-primary/20"
             aria-hidden
           >
-            <LogoutIcon className="h-6 w-6 text-red-600" />
+            <LogoutIcon className="h-6 w-6 text-brand-primary" />
           </div>
           <h2 id={titleId} className="mt-5 text-center text-xl font-semibold tracking-tight text-gray-900">
             Log Out?
@@ -128,7 +128,7 @@ export default function LogoutConfirmModal({ open, busy = false, onCancel, onCon
             type="button"
             disabled={busy}
             onClick={() => onConfirm?.()}
-            className="touch-manipulation min-h-[44px] flex flex-1 items-center justify-center gap-2 rounded-xl border-0 bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 active:bg-red-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 disabled:cursor-not-allowed disabled:opacity-70 sm:flex-none sm:min-w-[9.5rem]"
+            className="touch-manipulation min-h-[44px] flex flex-1 items-center justify-center gap-2 rounded-xl border-0 bg-brand-primary px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-primary-hover active:bg-brand-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary disabled:cursor-not-allowed disabled:opacity-70 sm:flex-none sm:min-w-[9.5rem]"
           >
             {busy ? (
               <>

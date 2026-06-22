@@ -1,11 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 import { borrowerApi } from '../../api/client.js'
-import { admin as ui } from '../../../admin/components/AdminUi.jsx'
 import PrivacyPolicyModal from '../../../components/privacy/PrivacyPolicyModal.jsx'
 import PrivacyConsentCheckbox from '../../../components/privacy/PrivacyConsentCheckbox.jsx'
 import { PRIVACY_POLICY_VERSION } from '../../../components/privacy/PrivacyPolicyContent.jsx'
 import { resolvePublicFileUrl } from '../../../utils/lendingLaravelApi.js'
+import {
+  AlertBanner,
+  ComputationCard,
+  DocumentUploadZone,
+  Field,
+  ProductRulesCard,
+  ReviewGrid,
+  WizardFooter,
+  WizardStepHeader,
+  WizardStepSidebar,
+  fieldPlaceholder,
+  selectInputClass,
+  slideVariants,
+  textInputClass,
+} from '../../components/LoanApplicationUi.jsx'
+import { useToast } from '../../../admin/context/ToastContext.jsx'
 
 const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/png']
 const MAX_UPLOAD_MB = 15
@@ -18,6 +34,23 @@ const TRAVEL_COST_KEYS = [
   'pocket_money_requirement',
   'other_expenses',
 ]
+
+const SECTION_HINTS = {
+  personal: 'Provide accurate identity details as they appear on your valid ID.',
+  borrower: 'Borrower information must match your government-issued ID.',
+  pensioner: 'Pensioner details should match your SSS or GSIS records.',
+  applicant: 'Applicant information is used for travel assistance verification.',
+  employment: 'Employment details help us assess repayment capacity.',
+  employment_financial: 'Income and employment details support your application review.',
+  income: 'Declare salary and other income sources honestly.',
+  loan: 'Choose your product, amount, and repayment term carefully.',
+  vehicle: 'Vehicle details must match OR/CR documents.',
+  property: 'Property information must match title and tax declaration records.',
+  pension: 'Pension details must match your benefit records.',
+  travel: 'Travel plans and cost estimates guide your assistance request.',
+  documents: 'Upload clear, readable copies of each required document.',
+  review: 'Review all entries before submitting your application.',
+}
 
 function useDebouncedCallback(fn, delay) {
   const t = useRef(null)
@@ -37,6 +70,7 @@ function formatValue(value) {
 }
 
 export default function ProductLoanApplicationPage({ loanType }) {
+  const { showToast } = useToast()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const queryApplicationId = searchParams.get('application_id')
@@ -45,11 +79,11 @@ export default function ProductLoanApplicationPage({ loanType }) {
   const [app, setApp] = useState(null)
   const [applicationId, setApplicationId] = useState(queryApplicationId || '')
   const [step, setStep] = useState(1)
+  const [direction, setDirection] = useState(1)
   const [formData, setFormData] = useState({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [toast, setToast] = useState('')
   const [privacyModalOpen, setPrivacyModalOpen] = useState(false)
   const [draggingDocKey, setDraggingDocKey] = useState('')
 
@@ -74,9 +108,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
       setError('')
       try {
         await loadSchema()
-        if (applicationId) {
-          await loadApp(applicationId)
-        }
+        if (applicationId) await loadApp(applicationId)
       } catch (e) {
         if (!cancelled) setError(e.message || 'Failed to load application.')
       } finally {
@@ -156,18 +188,27 @@ export default function ProductLoanApplicationPage({ loanType }) {
   const currentStep = steps.find((s) => Number(s.id) === Number(step)) || steps[0]
   const currentSection = currentStep?.section
   const currentFields = fieldsBySection[currentSection] || []
-  const travelPurposeDocKeys = schema?.travel_assistance_documents_by_purpose?.[formData.travel_purpose]
-    || schema?.travel_assistance_documents_by_purpose?.Other
-    || []
-  const docDefs = loanType === 'travel_assistance'
-    ? Object.fromEntries(travelPurposeDocKeys.map((key) => [key, { ...(schema?.documents_by_type?.travel_assistance?.[key] || { label: key }), required: true }]))
-    : schema?.documents_by_type?.[loanType] || {}
+  const travelPurposeDocKeys =
+    schema?.travel_assistance_documents_by_purpose?.[formData.travel_purpose] ||
+    schema?.travel_assistance_documents_by_purpose?.Other ||
+    []
+  const docDefs =
+    loanType === 'travel_assistance'
+      ? Object.fromEntries(
+          travelPurposeDocKeys.map((key) => [
+            key,
+            { ...(schema?.documents_by_type?.travel_assistance?.[key] || { label: key }), required: true },
+          ]),
+        )
+      : schema?.documents_by_type?.[loanType] || {}
   const isDocumentsStep = currentSection === 'documents'
   const isReviewStep = currentSection === 'review'
   const maxStep = steps.length ? Math.max(...steps.map((s) => Number(s.id))) : 1
-  const travelReference = loanType === 'travel_assistance' && applicationId
-    ? `TAL-${new Date().getFullYear()}-${String(applicationId).padStart(6, '0')}`
-    : ''
+  const stepIndex = steps.findIndex((s) => Number(s.id) === Number(step))
+  const travelReference =
+    loanType === 'travel_assistance' && applicationId
+      ? `TAL-${new Date().getFullYear()}-${String(applicationId).padStart(6, '0')}`
+      : ''
 
   useEffect(() => {
     if (loanType !== 'travel_assistance') return
@@ -204,82 +245,83 @@ export default function ProductLoanApplicationPage({ loanType }) {
     return Object.entries(field.required_if).every(([key, expected]) => formData[key] === expected)
   }
 
+  const goToStep = (nextStep) => {
+    setDirection(nextStep > step ? 1 : -1)
+    setStep(nextStep)
+  }
+
   const renderField = (field) => {
     if (!shouldShowField(field)) return null
+    const placeholder = fieldPlaceholder(field)
+    const required = Boolean(field.required || field.required_if)
+    const spanClass = field.type === 'textarea' || field.type === 'loan_product' || field.type === 'computed_sum' ? 'md:col-span-2' : ''
+
     if (field.type === 'loan_product') {
       return (
-        <label key={field.key} className="block text-sm md:col-span-2">
-          <span className="text-gray-700 dark:text-gray-300">{field.label}</span>
+        <Field key={field.key} label={field.label} required={required} className={spanClass}>
           <select
-            className={`mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-[#0F172A] ${ui.input}`}
+            className={selectInputClass()}
             value={formData[field.key] ?? ''}
             onChange={(e) => onField(field.key, e.target.value)}
           >
-            <option value="">Select product</option>
+            <option value="">Select loan product</option>
             {filteredProducts.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
             ))}
           </select>
-        </label>
+        </Field>
       )
     }
     if (field.type === 'textarea') {
       return (
-        <label key={field.key} className="block text-sm md:col-span-2">
-          <span className="text-gray-700 dark:text-gray-300">{field.label}</span>
+        <Field key={field.key} label={field.label} required={required} className={spanClass}>
           <textarea
-            className={`mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-[#0F172A] ${ui.input}`}
+            className={textInputClass()}
             rows={3}
+            placeholder={placeholder}
             value={formData[field.key] ?? ''}
             onChange={(e) => onField(field.key, e.target.value)}
           />
-        </label>
+        </Field>
       )
     }
     if (field.type === 'select') {
       return (
-        <label key={field.key} className="block text-sm">
-          <span className="text-gray-700 dark:text-gray-300">{field.label}</span>
+        <Field key={field.key} label={field.label} required={required} className={spanClass}>
           <select
-            className={`mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-[#0F172A] ${ui.input}`}
+            className={selectInputClass()}
             value={formData[field.key] ?? ''}
             onChange={(e) => onField(field.key, e.target.value)}
           >
-            <option value="">Select</option>
+            <option value="">Select an option</option>
             {(field.options || []).map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
             ))}
           </select>
-        </label>
+        </Field>
       )
     }
     if (field.type === 'computed_sum') {
       return (
-        <label key={field.key} className="block text-sm md:col-span-2">
-          <span className="text-gray-700 dark:text-gray-300">{field.label}</span>
-          <input
-            type="number"
-            readOnly
-            className={`mt-1 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-[#0F172A] ${ui.input}`}
-            value={formData[field.key] ?? ''}
-          />
-        </label>
+        <Field key={field.key} label={field.label} hint="Auto-calculated from travel cost fields" className={spanClass}>
+          <input type="number" readOnly className={textInputClass(true)} value={formData[field.key] ?? ''} />
+        </Field>
       )
     }
     return (
-      <label key={field.key} className="block text-sm">
-        <span className="text-gray-700 dark:text-gray-300">{field.label}</span>
+      <Field key={field.key} label={field.label} required={required} className={spanClass}>
         <input
           type={field.type === 'numeric' ? 'number' : field.type === 'date' ? 'date' : field.type === 'email' ? 'email' : 'text'}
-          className={`mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-[#0F172A] ${ui.input}`}
+          className={textInputClass()}
+          placeholder={placeholder}
           value={formData[field.key] ?? ''}
           onChange={(e) => onField(field.key, e.target.value)}
         />
-      </label>
+      </Field>
     )
   }
 
@@ -300,7 +342,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
         return
       }
       const next = Math.min(maxStep, step + 1)
-      setStep(next)
+      goToStep(next)
       await borrowerApi(`/borrower/loan-applications/${applicationId}`, {
         method: 'PATCH',
         body: JSON.stringify({ draft_step: next, form_data: formData, loan_type: loanType }),
@@ -346,7 +388,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
         method: 'POST',
         body: '{}',
       })
-      setToast(res.message || 'Submitted.')
+      showToast(res.message || 'Submitted.', 'success')
       navigate('/borrower/applications', { replace: true })
     } catch (e) {
       const body = e.body || {}
@@ -364,175 +406,181 @@ export default function ProductLoanApplicationPage({ loanType }) {
     setError('')
   }
 
-  if (loading) return <p className={`text-sm ${ui.textMuted}`}>Loading {loanLabel.toLowerCase()} form...</p>
-  if (!schema || (!app && !applicationId)) return <p className={`text-sm ${ui.textMuted}`}>Preparing application...</p>
+  const reviewItems = Object.entries(fieldsBySection)
+    .flatMap(([, rows]) => rows)
+    .filter(shouldShowField)
+    .map((field) => ({
+      key: field.key,
+      label: field.label,
+      value: formatValue(formData[field.key]),
+    }))
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[320px] items-center justify-center">
+        <p className="text-sm text-gray-500 dark:text-gray-400">Loading {loanLabel.toLowerCase()} application…</p>
+      </div>
+    )
+  }
+  if (!schema || (!app && !applicationId)) {
+    return (
+      <div className="flex min-h-[320px] items-center justify-center">
+        <p className="text-sm text-gray-500 dark:text-gray-400">Preparing your application…</p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#DC2626]">Loan application</p>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-            {loanLabel} {applicationId ? `#${applicationId}` : ''}
-          </h2>
-          <p className={`text-sm ${ui.textMuted}`}>
-            {app?.is_draft === false ? 'Submitted' : 'Draft - progress auto-saves.'} {saving ? ' Saving...' : ''}
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-brand-primary">Apply for a loan</p>
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 sm:text-2xl">
+            {loanLabel}
+            {applicationId ? <span className="text-gray-400"> #{applicationId}</span> : null}
+          </h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            {app?.is_draft === false ? 'Application submitted' : 'Draft — auto-saves as you complete each step'}
+            {saving ? ' · Saving…' : ''}
           </p>
         </div>
-        <Link to="/borrower/dashboard" className="text-sm font-medium text-red-600 hover:underline dark:text-red-400">
-          Dashboard
+        <Link
+          to="/borrower/dashboard"
+          className="text-sm font-medium text-brand-primary transition hover:underline"
+        >
+          Back to dashboard
         </Link>
       </div>
 
-      <ol className="flex flex-wrap gap-2">
-        {steps.map((s) => (
-          <li key={s.id}>
-            <button
-              type="button"
-              onClick={() => setStep(Number(s.id))}
-              className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                Number(step) === Number(s.id)
-                  ? 'bg-red-600 text-white'
-                  : 'bg-gray-200 text-gray-800 dark:bg-[#1F2937] dark:text-gray-200'
-              }`}
-            >
-              Step {s.id} - {s.title}
-            </button>
-          </li>
-        ))}
-      </ol>
+      {error ? <AlertBanner type="error">{error}</AlertBanner> : null}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-xl dark:border-[#1F2937] dark:bg-[#111827]"
+      >
+        <div className="grid lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]">
+          <WizardStepSidebar
+            steps={steps}
+            step={step}
+            loanLabel={loanLabel}
+            onStepClick={goToStep}
+            allowJump={app?.is_draft !== false}
+          />
 
-      {error ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p> : null}
-      {toast ? <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-green-500/10 dark:text-green-300">{toast}</p> : null}
+          <div className="flex min-h-[480px] flex-col">
+            <WizardStepHeader
+              title={currentStep?.title || 'Application'}
+              description={SECTION_HINTS[currentSection] || 'Fill in the required details below.'}
+              stepNumber={stepIndex + 1}
+              totalSteps={steps.length}
+            />
 
-      {!isDocumentsStep && !isReviewStep ? (
-        <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#1F2937] dark:bg-[#111827]">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{currentStep?.title}</h3>
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            {currentFields.map(renderField)}
-            {currentSection === 'loan' && selectedProduct ? (
-              <div className={`rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs md:col-span-2 ${ui.textMuted}`}>
-                Product rules: {selectedProduct.collateral_type || 'Collateral not set'} · Max term {selectedProduct.max_term || '-'} · Max loan{' '}
-                {selectedProduct.max_amount ? `PHP ${Number(selectedProduct.max_amount).toLocaleString()}` : '-'}
-              </div>
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <AnimatePresence mode="wait" custom={direction}>
+                <motion.div
+                  key={`${step}-${currentSection}`}
+                  custom={direction}
+                  variants={slideVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex flex-1 flex-col overflow-y-auto px-5 py-5 sm:px-6 sm:py-6"
+                >
+                  {!isDocumentsStep && !isReviewStep ? (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {currentFields.map(renderField)}
+                      {currentSection === 'loan' && selectedProduct ? <ProductRulesCard product={selectedProduct} /> : null}
+                      {currentSection === 'loan' && app?.computation_breakdown ? (
+                        <ComputationCard breakdown={app.computation_breakdown} />
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {isDocumentsStep ? (
+                    <ul className="space-y-4">
+                      {Object.entries(docDefs).map(([key, meta]) => (
+                        <DocumentUploadZone
+                          key={key}
+                          docKey={key}
+                          meta={meta}
+                          dragging={draggingDocKey === key}
+                          onDragState={setDraggingDocKey}
+                          onUpload={uploadDoc}
+                          uploadedUrls={app?.documents?.[key]?.urls}
+                          resolveUrl={resolvePublicFileUrl}
+                        />
+                      ))}
+                    </ul>
+                  ) : null}
+
+                  {isReviewStep ? (
+                    <div className="space-y-5">
+                      {travelReference ? (
+                        <AlertBanner type="warning">
+                          <span className="font-semibold">Travel reference:</span> {travelReference}
+                        </AlertBanner>
+                      ) : null}
+                      <ReviewGrid items={reviewItems} />
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Uploaded documents</h4>
+                        <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+                          {Object.entries(docDefs).map(([key, meta]) => (
+                            <li
+                              key={key}
+                              className="rounded-xl border border-gray-100 bg-gray-50/80 p-3 text-sm dark:border-[#1F2937] dark:bg-[#0F172A]/40"
+                            >
+                              <span className="font-medium text-gray-800 dark:text-gray-200">{meta.label}</span>
+                              <span
+                                className={`ml-2 text-xs ${
+                                  app?.documents?.[key]?.urls?.length
+                                    ? 'text-emerald-700 dark:text-emerald-400'
+                                    : 'text-amber-700 dark:text-amber-400'
+                                }`}
+                              >
+                                {app?.documents?.[key]?.urls?.length ? 'Uploaded' : 'Missing'}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      {app?.is_draft === false ? (
+                        <AlertBanner type="success">Application submitted successfully.</AlertBanner>
+                      ) : (
+                        <div className="space-y-4 rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:border-[#1F2937] dark:bg-[#0F172A]/30">
+                          <PrivacyConsentCheckbox
+                            checked={Boolean(formData?.privacy_consent?.agreed)}
+                            onChange={onPrivacyConsentChange}
+                            onOpenPolicy={() => setPrivacyModalOpen(true)}
+                            error={error.includes('Privacy Policy') ? error : ''}
+                          />
+                          <button
+                            type="button"
+                            onClick={submitFinal}
+                            disabled={!formData?.privacy_consent?.agreed}
+                            className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white transition hover:bg-brand-primary-hover disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:px-8"
+                          >
+                            Submit application
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+
+            {!isReviewStep ? (
+              <WizardFooter
+                showBack={step > 1}
+                onBack={() => goToStep(Math.max(1, step - 1))}
+                onNext={validateAndNext}
+                nextLabel={step + 1 >= maxStep ? 'Continue to review' : 'Continue'}
+              />
             ) : null}
           </div>
-        </section>
-      ) : null}
-
-      {isDocumentsStep ? (
-        <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#1F2937] dark:bg-[#111827]">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{currentStep?.title}</h3>
-          <p className={`text-xs ${ui.textMuted}`}>Upload clear PDF/JPG/PNG files, max {MAX_UPLOAD_MB}MB each.</p>
-          <ul className="space-y-4">
-            {Object.entries(docDefs).map(([key, meta]) => (
-              <li key={key} className="rounded-lg border border-gray-100 p-3 dark:border-[#1F2937]">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{meta.label}</p>
-                <p className={`text-xs ${ui.textMuted}`}>{meta.required ? 'Required' : 'Optional'}</p>
-                <label
-                  onDragOver={(e) => {
-                    e.preventDefault()
-                    setDraggingDocKey(key)
-                  }}
-                  onDragLeave={() => setDraggingDocKey((prev) => (prev === key ? '' : prev))}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    setDraggingDocKey('')
-                    const dropped = e.dataTransfer?.files?.[0]
-                    if (dropped) uploadDoc(key, dropped)
-                  }}
-                  className={`mt-2 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-4 py-5 text-center transition ${
-                    draggingDocKey === key
-                      ? 'border-red-400 bg-red-50/60 dark:border-red-500 dark:bg-red-900/20'
-                      : 'border-gray-300 bg-gray-50/60 hover:border-red-300 hover:bg-red-50/30 dark:border-gray-600 dark:bg-[#0F172A]/50'
-                  }`}
-                >
-                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={(e) => uploadDoc(key, e.target.files?.[0])} />
-                  <span className="text-sm font-medium text-gray-800 dark:text-gray-100">Drag and drop file here</span>
-                  <span className={`mt-1 text-xs ${ui.textMuted}`}>or click to browse</span>
-                </label>
-                {app?.documents?.[key]?.urls?.length ? (
-                  <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-400">
-                    Uploaded:{' '}
-                    {app.documents[key].urls.map((u) => (
-                      <a key={u} href={resolvePublicFileUrl(u)} target="_blank" rel="noreferrer" className="ml-1 underline">
-                        view
-                      </a>
-                    ))}
-                  </p>
-                ) : (
-                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">Not uploaded yet</p>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {isReviewStep ? (
-        <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#1F2937] dark:bg-[#111827]">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Review & Submit</h3>
-          {travelReference ? (
-            <div className="rounded-lg border border-red-100 bg-red-50/60 p-3 text-sm text-red-900 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-200">
-              <span className="font-semibold">Travel Assistance Loan Reference Number:</span> {travelReference}
-            </div>
-          ) : null}
-          <dl className="grid gap-2 text-sm md:grid-cols-2">
-            {Object.entries(fieldsBySection).flatMap(([, rows]) => rows).filter(shouldShowField).map((field) => (
-              <div key={field.key} className="rounded-lg bg-gray-50 p-2 dark:bg-[#0F172A]/50">
-                <dt className="text-xs uppercase text-gray-500">{field.label}</dt>
-                <dd className="text-gray-900 dark:text-gray-100">{formatValue(formData[field.key])}</dd>
-              </div>
-            ))}
-          </dl>
-          <div>
-            <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Uploaded Documents</h4>
-            <ul className="mt-2 grid gap-2 text-sm md:grid-cols-2">
-              {Object.entries(docDefs).map(([key, meta]) => (
-                <li key={key} className="rounded-lg bg-gray-50 p-2 dark:bg-[#0F172A]/50">
-                  <span className="font-medium text-gray-800 dark:text-gray-200">{meta.label}</span>
-                  <span className={`ml-2 text-xs ${app?.documents?.[key]?.urls?.length ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}`}>
-                    {app?.documents?.[key]?.urls?.length ? 'Uploaded' : 'Missing'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          {app?.is_draft === false ? (
-            <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">Application submitted.</p>
-          ) : (
-            <div className="space-y-3">
-              <PrivacyConsentCheckbox
-                checked={Boolean(formData?.privacy_consent?.agreed)}
-                onChange={onPrivacyConsentChange}
-                onOpenPolicy={() => setPrivacyModalOpen(true)}
-                error={error.includes('Privacy Policy') ? error : ''}
-              />
-              <button
-                type="button"
-                onClick={submitFinal}
-                disabled={!formData?.privacy_consent?.agreed}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Submit application
-              </button>
-            </div>
-          )}
-        </section>
-      ) : null}
-
-      {!isReviewStep ? (
-        <div className="flex flex-wrap gap-2">
-          {step > 1 ? (
-            <button type="button" onClick={() => setStep((s) => Math.max(1, s - 1))} className="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">
-              Back
-            </button>
-          ) : null}
-          <button type="button" onClick={validateAndNext} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
-            {step + 1 >= maxStep ? 'Continue to review' : 'Next step'}
-          </button>
         </div>
-      ) : null}
+      </motion.div>
 
       <PrivacyPolicyModal open={privacyModalOpen} onClose={() => setPrivacyModalOpen(false)} />
     </div>

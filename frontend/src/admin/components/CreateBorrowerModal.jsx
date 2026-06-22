@@ -346,9 +346,9 @@ export default function CreateBorrowerModal({ open, onClose, onCreated }) {
           </div>
 
           {createdTempPassword ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800/40 dark:bg-emerald-950/20">
-              <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">Temporary password</p>
-              <p className="mt-2 break-all font-mono text-sm text-emerald-900 dark:text-emerald-100">
+            <div className="rounded-xl border border-red-100 bg-red-50/80 p-4 dark:border-red-800/40 dark:bg-red-950/20">
+              <p className="text-sm font-semibold text-red-900 dark:text-red-100">Temporary password</p>
+              <p className="mt-2 break-all font-mono text-sm text-red-900 dark:text-red-100">
                 {createdTempPassword}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -365,8 +365,8 @@ export default function CreateBorrowerModal({ open, onClose, onCreated }) {
               </div>
             </div>
           ) : createdSuccess ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800/40 dark:bg-emerald-950/20">
-              <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">Borrower created</p>
+            <div className="rounded-xl border border-red-100 bg-red-50/80 p-4 dark:border-red-800/40 dark:bg-red-950/20">
+              <p className="text-sm font-semibold text-red-900 dark:text-red-100">Borrower created</p>
               <p className={`mt-1 text-xs ${admin.textMuted}`}>No temporary password was returned.</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" onClick={closeAndReset} className={`${admin.btnPrimary} !px-5`}>

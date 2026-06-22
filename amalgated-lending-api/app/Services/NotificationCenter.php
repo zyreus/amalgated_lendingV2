@@ -26,6 +26,8 @@ class NotificationCenter
 
     public const CATEGORY_LOAN_APPROVED = 'loan_application_approved';
 
+    public const CATEGORY_LOAN_PRE_APPROVED = 'loan_application_pre_approved';
+
     public const CATEGORY_LOAN_REJECTED = 'loan_application_rejected';
 
     public const CATEGORY_VERIFICATION_REQUIRED = 'verification_required';

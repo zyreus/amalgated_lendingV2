@@ -35,6 +35,23 @@ export function AdminApiAuthProvider({ children }) {
   }, [loadMe])
 
   useEffect(() => {
+    if (!user) return undefined
+    const refreshSession = () => {
+      if (document.visibilityState === 'visible') {
+        void loadMe()
+      }
+    }
+    window.addEventListener('focus', refreshSession)
+    document.addEventListener('visibilitychange', refreshSession)
+    const interval = window.setInterval(refreshSession, 120_000)
+    return () => {
+      window.removeEventListener('focus', refreshSession)
+      document.removeEventListener('visibilitychange', refreshSession)
+      window.clearInterval(interval)
+    }
+  }, [user, loadMe])
+
+  useEffect(() => {
     const onUnauth = () => {
       setUser(null)
     }

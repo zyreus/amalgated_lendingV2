@@ -45,7 +45,7 @@ function EmptyState({ colSpan }) {
   )
 }
 
-function RowActions({ loan, canApprove, onPreApprove, onReturnToPending }) {
+function RowActions({ loan, canApprove, onPreApprove, onReturnToPending, onApprove }) {
   const status = normalizeApplicationStatus(loan.status)
 
   return (
@@ -54,19 +54,28 @@ function RowActions({ loan, canApprove, onPreApprove, onReturnToPending }) {
         <button
           type="button"
           onClick={() => onPreApprove(loan)}
-          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
+          className={`${admin.btnPrimary} px-3 py-1.5 text-xs`}
         >
           Pre-Approve
         </button>
       )}
       {canApprove && status === 'pre-approved' && (
-        <button
-          type="button"
-          onClick={() => onReturnToPending(loan)}
-          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-900/30 dark:text-amber-100"
-        >
-          Return
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={() => onApprove(loan)}
+            className={`${admin.btnPrimary} px-3 py-1.5 text-xs`}
+          >
+            Approve
+          </button>
+          <button
+            type="button"
+            onClick={() => onReturnToPending(loan)}
+            className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-900/30 dark:text-amber-100"
+          >
+            Return
+          </button>
+        </>
       )}
       <Link
         to={`/admin/loans/${loan.id}`}
@@ -78,7 +87,7 @@ function RowActions({ loan, canApprove, onPreApprove, onReturnToPending }) {
   )
 }
 
-export default function ApplicationsTable({ rows, loading, canApprove, onPreApprove, onReturnToPending }) {
+export default function ApplicationsTable({ rows, loading, canApprove, onPreApprove, onReturnToPending, onApprove }) {
   return (
     <>
       <div className="space-y-3 lg:hidden">
@@ -120,7 +129,7 @@ export default function ApplicationsTable({ rows, loading, canApprove, onPreAppr
                   </p>
                 </div>
               </div>
-              <RowActions loan={loan} canApprove={canApprove} onPreApprove={onPreApprove} onReturnToPending={onReturnToPending} />
+              <RowActions loan={loan} canApprove={canApprove} onPreApprove={onPreApprove} onReturnToPending={onReturnToPending} onApprove={onApprove} />
             </div>
           ))
         )}
@@ -165,7 +174,7 @@ export default function ApplicationsTable({ rows, loading, canApprove, onPreAppr
                   <td className={admin.tableCell}>{loan.term_months} mo</td>
                   <td className={`${admin.tableCell} tabular-nums ${admin.tableMuted}`}>{formatLoanRateMonthly(loan)}</td>
                   <td className={`${admin.tableCell} text-right`}>
-                    <RowActions loan={loan} canApprove={canApprove} onPreApprove={onPreApprove} onReturnToPending={onReturnToPending} />
+                    <RowActions loan={loan} canApprove={canApprove} onPreApprove={onPreApprove} onReturnToPending={onReturnToPending} onApprove={onApprove} />
                   </td>
                 </tr>
               ))

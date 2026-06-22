@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Mail\PaymentReceiptMail;
 use App\Models\EmailLog;
 use App\Models\Payment;
+use App\Support\BorrowerContactEmail;
 use App\Services\PaymentReceiptPdfService;
 use App\Services\TransactionalMailSender;
 use Illuminate\Bus\Queueable;
@@ -47,7 +48,7 @@ class SendPaymentReceiptJob implements ShouldQueue
         $dedupeKey = self::dedupeKey($this->paymentId, $this->receiptNumber);
 
         $payment = Payment::query()
-            ->with(['loan.borrower', 'processedByUser', 'recordedByUser', 'confirmedByUser'])
+            ->with(['loan.borrower', 'loan', 'processedByUser', 'recordedByUser', 'confirmedByUser'])
             ->find($this->paymentId);
 
         if (! $payment || $payment->status !== Payment::STATUS_PAID) {
@@ -59,8 +60,8 @@ class SendPaymentReceiptJob implements ShouldQueue
         }
 
         $borrower = $payment->loan?->borrower;
-        $email = trim((string) ($borrower?->email ?? ''));
-        if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $email = BorrowerContactEmail::forPayment($payment);
+        if (! BorrowerContactEmail::isValid($email)) {
             EmailLog::query()->updateOrCreate(
                 ['dedupe_key' => $dedupeKey],
                 [
@@ -126,7 +127,7 @@ class SendPaymentReceiptJob implements ShouldQueue
         $mailable = new PaymentReceiptMail($payment);
 
         $loanNumber = $payment->loan?->loan_number ?? ('LN-'.str_pad((string) ($payment->loan_id ?? 0), 6, '0', STR_PAD_LEFT));
-        $subject = 'Payment Receipt - Loan '.$loanNumber;
+        $subject = 'Payment confirmed — Loan '.$loanNumber.' — '.config('app.name', 'Amalgated Lending Inc.');
 
         try {
             $send = $sender->sendHtmlMailable($mailable, $email, (string) ($borrower?->name ?: $email), $subject, [

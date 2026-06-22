@@ -1,0 +1,1 @@
+function s(r){return[...r||[]].sort((e,t)=>{const o=new Date(e?.created_at||e?.sent_at||0).getTime(),n=new Date(t?.created_at||t?.sent_at||0).getTime();return o!==n?o-n:(Number(e?.id)||0)-(Number(t?.id)||0)})}function a(r,e="smooth"){requestAnimationFrame(()=>{const t=r?.current;t&&t.scrollTo({top:t.scrollHeight,behavior:e})})}export{a,s};

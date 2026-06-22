@@ -1,0 +1,1 @@
+import{j as o}from"./vendor-DinI6d44.js";import{P as t}from"./ProductLoanApplicationPage-Bvx4nn3E.js";import"./AdminUi-xQUcE7Rm.js";import"./index-ITFF3lmO.js";import"./PrivacyConsentCheckbox-DrMuifum.js";function s(){return o.jsx(t,{loanType:"sss_pension"})}export{s as default};

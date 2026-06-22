@@ -10,6 +10,7 @@ import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 import { admin as ui } from '../../admin/components/AdminUi.jsx'
 import { BorrowerDashboardSkeleton } from '../../components/AppSkeletons.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog.jsx'
+import { useToast } from '../../admin/context/ToastContext.jsx'
 
 const paymentMethods = [
   { id: 'gcash', label: 'GCash' },
@@ -106,12 +107,12 @@ function isSalaryLoan(loan) {
 }
 
 export default function BorrowerDashboardPage() {
+  const { showToast } = useToast()
   const { user, loadMe } = useBorrowerAuth()
   const [data, setData] = useState(null)
   const [historyRows, setHistoryRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [toast, setToast] = useState('')
   const [verifyBusy, setVerifyBusy] = useState(false)
   const [receiptUploadedModalOpen, setReceiptUploadedModalOpen] = useState(false)
   const [modalRow, setModalRow] = useState(null)
@@ -284,7 +285,6 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
     e.preventDefault()
     if (!modalRow?.id || !form.receiptFile) return
     setUploading(true)
-    setToast('')
     setReceiptUploadedModalOpen(false)
     setError('')
     try {
@@ -310,14 +310,13 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
 
   const handleResendVerification = async () => {
     setVerifyBusy(true)
-    setToast('')
     setError('')
     try {
       await borrowerApi('/borrower/email/resend-verification', { method: 'POST', body: '{}' })
-      setToast('If your address is eligible, we sent another verification email.')
+      showToast('If your address is eligible, we sent another verification email.', 'success')
       await loadMe()
     } catch (err) {
-      setToast(err.message || 'Could not resend verification email.')
+      showToast(err.message || 'Could not resend verification email.', 'error')
     } finally {
       setVerifyBusy(false)
     }
@@ -472,11 +471,6 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
         </div>
       ) : null}
 
-      {toast ? (
-        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-green-500/10 dark:text-green-300">
-          {toast}
-        </p>
-      ) : null}
       {error ? (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>
       ) : null}
@@ -1066,8 +1060,9 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
 
       {modalRow ? (
         <div className={ui.modalOverlay}>
-          <div className="w-full max-w-md rounded-2xl border border-gray-200/90 bg-white p-8 shadow-2xl transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] lg:p-10">
-            <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Upload payment receipt</h4>
+          <div className={`${ui.modalCard} max-w-md p-8 lg:p-10`}>
+            <p className={ui.modalEyebrow}>Payment</p>
+            <h4 className="mt-2 text-lg font-semibold text-gray-900 dark:text-gray-100">Upload payment receipt</h4>
             <p className={`mt-1 text-sm ${ui.textMuted}`}>Installment #{modalRow.installment_no}</p>
             <form className="mt-4 space-y-6" onSubmit={submitUpload}>
               <input
