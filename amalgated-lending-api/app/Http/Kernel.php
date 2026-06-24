@@ -97,5 +97,8 @@ class Kernel extends HttpKernel
         'borrower' => EnsureBorrowerRole::class,
         'support.sync' => VerifySupportChatSyncSecret::class,
         'lending.chat_or_admin' => AuthenticateLendingChatOrAdminApi::class,
+        'session.timeout' => \App\Http\Middleware\EnforceJwtSessionTimeout::class,
+        'maintenance.app' => \App\Http\Middleware\EnsureApplicationMaintenanceMode::class,
+        'settings.write' => \App\Http\Middleware\EnsureSettingsWriteAccess::class,
     ];
 }

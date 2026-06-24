@@ -16,6 +16,7 @@ class CreditWellnessService
     public function __construct(
         private readonly CreditScoreService $creditScoreService,
         private readonly NotificationCenter $notificationCenter,
+        private readonly CreditWellnessAnalytics $analytics,
     ) {}
 
     /**
@@ -28,7 +29,13 @@ class CreditWellnessService
 
         $loans = Loan::query()
             ->where('borrower_id', $user->id)
-            ->whereIn('status', [Loan::STATUS_ONGOING, Loan::STATUS_COMPLETED, Loan::STATUS_APPROVED])
+            ->whereIn('status', [
+                Loan::STATUS_ONGOING,
+                Loan::STATUS_RELEASED,
+                Loan::STATUS_COMPLETED,
+                Loan::STATUS_APPROVED,
+                'ongoing',
+            ])
             ->get();
 
         $loanIds = $loans->pluck('id');
@@ -41,14 +48,37 @@ class CreditWellnessService
             $this->syncLoanHealth($loan, $payments->where('loan_id', $loan->id));
         }
 
+        $context = $this->analytics->gatherContext($user);
         $metrics = $this->computeBorrowerMetrics($loans, $payments);
-        $score = $this->computeWellnessScore($metrics, $loans);
-        $category = $this->scoreCategory($score);
-        $defaultRisk = $this->defaultRiskLevel($score, $metrics);
-        $trend = $this->improvementTrend($user->id, $score, $previousScore);
-        $riskFlags = $this->predictiveRiskFlags($metrics, $loans, $payments);
-        $recommendations = $this->buildRecommendations($metrics, $score, $category, $riskFlags);
-        $eligibility = $this->eligibilityImpact($score, $category, $defaultRisk, $metrics);
+        $sufficientData = $this->analytics->hasSufficientData($user, $loans, $payments, $metrics, $context);
+
+        $components = $this->analytics->computeComponentScores($metrics, $context);
+        $score = $sufficientData ? $this->analytics->computeWeightedScore($components) : 0;
+        $category = $sufficientData
+            ? $this->analytics->scoreCategory($score)
+            : 'insufficient';
+        $defaultRisk = $sufficientData ? $this->defaultRiskLevel($score, $metrics) : 'medium';
+        $trend = $sufficientData ? $this->improvementTrend($user->id, $score, $previousScore) : 'stable';
+        $riskFlags = $sufficientData ? $this->predictiveRiskFlags($metrics, $loans, $payments) : [];
+        $recommendations = $sufficientData ? $this->buildRecommendations($metrics, $score, $category, $riskFlags) : [];
+        $decisionSupport = $sufficientData
+            ? $this->analytics->decisionSupport($score, $category, $defaultRisk, $metrics, $context, $components)
+            : ['recommended_loan_limit' => null, 'approval_confidence' => null, 'approval_confidence_label' => null, 'stability_score' => null, 'risk_assessment' => null];
+        $eligibility = $sufficientData
+            ? $this->analytics->eligibilityImpact($score, $category, $defaultRisk, $metrics, $context, $components, $decisionSupport)
+            : ['insufficient_data' => true, 'decision_support' => $decisionSupport];
+        $eligibility['score_breakdown'] = $sufficientData ? $this->analytics->scoreBreakdown($components) : [];
+        $eligibility['achievements'] = $sufficientData
+            ? $this->analytics->achievements($score, $metrics, $context, $defaultRisk)
+            : [];
+        $eligibility['wellness_alerts'] = $sufficientData
+            ? $this->analytics->wellnessAlerts($score, $category, array_merge($metrics, ['improvement_trend' => $trend]), $context, $decisionSupport, $previousScore)
+            : [['type' => 'warning', 'message' => 'Insufficient data available to calculate credit wellness. Complete your profile or submit a loan application.']];
+        $eligibility['payment_consistency_rate'] = $metrics['payment_consistency_rate'] ?? 0;
+        $eligibility['completed_loan_count'] = $metrics['completed_loans'] ?? 0;
+        $eligibility['paid_installments'] = $metrics['paid_installments'] ?? 0;
+        $eligibility['total_due_installments'] = $metrics['total_due_installments'] ?? 0;
+        $eligibility['late_payments_ytd'] = $metrics['late_payments_ytd'] ?? 0;
 
         $wellness = BorrowerCreditWellness::query()->updateOrCreate(
             ['borrower_id' => $user->id],
@@ -81,7 +111,7 @@ class CreditWellnessService
             ],
         );
 
-        $this->recordHistory($user->id, $score, $category, $wellness);
+        $this->recordHistory($user->id, $score, $category, $wellness, $sufficientData);
         $this->creditScoreService->recalculateForUser($user);
 
         if ($notify) {
@@ -169,11 +199,12 @@ class CreditWellnessService
         $this->recalculateForUser($user, notify: false);
         $wellness = BorrowerCreditWellness::query()->where('borrower_id', $user->id)->first();
 
-        return $wellness?->eligibility_impact ?? $this->eligibilityImpact(50, BorrowerCreditWellness::CATEGORY_FAIR, 'medium', [
+        return $wellness?->eligibility_impact ?? [
+            'insufficient_data' => true,
             'repayment_rate' => 0,
             'delayed_rate' => 0,
             'active_loan_count' => 0,
-        ]);
+        ];
     }
 
     /**
@@ -214,21 +245,29 @@ class CreditWellnessService
             ]);
 
         $nextDue = Payment::query()
-            ->whereIn('loan_id', $loans->where('status', Loan::STATUS_ONGOING)->pluck('id'))
+            ->whereIn('loan_id', $loans->whereIn('status', [Loan::STATUS_ONGOING, Loan::STATUS_RELEASED, 'ongoing'])->pluck('id'))
             ->whereIn('status', [Payment::STATUS_PENDING, Payment::STATUS_PARTIAL, Payment::STATUS_OVERDUE])
             ->whereNotNull('due_date')
             ->orderBy('due_date')
             ->first();
 
+        $impact = is_array($wellness->eligibility_impact) ? $wellness->eligibility_impact : [];
+        $insufficient = (bool) ($impact['insufficient_data'] ?? false);
+
         return [
-            'wellness_score' => (int) $wellness->wellness_score,
-            'score_category' => $wellness->score_category,
+            'wellness_score' => $insufficient ? null : (int) $wellness->wellness_score,
+            'score_category' => $insufficient ? 'insufficient' : $wellness->score_category,
+            'insufficient_data' => $insufficient,
             'credit_score' => $user->credit_score !== null ? (float) $user->credit_score : null,
             'risk_level' => $user->risk_level,
             'repayment_rate' => (float) $wellness->repayment_rate,
+            'payment_consistency_rate' => (float) ($impact['payment_consistency_rate'] ?? (100 - (float) $wellness->delayed_payment_rate)),
             'delayed_payment_rate' => (float) $wellness->delayed_payment_rate,
             'payment_streak' => (int) $wellness->payment_streak,
             'active_loan_count' => (int) $wellness->active_loan_count,
+            'completed_loan_count' => (int) ($impact['completed_loan_count'] ?? 0),
+            'paid_installments' => (int) ($impact['paid_installments'] ?? 0),
+            'total_due_installments' => (int) ($impact['total_due_installments'] ?? 0),
             'total_penalties' => (float) $wellness->total_penalties,
             'total_outstanding_balance' => (float) $wellness->total_outstanding_balance,
             'current_overdue_amount' => (float) $wellness->current_overdue_amount,
@@ -237,7 +276,11 @@ class CreditWellnessService
             'delay_metrics' => $wellness->delay_metrics,
             'risk_flags' => $wellness->risk_flags ?? [],
             'recommendations' => $wellness->recommendations ?? [],
-            'eligibility_impact' => $wellness->eligibility_impact ?? [],
+            'eligibility_impact' => $impact,
+            'decision_support' => $impact['decision_support'] ?? null,
+            'score_breakdown' => $impact['score_breakdown'] ?? [],
+            'achievements' => $impact['achievements'] ?? [],
+            'wellness_alerts' => $impact['wellness_alerts'] ?? [],
             'loan_health' => $loanHealth,
             'history' => $history,
             'next_due_date' => $nextDue?->due_date?->toDateString(),
@@ -292,6 +335,7 @@ class CreditWellnessService
             'total_borrowers' => $rows->count(),
             'segments' => $segments,
             'avg_wellness_score' => $rows->count() > 0 ? round($rows->avg('wellness_score'), 1) : 0,
+            'score_trend' => $this->portfolioScoreTrend(),
             'high_risk_borrowers' => $highRisk->map(fn ($r) => $this->adminBorrowerRow($r))->all(),
             'improving_borrowers' => $improving->map(fn ($r) => $this->adminBorrowerRow($r))->all(),
             'top_performers' => $top->map(fn ($r) => $this->adminBorrowerRow($r))->all(),
@@ -320,28 +364,37 @@ class CreditWellnessService
         $delayed = 0;
         $missed = 0;
         $evaluated = 0;
+        $paidInstallments = 0;
+        $totalDueInstallments = 0;
         $delayDays = [];
         $totalPenalties = 0.0;
         $currentOverdue = 0.0;
         $totalOutstanding = 0.0;
-        $activeLoanCount = $loans->where('status', Loan::STATUS_ONGOING)->count();
 
-        foreach ($loans->where('status', Loan::STATUS_ONGOING) as $loan) {
+        $activeStatuses = [Loan::STATUS_ONGOING, Loan::STATUS_RELEASED, Loan::STATUS_APPROVED, 'ongoing'];
+        $activeLoanCount = $loans->filter(fn (Loan $l) => in_array($l->status, $activeStatuses, true))->count();
+
+        foreach ($loans->filter(fn (Loan $l) => in_array($l->status, [Loan::STATUS_ONGOING, Loan::STATUS_RELEASED, 'ongoing'], true)) as $loan) {
             $totalOutstanding += (float) ($loan->outstanding_balance ?? 0);
         }
 
-        $sorted = $payments->sortByDesc(fn (Payment $p) => $p->due_date?->timestamp ?? 0);
-        $streak = 0;
-        foreach ($sorted as $payment) {
+        foreach ($payments as $payment) {
             $totalPenalties += (float) $payment->penalty_amount;
+
+            $isDue = $payment->due_date && $payment->due_date->lte($now);
+            if ($isDue) {
+                $totalDueInstallments++;
+                $fullyPaid = (float) $payment->amount_paid >= (float) $payment->amount_due
+                    || $payment->status === Payment::STATUS_PAID;
+                if ($fullyPaid) {
+                    $paidInstallments++;
+                }
+            }
 
             if ((float) $payment->amount_paid > 0 && $payment->paid_at && $payment->due_date) {
                 $evaluated++;
                 if ($payment->paid_at->lte($payment->due_date->copy()->endOfDay())) {
                     $onTime++;
-                    if ($streak === 0 || $payment === $sorted->first(fn ($p) => (float) $p->amount_paid > 0)) {
-                        $streak++;
-                    }
                 } else {
                     $delayed++;
                     $delayDays[] = $payment->paid_at->diffInDays($payment->due_date);
@@ -366,7 +419,10 @@ class CreditWellnessService
         }
 
         $streak = $this->computePaymentStreak($payments);
-        $repaymentRate = $evaluated > 0 ? round(($onTime / $evaluated) * 100, 2) : 100.0;
+        $repaymentRate = $totalDueInstallments > 0
+            ? round(($paidInstallments / $totalDueInstallments) * 100, 2)
+            : ($evaluated > 0 ? round(($onTime / $evaluated) * 100, 2) : 0.0);
+        $paymentConsistencyRate = $evaluated > 0 ? round(($onTime / $evaluated) * 100, 2) : 100.0;
         $delayedRate = $evaluated > 0 ? round(($delayed / $evaluated) * 100, 2) : 0.0;
 
         $recentDelayed = $payments->filter(function (Payment $p) use ($now) {
@@ -394,12 +450,20 @@ class CreditWellnessService
             $delayTrend = 'improving';
         }
 
+        $defaultedLoans = LoanHealthMetric::query()
+            ->whereIn('loan_id', $loans->pluck('id'))
+            ->where('health_status', LoanHealthMetric::STATUS_DEFAULT_RISK)
+            ->count();
+
         return [
             'on_time' => $onTime,
             'delayed_count' => $delayed,
             'missed_count' => $missed,
             'evaluated' => $evaluated,
+            'paid_installments' => $paidInstallments,
+            'total_due_installments' => $totalDueInstallments,
             'repayment_rate' => $repaymentRate,
+            'payment_consistency_rate' => $paymentConsistencyRate,
             'delayed_rate' => $delayedRate,
             'payment_streak' => $streak,
             'avg_delay_days' => count($delayDays) > 0 ? (int) round(array_sum($delayDays) / count($delayDays)) : 0,
@@ -409,6 +473,8 @@ class CreditWellnessService
             'total_outstanding' => round($totalOutstanding, 2),
             'active_loan_count' => $activeLoanCount,
             'completed_loans' => $loans->where('status', Loan::STATUS_COMPLETED)->count(),
+            'defaulted_loans' => $defaultedLoans,
+            'late_payments_ytd' => $this->analytics->countLatePaymentsYtd($payments),
             'delay_trend' => $delayTrend,
         ];
     }
@@ -434,54 +500,6 @@ class CreditWellnessService
     /**
      * @param  array<string, mixed>  $metrics
      * @param  Collection<int, Loan>  $loans
-     */
-    private function computeWellnessScore(array $metrics, Collection $loans): int
-    {
-        $score = 72;
-
-        $score += min(20, (int) round($metrics['repayment_rate'] / 5));
-        $score += min(10, $metrics['payment_streak'] * 2);
-        $score += min(8, $metrics['completed_loans'] * 4);
-        $score -= min(25, $metrics['missed_count'] * 8);
-        $score -= min(20, $metrics['delayed_count'] * 3);
-        $score -= min(10, (int) round((float) $metrics['total_penalties'] / 500));
-        $score -= min(15, (int) round($metrics['delayed_rate'] / 4));
-
-        if ($metrics['active_loan_count'] >= 3) {
-            $score -= 5;
-        }
-
-        if ($metrics['total_outstanding'] > 500000) {
-            $score -= 5;
-        }
-
-        foreach ($loans as $loan) {
-            $score -= $this->restructuringCount($loan) * 3;
-        }
-
-        return max(0, min(100, (int) round($score)));
-    }
-
-    private function scoreCategory(int $score): string
-    {
-        if ($score >= 90) {
-            return BorrowerCreditWellness::CATEGORY_EXCELLENT;
-        }
-        if ($score >= 75) {
-            return BorrowerCreditWellness::CATEGORY_GOOD;
-        }
-        if ($score >= 60) {
-            return BorrowerCreditWellness::CATEGORY_FAIR;
-        }
-        if ($score >= 40) {
-            return BorrowerCreditWellness::CATEGORY_AT_RISK;
-        }
-
-        return BorrowerCreditWellness::CATEGORY_CRITICAL;
-    }
-
-    /**
-     * @param  array<string, mixed>  $metrics
      */
     private function defaultRiskLevel(int $score, array $metrics): string
     {
@@ -619,43 +637,11 @@ class CreditWellnessService
         return array_slice($items, 0, 6);
     }
 
-    /**
-     * @param  array<string, mixed>  $metrics
-     * @return array<string, mixed>
-     */
-    private function eligibilityImpact(int $score, string $category, string $defaultRisk, array $metrics): array
+    private function recordHistory(int $borrowerId, int $score, string $category, BorrowerCreditWellness $wellness, bool $sufficientData = true): void
     {
-        $manualReview = false;
-        $limitMultiplier = 1.0;
-        $fastTrack = false;
-        $trustBoost = 0;
-
-        if (in_array($category, [BorrowerCreditWellness::CATEGORY_AT_RISK, BorrowerCreditWellness::CATEGORY_CRITICAL], true)
-            || $defaultRisk === 'critical') {
-            $manualReview = true;
-            $limitMultiplier = 0.5;
-        } elseif ($category === BorrowerCreditWellness::CATEGORY_FAIR || $defaultRisk === 'high') {
-            $manualReview = true;
-            $limitMultiplier = 0.75;
-        } elseif (in_array($category, [BorrowerCreditWellness::CATEGORY_EXCELLENT, BorrowerCreditWellness::CATEGORY_GOOD], true)) {
-            $fastTrack = $score >= 80;
-            $trustBoost = $category === BorrowerCreditWellness::CATEGORY_EXCELLENT ? 15 : 8;
-            $limitMultiplier = $category === BorrowerCreditWellness::CATEGORY_EXCELLENT ? 1.15 : 1.05;
+        if (! $sufficientData || $category === 'insufficient') {
+            return;
         }
-
-        return [
-            'wellness_score' => $score,
-            'score_category' => $category,
-            'requires_manual_approval' => $manualReview,
-            'loan_limit_multiplier' => $limitMultiplier,
-            'fast_track_eligible' => $fastTrack,
-            'trust_score_boost' => $trustBoost,
-            'repayment_rate' => $metrics['repayment_rate'] ?? 0,
-        ];
-    }
-
-    private function recordHistory(int $borrowerId, int $score, string $category, BorrowerCreditWellness $wellness): void
-    {
         $last = WellnessHistory::query()
             ->where('borrower_id', $borrowerId)
             ->orderByDesc('recorded_at')
@@ -723,6 +709,28 @@ class CreditWellnessService
                 ['dedupe_key' => "wellness:overdue:{$user->id}:".now()->format('Y-m-d'), 'module' => NotificationCenter::MODULE_CREDIT_WELLNESS],
             );
         }
+    }
+
+    /**
+     * Monthly average wellness scores from recorded history.
+     *
+     * @return list<array{date: string, score: float}>
+     */
+    private function portfolioScoreTrend(): array
+    {
+        $since = now()->subMonths(6)->startOfMonth();
+
+        return WellnessHistory::query()
+            ->where('recorded_at', '>=', $since)
+            ->orderBy('recorded_at')
+            ->get()
+            ->groupBy(fn (WellnessHistory $h) => $h->recorded_at?->format('Y-m') ?? 'unknown')
+            ->map(fn ($group, $month) => [
+                'date' => $month,
+                'score' => round($group->avg('score'), 1),
+            ])
+            ->values()
+            ->all();
     }
 
   /**

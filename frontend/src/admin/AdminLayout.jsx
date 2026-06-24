@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, lazy, Suspense } from 'react'
-import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock.js'
 import { io } from 'socket.io-client'
 import { adminSocketUrls, getLendingChatSecret } from '../utils/adminChatApi.js'
@@ -8,6 +8,7 @@ import { useAdminApiAuth } from './context/useAdminApiAuth.js'
 import { useLogoutConfirm } from '../context/useLogoutConfirm.js'
 import { admin } from './components/AdminUi.jsx'
 import AdminHeaderClock from './components/AdminHeaderClock.jsx'
+import { NotificationPanelShell } from '../components/NotificationPanelShell.jsx'
 import WebsiteChatNotificationSettings from './components/WebsiteChatNotificationSettings.jsx'
 import {
   DEFAULT_WEBSITE_CHAT_SETTINGS,
@@ -18,8 +19,10 @@ import {
   playWebsiteChatSound,
   showWebsiteChatBrowserNotification,
 } from './utils/websiteChatNotificationEffects.js'
-import { ADMIN_NAV_GROUPS } from './adminNavConfig.js'
+import { ADMIN_NAV_GROUPS, ADMIN_DASHBOARD_NAV } from './adminNavConfig.js'
+import AdminSidebarAccordion from './components/AdminSidebarAccordion.jsx'
 import {
+  Archive,
   BarChart3,
   Bell,
   BriefcaseBusiness,
@@ -78,6 +81,8 @@ const ICON_CONFIG = {
   activity: { Icon: History, wrapper: 'bg-yellow-100 text-yellow-600' },
   bell: { Icon: Bell, wrapper: 'bg-amber-100 text-amber-600' },
   report: { Icon: BarChart3, wrapper: 'bg-cyan-100 text-cyan-600' },
+  archive: { Icon: Archive, wrapper: 'bg-slate-100 text-slate-600' },
+  archiveApps: { Icon: ClipboardList, wrapper: 'bg-orange-100 text-orange-600' },
 }
 
 function iconKeyForItem(item) {
@@ -89,6 +94,8 @@ function iconKeyForItem(item) {
   if (path === '/admin/collector-wellness') return 'wellness'
   if (path === '/admin/feedback') return 'feedback'
   if (path === '/admin/newsletter') return 'news'
+  if (path === '/admin/borrowers/archived') return 'archive'
+  if (path === '/admin/applications/archived') return 'archiveApps'
   return item?.icon_key || 'dash'
 }
 
@@ -98,14 +105,6 @@ function NavIcon({ item, name, active = false }) {
   return (
     <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-200 ease-in-out group-hover:scale-105 group-hover:shadow-sm ${config.wrapper} ${active ? 'ring-2 ring-white/80' : ''}`}>
       <Icon className="size-[18px] stroke-[2]" aria-hidden />
-    </span>
-  )
-}
-
-function SidebarTooltip({ children }) {
-  return (
-    <span className="pointer-events-none absolute left-[calc(100%+0.75rem)] top-1/2 z-[90] hidden -translate-y-1/2 whitespace-nowrap rounded-lg bg-[#0F172A] px-3 py-2 text-xs font-semibold text-white opacity-0 shadow-lg transition-all duration-200 ease-in-out group-hover:translate-x-1 group-hover:opacity-100 lg:block">
-      {children}
     </span>
   )
 }
@@ -127,7 +126,7 @@ function buildGroupedNavFromConfig(can) {
     items: group.items
       .filter((item) => item.perm == null || can(item.perm))
       .map((item, i) => normalizeNavItem({ ...item, to: item.to }, i)),
-  })).filter((g) => g.items.length > 0)
+  })).filter((g) => g.items.length > 0 && g.id !== 'overview')
 }
 
 /** Merge API rows: drop CMS, ensure CRM + newsletter; group by matching paths to config */
@@ -170,18 +169,22 @@ function mergeApiNav(rows, can) {
     return items.length ? { ...group, items } : null
   }).filter(Boolean)
 
-  const rest = filtered.filter((x) => !used.has(x.path))
+  const rest = filtered.filter(
+    (x) => !used.has(x.path) && x.path !== '/admin/dashboard' && x.path !== '/admin',
+  )
   if (rest.length) {
-    grouped.push({ id: 'other', label: 'More', items: rest })
+    const operations = grouped.find((g) => g.id === 'operations')
+    if (operations) operations.items.push(...rest)
+    else grouped.push({ id: 'operations', label: 'Operations', items: rest })
   }
 
-  return grouped
+  return grouped.filter((g) => g.id !== 'overview')
 }
 
 const shell =
   'flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden bg-[#F5EEDF] text-brand-text'
 const asideBase =
-  'fixed inset-y-0 left-0 z-50 flex h-[100dvh] flex-col border-r border-[#E5E7EB] bg-[#F8F8F8] shadow-[8px_0_32px_rgba(15,23,42,0.06)] transition-[transform,width] duration-300 ease-out lg:translate-x-0'
+  'fixed inset-y-0 left-0 z-50 flex h-[100dvh] flex-col border-r border-[#E5E7EB] bg-white font-[Inter,system-ui,sans-serif] shadow-[4px_0_24px_rgba(15,23,42,0.04)] transition-[transform,width] duration-300 ease-out lg:translate-x-0'
 
 const SIDEBAR_COLLAPSED_KEY = 'al-admin-sidebar-collapsed'
 
@@ -213,6 +216,10 @@ export default function AdminLayout() {
     typeof window !== 'undefined' ? readSidebarCollapsed() : false,
   )
   const [navGroups, setNavGroups] = useState(() => buildGroupedNavFromConfig(can))
+  const topNavItems = useMemo(() => {
+    if (!can(ADMIN_DASHBOARD_NAV.perm)) return []
+    return [normalizeNavItem({ ...ADMIN_DASHBOARD_NAV, to: ADMIN_DASHBOARD_NAV.to }, 0)]
+  }, [can])
   const [navLoading, setNavLoading] = useState(true)
   const [crmVisitorPing, setCrmVisitorPing] = useState(0)
   const [websiteChatSettings, setWebsiteChatSettings] = useState(DEFAULT_WEBSITE_CHAT_SETTINGS)
@@ -457,23 +464,6 @@ export default function AdminLayout() {
   }, [user, can])
 
   useEffect(() => {
-    if (!notifModalOpen) return undefined
-    const onDocClick = (e) => {
-      if (!notifWrapRef.current) return
-      if (!notifWrapRef.current.contains(e.target)) setNotifModalOpen(false)
-    }
-    const onEsc = (e) => {
-      if (e.key === 'Escape') setNotifModalOpen(false)
-    }
-    document.addEventListener('mousedown', onDocClick)
-    document.addEventListener('keydown', onEsc)
-    return () => {
-      document.removeEventListener('mousedown', onDocClick)
-      document.removeEventListener('keydown', onEsc)
-    }
-  }, [notifModalOpen])
-
-  useEffect(() => {
     if (!profileMenuOpen) return undefined
     const onDocClick = (e) => {
       if (!profileWrapRef.current) return
@@ -498,10 +488,6 @@ export default function AdminLayout() {
     })
   }
 
-  const navInactive =
-    'border-transparent text-[#475569] hover:scale-[1.01] hover:bg-white hover:text-[#0F172A] hover:shadow-sm hover:shadow-rose-900/5'
-  const navActive =
-    'border-[#F8B4C3] bg-[#FCE7EF] text-[#E11D48] shadow-sm shadow-rose-900/10 before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-[#E11D48]'
   const sidebarTransform = mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
   const asideWidthClass = sidebarCollapsed ? 'w-[240px] lg:w-[72px]' : 'w-[240px]'
   const mainPlClass = sidebarCollapsed ? 'lg:pl-[72px]' : 'lg:pl-[240px]'
@@ -528,7 +514,12 @@ export default function AdminLayout() {
               <div
                 className={`flex min-w-0 flex-1 items-center gap-3 ${sidebarCollapsed ? 'lg:flex-col lg:items-center' : ''}`}
               >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm shadow-rose-900/10 ring-1 ring-[#E5E7EB]">
+                <Link
+                  to="/admin/dashboard"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm shadow-rose-900/10 ring-1 ring-[#E5E7EB] transition hover:ring-[#F8B4C3]"
+                  title="Dashboard"
+                >
                   <img
                     src={amalgatedLogo}
                     alt="Amalgated Lending Inc."
@@ -536,7 +527,7 @@ export default function AdminLayout() {
                     loading="eager"
                     decoding="async"
                   />
-                </div>
+                </Link>
                 <div className={`min-w-0 flex-1 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
                   <p className="truncate text-[10px] font-semibold uppercase leading-tight tracking-[0.18em] text-[#E11D48]">
                     Amalgated Lending Inc.
@@ -572,78 +563,18 @@ export default function AdminLayout() {
             </div>
           </div>
 
-          <nav className="scrollbar-thin scrollbar-thumb-[#D8D8D8] scrollbar-track-transparent min-h-0 flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden overscroll-contain scroll-smooth py-2 [scrollbar-color:#D8D8D8_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#D8D8D8] [&::-webkit-scrollbar-track]:bg-transparent">
-            {navLoading && navGroups.length === 0 ? (
-              <p className="px-2 text-sm text-gray-500">Loading menu…</p>
-            ) : (
-              navGroups.map((group) => {
-                const isOverview = group.id === 'overview'
-                return (
-                  <div key={group.id} className={isOverview ? 'space-y-1.5' : 'mt-5 space-y-1.5 first:mt-0'}>
-                    {!isOverview ? (
-                      <p
-                        className={`mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF] ${sidebarCollapsed ? 'lg:hidden' : ''}`}
-                      >
-                        {group.label}
-                      </p>
-                    ) : null}
-                    <div className="space-y-1.5">
-                      {group.items.map((item) => (
-                        <div key={item.id ?? item.path} className="group relative">
-                          <NavLink
-                            to={item.path}
-                            end={Boolean(item.match_end)}
-                            title={sidebarCollapsed ? item.label : undefined}
-                            onClick={() => setMobileOpen(false)}
-                            className={({ isActive }) =>
-                              [
-                                'relative flex h-[52px] w-full items-center gap-3 overflow-hidden rounded-xl border border-transparent border-l-4 px-3 py-2 text-[15px] font-medium transition-all duration-200 ease-in-out',
-                                sidebarCollapsed ? 'lg:justify-center lg:gap-0 lg:border lg:p-0' : '',
-                                isActive ? navActive : navInactive,
-                              ].join(' ')
-                            }
-                          >
-                            {({ isActive }) => (
-                              <>
-                                <span className="relative inline-flex shrink-0">
-                                  <NavIcon item={item} active={isActive} />
-                                  {item.path === '/admin/notifications' && notifUnread != null && notifUnread > 0 && sidebarCollapsed ? (
-                                    <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
-                                      {notifUnread > 99 ? '99+' : notifUnread}
-                                    </span>
-                                  ) : null}
-                                  {item.path === '/admin/chat-crm' && crmVisitorPing > 0 && sidebarCollapsed ? (
-                                    <span
-                                      className="absolute -right-0.5 -top-1 h-2 w-2 rounded-full bg-red-600 ring-2 ring-white"
-                                      title="Unread visitor chats"
-                                      aria-label="CRM has live visitor activity"
-                                    />
-                                  ) : null}
-                                </span>
-                                <span className={`min-w-0 flex-1 leading-snug ${isActive ? 'font-semibold' : ''} ${sidebarCollapsed ? 'lg:sr-only' : ''}`}>{item.label}</span>
-                                {item.path === '/admin/notifications' && notifUnread != null && notifUnread > 0 && !sidebarCollapsed ? (
-                                  <span className="ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1.5 text-[10px] font-bold leading-none text-white">
-                                    {notifUnread > 99 ? '99+' : notifUnread}
-                                  </span>
-                                ) : null}
-                                {item.path === '/admin/chat-crm' && crmVisitorPing > 0 && !sidebarCollapsed ? (
-                                  <span
-                                    className="ml-auto inline-flex h-2.5 w-2.5 rounded-full bg-red-600 ring-2 ring-white"
-                                    title="Unread visitor chats"
-                                    aria-label="CRM live"
-                                  />
-                                ) : null}
-                              </>
-                            )}
-                          </NavLink>
-                          {sidebarCollapsed ? <SidebarTooltip>{item.label}</SidebarTooltip> : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })
-            )}
+          <nav className="scrollbar-thin scrollbar-thumb-[#D8D8D8] scrollbar-track-transparent min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden overscroll-contain scroll-smooth py-2 [scrollbar-color:#D8D8D8_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#D8D8D8] [&::-webkit-scrollbar-track]:bg-transparent">
+            <AdminSidebarAccordion
+              groups={navGroups}
+              topItems={topNavItems}
+              sidebarCollapsed={sidebarCollapsed}
+              pathname={location.pathname}
+              onNavigate={() => setMobileOpen(false)}
+              iconConfig={ICON_CONFIG}
+              notifUnread={notifUnread}
+              crmVisitorPing={crmVisitorPing}
+              loading={navLoading}
+            />
           </nav>
 
           <div className="shrink-0">
@@ -714,14 +645,14 @@ export default function AdminLayout() {
                     </span>
                   ) : null}
                 </button>
-                <div
-                  className={`absolute right-0 top-[calc(100%+10px)] z-[80] w-[min(92vw,30rem)] origin-top-right rounded-2xl border border-gray-200 bg-white shadow-2xl transition-all duration-200 dark:border-[#1F2937] dark:bg-[#111827] ${
-                    notifModalOpen ? 'pointer-events-auto translate-y-0 scale-100 opacity-100' : 'pointer-events-none -translate-y-1 scale-95 opacity-0'
-                  }`}
-                >
-                  <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-[#1F2937]">
-                    <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Notifications</h2>
-                    <div className="flex items-center gap-2">
+                <NotificationPanelShell
+                  open={notifModalOpen}
+                  onClose={() => setNotifModalOpen(false)}
+                  anchorRef={notifWrapRef}
+                  title="Notifications"
+                  titleId="admin-notif-panel-title"
+                  headerActions={(
+                    <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                       <button
                         type="button"
                         className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/10"
@@ -737,11 +668,11 @@ export default function AdminLayout() {
                         Close
                       </button>
                     </div>
-                  </div>
-                  <div className="max-h-[68vh] overflow-y-auto p-3">
-                    {notifSettingsOpen ? (
-                      <WebsiteChatNotificationSettings compact />
-                    ) : (
+                  )}
+                >
+                  {notifSettingsOpen ? (
+                    <WebsiteChatNotificationSettings compact />
+                  ) : (
                     <Suspense
                       fallback={
                         <div className="flex items-center justify-center py-10 text-sm text-gray-500 dark:text-gray-400">
@@ -751,9 +682,8 @@ export default function AdminLayout() {
                     >
                       <NotificationsPage embedded onNavigate={() => setNotifModalOpen(false)} />
                     </Suspense>
-                    )}
-                  </div>
-                </div>
+                  )}
+                </NotificationPanelShell>
               </div>
             ) : null}
             {user ? (

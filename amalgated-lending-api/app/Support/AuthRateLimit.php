@@ -22,6 +22,13 @@ class AuthRateLimit
 
     public const REGISTER = 'auth-register';
 
+    /** Lockout window after too many failed auth attempts (login / forgot password). */
+    public const LOCKOUT_DECAY_SECONDS = 30;
+
+    public const LOGIN_MAX_ATTEMPTS = 5;
+
+    public const PASSWORD_RESET_MAX_ATTEMPTS = 5;
+
     /** @var list<string> */
     public const ALL_LIMITERS = [
         self::ADMIN_LOGIN,

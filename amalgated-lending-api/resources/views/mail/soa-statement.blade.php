@@ -15,7 +15,8 @@
   </tbody>
 </table>
 <p style="margin:24px 0 0;">
-  <a href="{{ $portalUrl }}" style="display:inline-block;padding:12px 22px;background:#ff0000;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">View statement</a>
+  <a href="{{ $statementUrl }}" style="display:inline-block;padding:12px 22px;background:#ff0000;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">View statement</a>
 </p>
-<p style="margin:24px 0 0;color:#94a3b8;font-size:12px;">If you recently paid, please allow posting time for the next statement refresh. Contact support for account corrections.</p>
+<p style="margin:16px 0 0;color:#64748b;font-size:12px;">You can also open this statement anytime in the <a href="{{ $portalUrl }}" style="color:#ff0000;text-decoration:underline;">borrower portal</a>. The PDF is attached to this email.</p>
+<p style="margin:16px 0 0;color:#94a3b8;font-size:12px;">If you recently paid, please allow posting time for the next statement refresh. Contact support for account corrections.</p>
 @endsection

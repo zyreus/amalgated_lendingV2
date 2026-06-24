@@ -66,11 +66,12 @@ export default function CreditWellnessSummaryPanel({
 
   const dash = data?.dashboard ?? data?.wellness ?? {}
   const prevScore = data?.history?.[1]?.score
+  const insufficient = dash.insufficient_data || dash.score_category === 'insufficient'
 
   if (variant === 'compact') {
     return (
       <div className={`flex flex-wrap items-center gap-3 ${className}`}>
-        <WellnessScoreGauge score={dash.wellness_score} category={dash.score_category} size="sm" animated={false} />
+        <WellnessScoreGauge score={dash.wellness_score} category={dash.score_category} size="sm" animated={false} insufficient={insufficient} />
         <div className="space-y-1">
           <div className="flex flex-wrap gap-2">
             <RiskBadge level={dash.default_risk_level || dash.risk_level} />
@@ -99,7 +100,7 @@ export default function CreditWellnessSummaryPanel({
       </div>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <WellnessScoreGauge score={dash.wellness_score} category={dash.score_category} size="md" />
+        <WellnessScoreGauge score={dash.wellness_score} category={dash.score_category} size="md" insufficient={insufficient} />
         <div className="flex-1 space-y-3">
           <div className="flex flex-wrap gap-2">
             <RiskBadge level={dash.default_risk_level || dash.risk_level} size="lg" />

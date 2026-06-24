@@ -8,6 +8,7 @@ import { LoadingButton, FormLoadingOverlay } from '../../components/loading'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
 import PrivacyPolicyModal from '../../components/privacy/PrivacyPolicyModal.jsx'
 import { borrowerAuthHandoffSearchParams } from '../../utils/borrowerAuthApplyPath.js'
+import { throttleMessage, useAuthThrottleCountdown } from '../../utils/authThrottleUi.js'
 
 function textInputClass() {
   return 'w-full rounded-xl border border-gray-200 bg-white py-3 pl-11 pr-4 text-sm text-gray-900 shadow-sm outline-none transition placeholder:text-gray-400 hover:border-gray-300 focus:border-brand-primary/60 focus:ring-2 focus:ring-brand-primary/15 dark:border-[#1F2937] dark:bg-[#0F172A] dark:text-gray-100 dark:placeholder:text-gray-500 dark:hover:border-[#374151]'
@@ -36,6 +37,7 @@ export default function BorrowerLoginPage() {
   const [rememberMe, setRememberMe] = useState(true)
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const { retrySeconds, lockedOut, applyThrottleError } = useAuthThrottleCountdown('login')
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [privacyModalOpen, setPrivacyModalOpen] = useState(false)
   const verifiedFlag = searchParams.get('verified') === '1'
@@ -52,6 +54,7 @@ export default function BorrowerLoginPage() {
 
   const onSubmit = async (e) => {
     e.preventDefault()
+    if (loading || lockedOut) return
     if (!privacyAccepted) {
       setErrorMsg('Please accept the Privacy Policy before signing in.')
       return
@@ -66,12 +69,15 @@ export default function BorrowerLoginPage() {
         redirect && redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/borrower/dashboard'
       navigate(target, { replace: true })
     } catch (err) {
-      setErrorMsg(err.message || 'Invalid email/mobile number or password.')
+      const throttleMsg = applyThrottleError(err)
+      setErrorMsg(throttleMsg || err.message || 'Invalid email/mobile number or password.')
     } finally {
       setAuthOverlay(null)
       setLoading(false)
     }
   }
+
+  const displayError = lockedOut ? throttleMessage(retrySeconds, 'login') : errorMsg
 
   const verificationSuccess =
     verifiedFlag || verifyStatus === 'success' || verifyStatus === 'already_verified'
@@ -197,12 +203,13 @@ export default function BorrowerLoginPage() {
                         value={loginIdentifier}
                         onChange={(e) => {
                           setLoginIdentifier(e.target.value)
-                          setErrorMsg('')
+                          if (!lockedOut) setErrorMsg('')
                         }}
                         required
                         placeholder="Enter email or mobile number"
                         inputMode="email"
                         autoComplete="username"
+                        disabled={loading || lockedOut}
                         className={textInputClass()}
                       />
                     </Field>
@@ -216,11 +223,12 @@ export default function BorrowerLoginPage() {
                         value={password}
                         onChange={(e) => {
                           setPassword(e.target.value)
-                          setErrorMsg('')
+                          if (!lockedOut) setErrorMsg('')
                         }}
                         required
                         placeholder="Enter your password"
                         autoComplete="current-password"
+                        disabled={loading || lockedOut}
                         className="relative"
                         inputClassName="py-3 pl-11 pr-12 shadow-sm"
                       />
@@ -267,9 +275,13 @@ export default function BorrowerLoginPage() {
                       </span>
                     </label>
 
-                    {errorMsg ? (
-                      <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">
-                        {errorMsg}
+                    {displayError ? (
+                      <p
+                        className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300"
+                        role="alert"
+                        aria-live="polite"
+                      >
+                        {displayError}
                       </p>
                     ) : null}
                   </div>
@@ -281,10 +293,11 @@ export default function BorrowerLoginPage() {
                       type="submit"
                       loading={loading}
                       loadingKey="signIn"
+                      disabled={lockedOut}
                       minWidth="100%"
-                      className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white transition hover:bg-brand-primary-hover"
+                      className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white transition hover:bg-brand-primary-hover disabled:opacity-60"
                     >
-                      Sign in
+                      {lockedOut ? `Try again in ${retrySeconds}s` : 'Sign in'}
                     </LoadingButton>
                     <Link
                       to="/"

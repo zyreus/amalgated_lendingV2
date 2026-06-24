@@ -12,6 +12,7 @@ import {
   DocumentUploadZone,
   Field,
   ProductRulesCard,
+  LoanEvaluationSummaryCard,
   ReviewGrid,
   WizardFooter,
   WizardStepHeader,
@@ -23,8 +24,14 @@ import {
 } from '../../components/LoanApplicationUi.jsx'
 import { useToast } from '../../../admin/context/ToastContext.jsx'
 
+import CoMakerFormSection from '../../components/CoMakerFormSection.jsx'
+import PensionLoanPreviewCard from '../../components/PensionLoanPreviewCard.jsx'
+import { DEFAULT_CO_MAKER_DOCUMENT_CATEGORIES, resolveRequiresCoMakers } from '../../../shared/coMaker/coMakerSchema.js'
+
 const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/png']
-const MAX_UPLOAD_MB = 15
+const MAX_UPLOAD_MB = 20
+const BORROWER_HIDDEN_FIELD_KEYS = new Set(['loan_amount', 'requested_loan_amount', 'prospected_loan_amount'])
+const PENSION_BORROWER_HIDDEN_KEYS = new Set(['loan_product_id', ...BORROWER_HIDDEN_FIELD_KEYS])
 const TRAVEL_COST_KEYS = [
   'airfare_cost',
   'visa_cost',
@@ -43,13 +50,26 @@ const SECTION_HINTS = {
   employment: 'Employment details help us assess repayment capacity.',
   employment_financial: 'Income and employment details support your application review.',
   income: 'Declare salary and other income sources honestly.',
-  loan: 'Choose your product, amount, and repayment term carefully.',
+  loan: 'Choose your loan product, purpose, and repayment term. Loan amount is computed automatically for pension loans.',
   vehicle: 'Vehicle details must match OR/CR documents.',
-  property: 'Property information must match title and tax declaration records.',
-  pension: 'Pension details must match your benefit records.',
+  property: 'Describe the property location and upload any documents or photos you have. Exact measurements and values will be verified by our team.',
+  pension: 'Enter your pension details and monthly benefit amount. Your capacity preview updates as you type.',
   travel: 'Travel plans and cost estimates guide your assistance request.',
   documents: 'Upload clear, readable copies of each required document.',
+  co_makers: 'Add co-maker details and upload their supporting documents before continuing.',
   review: 'Review all entries before submitting your application.',
+}
+
+function buildDocItems(app, key) {
+  const entry = app?.documents?.[key]
+  if (!entry) return []
+  const paths = entry.paths || []
+  const urls = entry.urls || []
+  return paths.map((path, i) => ({
+    path,
+    url: urls[i],
+    name: path?.split?.('/')?.pop?.() || `File ${i + 1}`,
+  }))
 }
 
 function useDebouncedCallback(fn, delay) {
@@ -86,6 +106,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
   const [error, setError] = useState('')
   const [privacyModalOpen, setPrivacyModalOpen] = useState(false)
   const [draggingDocKey, setDraggingDocKey] = useState('')
+  const [uploadingDocKey, setUploadingDocKey] = useState('')
 
   const loadSchema = useCallback(async () => {
     const res = await borrowerApi('/borrower/loan-applications/wizard/schema')
@@ -170,7 +191,6 @@ export default function ProductLoanApplicationPage({ loanType }) {
     })
   }
 
-  const steps = schema?.product_application_steps?.[loanType] || []
   const fieldsBySection = schema?.product_application_fields?.[loanType] || {}
   const loanLabel = schema?.loan_types?.[loanType] || 'Loan Application'
   const productMap = schema?.loan_type_product_map || {}
@@ -185,24 +205,58 @@ export default function ProductLoanApplicationPage({ loanType }) {
     () => products.find((p) => Number(p.id) === Number(formData.loan_product_id || 0)) || null,
     [formData.loan_product_id, products],
   )
+  const pensionPreviewProduct = useMemo(
+    () => selectedProduct || filteredProducts[0] || products.find((p) => p.slug === expectedSlug) || null,
+    [selectedProduct, filteredProducts, products, expectedSlug],
+  )
+  const steps = useMemo(() => {
+    const raw = schema?.product_application_steps?.[loanType] || []
+    const requires = resolveRequiresCoMakers({ loanType, selectedProduct, schema })
+    if (requires) return raw
+    return raw.filter((s) => s.section !== 'co_makers')
+  }, [schema, loanType, selectedProduct])
   const currentStep = steps.find((s) => Number(s.id) === Number(step)) || steps[0]
   const currentSection = currentStep?.section
   const currentFields = fieldsBySection[currentSection] || []
-  const travelPurposeDocKeys =
-    schema?.travel_assistance_documents_by_purpose?.[formData.travel_purpose] ||
-    schema?.travel_assistance_documents_by_purpose?.Other ||
-    []
-  const docDefs =
-    loanType === 'travel_assistance'
-      ? Object.fromEntries(
-          travelPurposeDocKeys.map((key) => [
+  const docDefs = useMemo(() => {
+    if (loanType === 'travel_assistance' || loanType === 'sss_pension') {
+      const custom = pensionPreviewProduct?.rules?.document_requirements
+      if (custom && typeof custom === 'object' && Object.keys(custom).length > 0) {
+        return Object.fromEntries(
+          Object.entries(custom).map(([key, meta]) => [
             key,
-            { ...(schema?.documents_by_type?.travel_assistance?.[key] || { label: key }), required: true },
+            { ...meta, multiple: meta?.multiple !== false },
           ]),
         )
-      : schema?.documents_by_type?.[loanType] || {}
+      }
+    }
+    return schema?.documents_by_type?.[loanType] || {}
+  }, [loanType, schema, pensionPreviewProduct])
+  const propertyStepDocKeys = schema?.real_estate_property_step_documents || []
+  const propertyDocDefs = useMemo(() => {
+    if (loanType !== 'real_estate') return {}
+    return Object.fromEntries(
+      propertyStepDocKeys
+        .filter((k) => docDefs[k])
+        .map((k) => [k, { ...docDefs[k], multiple: docDefs[k].multiple !== false }]),
+    )
+  }, [loanType, propertyStepDocKeys, docDefs])
+  const documentsStepDefs = useMemo(() => {
+    if (loanType !== 'real_estate') return docDefs
+    const exclude = new Set(propertyStepDocKeys)
+    return Object.fromEntries(Object.entries(docDefs).filter(([k]) => !exclude.has(k)))
+  }, [loanType, docDefs, propertyStepDocKeys])
   const isDocumentsStep = currentSection === 'documents'
+  const isPropertyStep = currentSection === 'property' && loanType === 'real_estate'
+  const formReadOnly = app?.is_draft === false
+  const canManageDocs = app?.status !== 'rejected' && app?.status !== 'approved'
+  const isCoMakersStep = currentSection === 'co_makers'
   const isReviewStep = currentSection === 'review'
+  const requiresCoMakers = resolveRequiresCoMakers({ loanType, selectedProduct, schema })
+  const coMakerDocumentCategories =
+    schema?.co_maker_document_categories && Object.keys(schema.co_maker_document_categories).length
+      ? schema.co_maker_document_categories
+      : DEFAULT_CO_MAKER_DOCUMENT_CATEGORIES
   const maxStep = steps.length ? Math.max(...steps.map((s) => Number(s.id))) : 1
   const stepIndex = steps.findIndex((s) => Number(s.id) === Number(step))
   const travelReference =
@@ -251,6 +305,8 @@ export default function ProductLoanApplicationPage({ loanType }) {
   }
 
   const renderField = (field) => {
+    const hiddenKeys = loanType === 'sss_pension' ? PENSION_BORROWER_HIDDEN_KEYS : BORROWER_HIDDEN_FIELD_KEYS
+    if (hiddenKeys.has(field.key)) return null
     if (!shouldShowField(field)) return null
     const placeholder = fieldPlaceholder(field)
     const required = Boolean(field.required || field.required_if)
@@ -263,6 +319,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
             className={selectInputClass()}
             value={formData[field.key] ?? ''}
             onChange={(e) => onField(field.key, e.target.value)}
+            disabled={formReadOnly}
           >
             <option value="">Select loan product</option>
             {filteredProducts.map((p) => (
@@ -283,6 +340,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
             placeholder={placeholder}
             value={formData[field.key] ?? ''}
             onChange={(e) => onField(field.key, e.target.value)}
+            readOnly={formReadOnly}
           />
         </Field>
       )
@@ -294,6 +352,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
             className={selectInputClass()}
             value={formData[field.key] ?? ''}
             onChange={(e) => onField(field.key, e.target.value)}
+            disabled={formReadOnly}
           >
             <option value="">Select an option</option>
             {(field.options || []).map((option) => (
@@ -320,6 +379,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
           placeholder={placeholder}
           value={formData[field.key] ?? ''}
           onChange={(e) => onField(field.key, e.target.value)}
+          readOnly={formReadOnly}
         />
       </Field>
     )
@@ -352,6 +412,17 @@ export default function ProductLoanApplicationPage({ loanType }) {
     }
   }
 
+  const reloadApp = useCallback(async () => {
+    if (!applicationId) return
+    const res = await borrowerApi(`/borrower/loan-applications/${applicationId}`)
+    setApp(res.data)
+    setFormData(res.data.form_data || {})
+  }, [applicationId])
+
+  const handleCoMakersChange = useCallback((nextCoMakers) => {
+    setApp((prev) => (prev ? { ...prev, co_makers: nextCoMakers } : prev))
+  }, [])
+
   const uploadDoc = async (docKey, file) => {
     if (!file || !applicationId) return
     setError('')
@@ -366,6 +437,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
     }
     const body = new FormData()
     body.append('file', file)
+    setUploadingDocKey(docKey)
     try {
       const res = await borrowerApi(`/borrower/loan-applications/${applicationId}/documents/${docKey}`, {
         method: 'POST',
@@ -374,6 +446,22 @@ export default function ProductLoanApplicationPage({ loanType }) {
       setApp(res.data)
     } catch (e) {
       setError(e.message || 'Upload failed.')
+    } finally {
+      setUploadingDocKey('')
+    }
+  }
+
+  const removeDoc = async (docKey, path) => {
+    if (!applicationId || !path) return
+    setError('')
+    try {
+      const res = await borrowerApi(
+        `/borrower/loan-applications/${applicationId}/documents/${docKey}?path=${encodeURIComponent(path)}`,
+        { method: 'DELETE' },
+      )
+      setApp(res.data)
+    } catch (e) {
+      setError(e.message || 'Could not remove file.')
     }
   }
 
@@ -406,14 +494,30 @@ export default function ProductLoanApplicationPage({ loanType }) {
     setError('')
   }
 
-  const reviewItems = Object.entries(fieldsBySection)
-    .flatMap(([, rows]) => rows)
-    .filter(shouldShowField)
-    .map((field) => ({
-      key: field.key,
-      label: field.label,
-      value: formatValue(formData[field.key]),
-    }))
+  const reviewItems = [
+    ...Object.entries(fieldsBySection)
+      .flatMap(([, rows]) => rows)
+      .filter((field) => !BORROWER_HIDDEN_FIELD_KEYS.has(field.key))
+      .filter((field) => !(loanType === 'sss_pension' && field.key === 'loan_product_id'))
+      .filter(shouldShowField)
+      .map((field) => ({
+        key: field.key,
+        label: field.label,
+        value: formatValue(formData[field.key]),
+      })),
+    ...(loanType === 'sss_pension' && app?.computed_values?.estimated_loanable_amount
+      ? [
+          {
+            key: 'estimated_loanable_amount',
+            label: 'Estimated loanable amount (auto-computed)',
+            value: `₱${Number(app.computed_values.estimated_loanable_amount).toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}`,
+          },
+        ]
+      : []),
+  ]
 
   if (loading) {
     return (
@@ -452,7 +556,11 @@ export default function ProductLoanApplicationPage({ loanType }) {
         </Link>
       </div>
 
-      {error ? <AlertBanner type="error">{error}</AlertBanner> : null}
+      {error ? (
+        <AlertBanner type="error">
+          <span className="whitespace-pre-line">{error}</span>
+        </AlertBanner>
+      ) : null}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -470,7 +578,13 @@ export default function ProductLoanApplicationPage({ loanType }) {
           <div className="flex min-h-[480px] flex-col">
             <WizardStepHeader
               title={currentStep?.title || 'Application'}
-              description={SECTION_HINTS[currentSection] || 'Fill in the required details below.'}
+              description={
+                currentSection === 'loan' && loanType === 'sss_pension'
+                  ? 'Choose your preferred term and loan purpose. Your maximum loanable amount is computed automatically from pension capacity and company rules.'
+                  : currentSection === 'pension' && loanType === 'sss_pension'
+                    ? SECTION_HINTS.pension
+                    : SECTION_HINTS[currentSection] || 'Fill in the required details below.'
+              }
               stepNumber={stepIndex + 1}
               totalSteps={steps.length}
             />
@@ -487,28 +601,93 @@ export default function ProductLoanApplicationPage({ loanType }) {
                   transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                   className="flex flex-1 flex-col overflow-y-auto px-5 py-5 sm:px-6 sm:py-6"
                 >
-                  {!isDocumentsStep && !isReviewStep ? (
+                  {!isDocumentsStep && !isReviewStep && !isCoMakersStep ? (
                     <div className="grid gap-4 md:grid-cols-2">
                       {currentFields.map(renderField)}
+                      {currentSection === 'pension' && loanType === 'sss_pension' ? (
+                        <PensionLoanPreviewCard
+                          formData={formData}
+                          product={pensionPreviewProduct}
+                          breakdown={app?.computation_breakdown}
+                          mode="capacity"
+                        />
+                      ) : null}
+                      {currentSection === 'loan' && loanType === 'sss_pension' ? (
+                        <div className="rounded-xl border border-amber-100 bg-amber-50/60 px-4 py-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-100 md:col-span-2">
+                          You do not enter a loan amount. The system computes your maximum eligible loan from your monthly pension, term, interest rate, and required pension excess.
+                        </div>
+                      ) : null}
                       {currentSection === 'loan' && selectedProduct ? <ProductRulesCard product={selectedProduct} /> : null}
-                      {currentSection === 'loan' && app?.computation_breakdown ? (
+                      {currentSection === 'loan' && loanType === 'sss_pension' ? (
+                        <PensionLoanPreviewCard
+                          formData={formData}
+                          product={pensionPreviewProduct}
+                          breakdown={app?.computation_breakdown}
+                        />
+                      ) : null}
+                      {currentSection === 'loan' && loanType !== 'sss_pension' && !BORROWER_HIDDEN_FIELD_KEYS.has('loan_amount') && app?.computation_breakdown ? (
                         <ComputationCard breakdown={app.computation_breakdown} />
                       ) : null}
                     </div>
                   ) : null}
 
+                  {isPropertyStep ? (
+                    <div className="mt-6 space-y-4">
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Property documents &amp; photos</h4>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          Upload land title, tax declaration, sketch plans, and property photos (JPG, PNG, or PDF).
+                        </p>
+                      </div>
+                      <ul className="space-y-4">
+                        {Object.entries(propertyDocDefs).map(([key, meta]) => (
+                          <DocumentUploadZone
+                            key={key}
+                            docKey={key}
+                            meta={{ ...meta, multiple: meta.multiple !== false }}
+                            dragging={draggingDocKey === key}
+                            onDragState={setDraggingDocKey}
+                            onUpload={uploadDoc}
+                            onRemove={canManageDocs ? removeDoc : null}
+                            uploadedItems={buildDocItems(app, key)}
+                            resolveUrl={resolvePublicFileUrl}
+                            uploading={uploadingDocKey === key}
+                            canRemove={canManageDocs}
+                            maxMb={MAX_UPLOAD_MB}
+                          />
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {isCoMakersStep ? (
+                    <CoMakerFormSection
+                      applicationId={applicationId}
+                      coMakers={app?.co_makers || []}
+                      documentCategories={coMakerDocumentCategories}
+                      onUpdated={reloadApp}
+                      onCoMakersChange={handleCoMakersChange}
+                      onError={setError}
+                      readOnly={app?.is_draft === false}
+                    />
+                  ) : null}
+
                   {isDocumentsStep ? (
                     <ul className="space-y-4">
-                      {Object.entries(docDefs).map(([key, meta]) => (
+                      {Object.entries(documentsStepDefs).map(([key, meta]) => (
                         <DocumentUploadZone
                           key={key}
                           docKey={key}
-                          meta={meta}
+                          meta={{ ...meta, multiple: meta.multiple !== false }}
                           dragging={draggingDocKey === key}
                           onDragState={setDraggingDocKey}
                           onUpload={uploadDoc}
-                          uploadedUrls={app?.documents?.[key]?.urls}
+                          onRemove={canManageDocs ? removeDoc : null}
+                          uploadedItems={buildDocItems(app, key)}
                           resolveUrl={resolvePublicFileUrl}
+                          uploading={uploadingDocKey === key}
+                          canRemove={canManageDocs}
+                          maxMb={MAX_UPLOAD_MB}
                         />
                       ))}
                     </ul>
@@ -522,6 +701,24 @@ export default function ProductLoanApplicationPage({ loanType }) {
                         </AlertBanner>
                       ) : null}
                       <ReviewGrid items={reviewItems} />
+                      {loanType === 'sss_pension' ? (
+                        <PensionLoanPreviewCard
+                          formData={formData}
+                          product={selectedProduct}
+                          breakdown={app?.computation_breakdown}
+                        />
+                      ) : null}
+                      {app?.evaluation ? <LoanEvaluationSummaryCard evaluation={app.evaluation} /> : null}
+                      {requiresCoMakers && (app?.co_makers || []).length > 0 ? (
+                        <div>
+                          <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Co-makers</h4>
+                          <ul className="mt-2 space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                            {(app.co_makers || []).map((cm) => (
+                              <li key={cm.id}>{cm.full_name} · {cm.relationship_to_borrower || '—'}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
                       <div>
                         <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Uploaded documents</h4>
                         <ul className="mt-3 grid gap-3 sm:grid-cols-2">

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\LoanApplication;
 use App\Models\LoanProduct;
+use App\Services\CoMakerRequirementService;
 use App\Support\LoanApplicationDocumentStatus;
 use Illuminate\Validation\ValidationException;
 
@@ -11,6 +12,7 @@ class LoanApplicationWorkflowValidator
 {
     public function __construct(
         private LoanCalculator $loanCalculator,
+        private PensionLoanCapacityService $pensionCapacity,
     ) {}
 
     /**
@@ -32,7 +34,12 @@ class LoanApplicationWorkflowValidator
                 $errors = array_merge($errors, $this->validateFieldRows($rows, $data));
             }
 
-            return array_merge($errors, $this->validateLoanProductBasics($data));
+            return array_merge(
+                $errors,
+                $this->validateLoanProductBasics($data),
+                $this->validatePensionMonthlyAmount($app, $data),
+                $this->validatePensionLoanCapacity($app, $data),
+            );
         }
 
         foreach (config('amalgated_loans.wizard_common', []) as $row) {
@@ -57,7 +64,12 @@ class LoanApplicationWorkflowValidator
             }
         }
 
-        return array_merge($errors, $this->validateLoanProductBasics($data));
+        return array_merge(
+            $errors,
+            $this->validateLoanProductBasics($data),
+            $this->validatePensionMonthlyAmount($app, $data),
+            $this->validatePensionLoanCapacity($app, $data),
+        );
     }
 
     /**
@@ -73,6 +85,14 @@ class LoanApplicationWorkflowValidator
         $data = $app->form_data ?? [];
         $stepConfig = collect(config('amalgated_loans.product_application_steps.'.$loanType, []))->firstWhere('id', $step);
         $section = is_array($stepConfig) ? ($stepConfig['section'] ?? null) : null;
+        if ($section === 'co_makers') {
+            $app->loadMissing('loanProduct');
+            if (! CoMakerRequirementService::requiresCoMakers($app)) {
+                return [];
+            }
+
+            return $this->validateCoMakers($app);
+        }
         if (! $section || in_array($section, ['documents', 'review'], true)) {
             return [];
         }
@@ -80,7 +100,17 @@ class LoanApplicationWorkflowValidator
         $rows = config('amalgated_loans.product_application_fields.'.$loanType.'.'.$section, []);
         $errors = $this->validateFieldRows($rows, $data);
 
-        return $section === 'loan' ? array_merge($errors, $this->validateLoanProductBasics($data)) : $errors;
+        if ($section === 'pension' && $loanType === LoanApplication::TYPE_SSS_PENSION) {
+            return array_merge($errors, $this->validatePensionMonthlyAmount($app, $data));
+        }
+
+        return $section === 'loan'
+            ? array_merge(
+                $errors,
+                $this->validateLoanProductBasics($data),
+                $this->validatePensionLoanCapacity($app, $data),
+            )
+            : $errors;
     }
 
     /**
@@ -99,14 +129,83 @@ class LoanApplicationWorkflowValidator
             }
         }
 
-        $loanAmount = isset($data['loan_amount']) ? (float) $data['loan_amount'] : 0.0;
-        if ($loanAmount <= 0) {
-            $errors[] = 'Loan amount must be greater than zero.';
+        $termMonths = isset($data['term_months']) ? (int) $data['term_months'] : 0;
+        if ($termMonths <= 0) {
+            $errors[] = 'Term in months is required.';
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Pension step requires a positive monthly pension amount.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<int, string>
+     */
+    private function validatePensionMonthlyAmount(LoanApplication $app, array $data): array
+    {
+        if ($app->loan_type !== LoanApplication::TYPE_SSS_PENSION) {
+            return [];
+        }
+
+        $monthlyPension = isset($data['monthly_pension']) ? (float) $data['monthly_pension'] : 0.0;
+        if ($monthlyPension <= 0) {
+            return ['Monthly pension is required.'];
+        }
+
+        return [];
+    }
+
+    /**
+     * Pension loan step: system derives amount from pension capacity — block if ineligible.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<int, string>
+     */
+    private function validatePensionLoanCapacity(LoanApplication $app, array $data): array
+    {
+        if ($app->loan_type !== LoanApplication::TYPE_SSS_PENSION) {
+            return [];
+        }
+
+        $errors = [];
+        $monthlyPension = isset($data['monthly_pension']) ? (float) $data['monthly_pension'] : 0.0;
+        if ($monthlyPension <= 0) {
+            $errors[] = 'Monthly pension is required. Complete the Pension Information step first.';
         }
 
         $termMonths = isset($data['term_months']) ? (int) $data['term_months'] : 0;
         if ($termMonths <= 0) {
-            $errors[] = 'Term in months is required.';
+            return $errors;
+        }
+
+        $productId = isset($data['loan_product_id']) ? (int) $data['loan_product_id'] : (int) ($app->loan_product_id ?? 0);
+        if ($productId <= 0 || $monthlyPension <= 0) {
+            return $errors;
+        }
+
+        $product = LoanProduct::query()->active()->find($productId);
+        if (! $product) {
+            return array_merge($errors, ['Selected loan product is invalid or inactive.']);
+        }
+
+        $estimate = $this->pensionCapacity->estimateFromPension($product, [
+            'monthly_pension' => $monthlyPension,
+            'term_months' => $termMonths,
+            'application_nature' => (string) ($data['application_nature'] ?? 'new'),
+            'pension_type' => $data['pension_type'] ?? null,
+        ]);
+
+        if (! ($estimate['eligible'] ?? false) || (float) ($estimate['estimated_loanable_amount'] ?? 0) <= 0) {
+            $flat = is_array($estimate['validation_errors'] ?? null) ? $estimate['validation_errors'] : [];
+            if ($flat !== []) {
+                return array_merge($errors, $flat);
+            }
+
+            return array_merge($errors, [
+                $estimate['message'] ?? 'Pension capacity is insufficient for the selected term. Reduce the term or verify your monthly pension.',
+            ]);
         }
 
         return $errors;
@@ -178,9 +277,7 @@ class LoanApplicationWorkflowValidator
             return ['Loan type is required before documents.'];
         }
 
-        $status = $loanType === LoanApplication::TYPE_TRAVEL_ASSISTANCE
-            ? LoanApplicationDocumentStatus::forTravelPurpose((string) (($app->form_data ?? [])['travel_purpose'] ?? ''), $app->documents ?? [])
-            : LoanApplicationDocumentStatus::forGeneralLoanType($loanType, $app->documents ?? []);
+        $status = LoanApplicationDocumentStatus::forApplication($app);
         $errors = [];
         foreach ($status as $key => $row) {
             if (! $row['ok']) {
@@ -217,8 +314,93 @@ class LoanApplicationWorkflowValidator
         return array_merge(
             $this->validateForm($app),
             $this->validateProductLoanRules($app),
+            $this->validateCoMakers($app),
             $this->validateDocumentsComplete($app)
         );
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function validateCoMakers(LoanApplication $app): array
+    {
+        $app->loadMissing('loanProduct');
+        if (! CoMakerRequirementService::requiresCoMakers($app)) {
+            return [];
+        }
+
+        $coMakers = $app->relationLoaded('coMakers')
+            ? $app->coMakers
+            : $app->coMakers()->with('documents')->get();
+
+        if ($coMakers->isEmpty()) {
+            return ['At least one co-maker is required for this loan product.'];
+        }
+
+        $errors = [];
+        $categories = CoMakerRequirementService::documentCategories();
+        $requiredCategories = array_keys(array_filter(
+            $categories,
+            fn ($meta) => (bool) ($meta['required'] ?? false)
+        ));
+
+        foreach ($coMakers as $index => $coMaker) {
+            $label = $coMaker->displayName() ?: ('Co-maker #'.($index + 1));
+            if (! trim((string) ($coMaker->first_name ?? $coMaker->full_name))) {
+                $errors[] = "{$label}: first name is required.";
+            }
+            if (! trim((string) ($coMaker->last_name ?? '')) && ! trim((string) ($coMaker->full_name ?? ''))) {
+                $errors[] = "{$label}: last name is required.";
+            }
+            if (! $coMaker->date_of_birth) {
+                $errors[] = "{$label}: date of birth is required.";
+            }
+            if (! trim((string) ($coMaker->gender ?? ''))) {
+                $errors[] = "{$label}: gender is required.";
+            }
+            if (! trim((string) ($coMaker->civil_status ?? ''))) {
+                $errors[] = "{$label}: civil status is required.";
+            }
+            if (! trim((string) ($coMaker->contact_number ?? ''))) {
+                $errors[] = "{$label}: mobile number is required.";
+            }
+            if (! trim((string) ($coMaker->house_street ?? $coMaker->complete_address ?? $coMaker->address ?? ''))) {
+                $errors[] = "{$label}: house no. / street is required.";
+            }
+            if (! trim((string) ($coMaker->barangay ?? ''))) {
+                $errors[] = "{$label}: barangay is required.";
+            }
+            if (! trim((string) ($coMaker->city_municipality ?? ''))) {
+                $errors[] = "{$label}: municipality / city is required.";
+            }
+            if (! trim((string) ($coMaker->province ?? ''))) {
+                $errors[] = "{$label}: province is required.";
+            }
+            if (! trim((string) ($coMaker->relationship_to_borrower ?? ''))) {
+                $errors[] = "{$label}: relationship to borrower is required.";
+            }
+            if (! trim((string) ($coMaker->employment_status ?? ''))) {
+                $errors[] = "{$label}: employment status is required.";
+            }
+            if (! trim((string) ($coMaker->valid_id_type ?? ''))) {
+                $errors[] = "{$label}: valid ID type is required.";
+            }
+            if (! trim((string) ($coMaker->valid_id_number ?? ''))) {
+                $errors[] = "{$label}: valid ID number is required.";
+            }
+
+            foreach ($requiredCategories as $cat) {
+                $hasDoc = $coMaker->documents->contains(
+                    fn ($doc) => ($doc->document_category ?? '') === $cat
+                );
+                if (! $hasDoc) {
+                    $catLabel = $categories[$cat]['label'] ?? $cat;
+                    $errors[] = "{$label}: missing required document — {$catLabel}.";
+                }
+            }
+        }
+
+        return $errors;
     }
 
     /**
@@ -228,11 +410,47 @@ class LoanApplicationWorkflowValidator
      */
     private function validateProductLoanRules(LoanApplication $app): array
     {
-        if (! $app->loan_product_id || ! $app->loan_amount || (float) $app->loan_amount <= 0) {
+        if ($app->loan_type === LoanApplication::TYPE_TRAVEL_ASSISTANCE) {
             return [];
         }
 
         $form = is_array($app->form_data) ? $app->form_data : [];
+        $loanAmount = (float) ($app->loan_amount ?? 0);
+
+        if ($app->loan_type === LoanApplication::TYPE_SSS_PENSION) {
+            if (! $app->loan_product_id) {
+                return [];
+            }
+
+            $monthlyPension = isset($form['monthly_pension']) ? (float) $form['monthly_pension'] : 0.0;
+            $termMonths = max(1, (int) ($app->term_months ?? $form['term_months'] ?? 1));
+            if ($monthlyPension <= 0) {
+                return ['Monthly pension is required.'];
+            }
+
+            $product = LoanProduct::query()->active()->find($app->loan_product_id);
+            if (! $product) {
+                return ['Selected loan product is invalid or inactive.'];
+            }
+
+            $estimate = $this->pensionCapacity->estimateFromPension($product, [
+                'monthly_pension' => $monthlyPension,
+                'term_months' => $termMonths,
+                'application_nature' => (string) ($form['application_nature'] ?? 'new'),
+                'pension_type' => $form['pension_type'] ?? null,
+            ]);
+
+            if (! ($estimate['eligible'] ?? false) || (float) ($estimate['estimated_loanable_amount'] ?? 0) <= 0) {
+                $flat = is_array($estimate['validation_errors'] ?? null) ? $estimate['validation_errors'] : [];
+
+                return $flat !== [] ? $flat : ['Pension capacity is insufficient for the selected term.'];
+            }
+
+            $loanAmount = (float) $estimate['estimated_loanable_amount'];
+        } elseif (! $app->loan_product_id || $loanAmount <= 0) {
+            return [];
+        }
+
         $nature = (string) ($form['application_nature'] ?? 'new');
 
         try {

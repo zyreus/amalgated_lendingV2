@@ -161,8 +161,9 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
 
   const categories = Array.from(new Set(rows.map((r) => String(r.category || '')).filter(Boolean)))
 
-  const toolbarBtn =
-    'inline-flex min-h-[40px] items-center justify-center rounded-full border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-900 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-100 dark:hover:bg-white/10'
+  const toolbarBtn = embedded
+    ? 'inline-flex min-h-[36px] items-center justify-center rounded-full border border-gray-200 bg-white px-2.5 text-xs font-semibold text-gray-900 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-100 dark:hover:bg-white/10 sm:min-h-[40px] sm:px-4 sm:text-sm'
+    : 'inline-flex min-h-[40px] items-center justify-center rounded-full border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-900 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-100 dark:hover:bg-white/10'
 
   const onSelectAllChange = () => {
     if (allVisibleSelected) setSelectedIds([])
@@ -187,7 +188,7 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
       <div
         className={
           embedded
-            ? 'rounded-2xl border border-gray-200/90 bg-[#fcfdf8] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:border-[#1F2937] dark:bg-[#0c1220]/80 dark:shadow-none'
+            ? 'rounded-2xl border border-gray-200/90 bg-[#fcfdf8] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:border-[#1F2937] dark:bg-[#0c1220]/80 dark:shadow-none sm:p-3'
             : 'rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm dark:border-[#1F2937] dark:from-[#111827] dark:to-[#0F172A] dark:shadow-lg'
         }
       >
@@ -230,7 +231,9 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="min-h-[40px] rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-100"
+            className={`max-w-full rounded-xl border border-gray-200 bg-white text-gray-800 dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-100 ${
+              embedded ? 'min-h-[36px] flex-1 px-2.5 py-1.5 text-xs sm:min-h-[40px] sm:flex-none sm:px-3 sm:py-2 sm:text-sm' : 'min-h-[40px] px-3 py-2 text-sm'
+            }`}
           >
             <option value="">All categories</option>
             {categories.map((c) => (
@@ -242,7 +245,9 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
           <button
             type="button"
             onClick={() => setUnreadOnly((v) => !v)}
-            className={`min-h-[40px] rounded-xl border px-3 py-2 text-sm font-medium transition ${
+            className={`rounded-xl border font-medium transition ${
+              embedded ? 'min-h-[36px] px-2.5 py-1.5 text-xs sm:min-h-[40px] sm:px-3 sm:py-2 sm:text-sm' : 'min-h-[40px] px-3 py-2 text-sm'
+            } ${
               unreadOnly
                 ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-950/20 dark:text-red-300'
                 : 'border-gray-200 bg-white text-gray-800 hover:bg-gray-50 dark:border-[#374151] dark:bg-[#0F172A] dark:text-gray-100 dark:hover:bg-white/5'
@@ -263,7 +268,9 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
         {rows.map((n) => (
           <li
             key={n.id}
-            className={`rounded-2xl border px-4 py-3 transition-colors sm:px-5 sm:py-4 ${
+            className={`min-w-0 overflow-hidden rounded-2xl border transition-colors ${
+              embedded ? 'px-3 py-3 sm:px-5 sm:py-4' : 'px-4 py-3 sm:px-5 sm:py-4'
+            } ${
               n.is_read || n.read_at
                 ? 'border-gray-200 bg-white text-gray-600 dark:border-[#1F2937] dark:bg-[#0c1220] dark:text-gray-400'
                 : 'border-red-200 bg-red-50/90 text-gray-900 dark:border-red-900/40 dark:bg-red-950/20 dark:text-gray-100'
@@ -297,7 +304,7 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-500">
                       {categoryLabel(n)}
                     </p>
-                    <p className="mt-0.5 font-semibold text-gray-900 dark:text-gray-100">{n.title}</p>
+                    <p className="mt-0.5 break-words font-semibold text-gray-900 dark:text-gray-100">{n.title}</p>
                   </button>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
                     {!(n.is_read || n.read_at) ? (
@@ -354,7 +361,7 @@ export default function BorrowerNotificationsPage({ embedded = false }) {
                   })}
                   className="block w-full rounded-lg text-left outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-red-500"
                 >
-                  {n.body ? <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{n.body}</p> : null}
+                  {n.body ? <p className="mt-1 break-words text-sm text-gray-600 dark:text-gray-400">{n.body}</p> : null}
                 </button>
                 {['receipt_generated', 'payment_received'].includes(String(n.type || '')) ? (
                   <div className="mt-3 flex flex-wrap gap-2">

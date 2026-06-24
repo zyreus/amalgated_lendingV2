@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -12,12 +12,7 @@ import { setAuthOverlay } from '../../utils/globalLoadingBus.js'
 import PasswordInput from '../../components/PasswordInput.jsx'
 import { LoadingButton, FormLoadingOverlay } from '../../components/loading'
 import { useAdminApiAuth } from '../context/useAdminApiAuth.js'
-
-function throttleMessage(seconds) {
-  const n = Math.max(0, Number(seconds) || 0)
-  if (n <= 0) return 'Too many failed login attempts. Please wait before trying again.'
-  return `Too many failed login attempts. Please wait ${n} second${n === 1 ? '' : 's'} before trying again.`
-}
+import { useAuthThrottleCountdown } from '../../utils/authThrottleUi.js'
 
 function textInputClass(disabled = false) {
   return `w-full rounded-xl border border-gray-200 bg-white py-3 pl-11 pr-4 text-sm text-gray-900 shadow-sm outline-none transition placeholder:text-gray-400 hover:border-gray-300 focus:border-brand-primary/60 focus:ring-2 focus:ring-brand-primary/15 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#1F2937] dark:bg-[#0F172A] dark:text-gray-100 dark:placeholder:text-gray-500 dark:hover:border-[#374151] ${disabled ? '' : ''}`
@@ -42,22 +37,8 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
-  const [retrySeconds, setRetrySeconds] = useState(0)
+  const { retrySeconds, lockedOut, applyThrottleError } = useAuthThrottleCountdown('login')
   const submittingRef = useRef(false)
-
-  useEffect(() => {
-    if (retrySeconds <= 0) return undefined
-    const timer = window.setInterval(() => {
-      setRetrySeconds((prev) => (prev <= 1 ? 0 : prev - 1))
-    }, 1000)
-    return () => window.clearInterval(timer)
-  }, [retrySeconds])
-
-  useEffect(() => {
-    if (retrySeconds > 0) {
-      setErrorMsg(throttleMessage(retrySeconds))
-    }
-  }, [retrySeconds])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -72,10 +53,9 @@ export default function AdminLoginPage() {
       await login(username.trim(), password)
       navigate('/admin/dashboard', { replace: true })
     } catch (err) {
-      if (err?.status === 429) {
-        const wait = Math.max(1, Number(err?.retry_after ?? err?.body?.retry_after ?? 60))
-        setRetrySeconds(wait)
-        setErrorMsg(throttleMessage(wait))
+      const throttleMsg = applyThrottleError(err)
+      if (throttleMsg) {
+        setErrorMsg(throttleMsg)
       } else {
         setErrorMsg(err.message || 'Admin login failed.')
       }
@@ -86,7 +66,9 @@ export default function AdminLoginPage() {
     }
   }
 
-  const lockedOut = retrySeconds > 0
+  const displayError = lockedOut
+    ? `Too many failed login attempts. Please wait ${retrySeconds} second${retrySeconds === 1 ? '' : 's'} before trying again.`
+    : errorMsg
 
   return (
     <div className="relative flex min-h-screen flex-col page-shell-bg text-gray-900 transition-colors duration-300">
@@ -160,7 +142,7 @@ export default function AdminLoginPage() {
                         value={username}
                         onChange={(e) => {
                           setUsername(e.target.value)
-                          if (retrySeconds <= 0) setErrorMsg('')
+                          if (!lockedOut) setErrorMsg('')
                         }}
                         required
                         placeholder="Enter username or email"
@@ -179,7 +161,7 @@ export default function AdminLoginPage() {
                         value={password}
                         onChange={(e) => {
                           setPassword(e.target.value)
-                          if (retrySeconds <= 0) setErrorMsg('')
+                          if (!lockedOut) setErrorMsg('')
                         }}
                         required
                         placeholder="Enter your password"
@@ -199,18 +181,13 @@ export default function AdminLoginPage() {
                       </Link>
                     </div>
 
-                    {errorMsg ? (
+                    {displayError ? (
                       <p
                         className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300"
                         role="alert"
+                        aria-live="polite"
                       >
-                        {errorMsg}
-                      </p>
-                    ) : null}
-
-                    {lockedOut ? (
-                      <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-200">
-                        Account temporarily locked. Please wait {retrySeconds}s before trying again.
+                        {displayError}
                       </p>
                     ) : null}
                   </div>

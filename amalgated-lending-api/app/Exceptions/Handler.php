@@ -4,6 +4,7 @@ namespace App\Exceptions;
 
 use App\Support\BorrowerVerificationUrl;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use App\Support\AuthRateLimit;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Exceptions\InvalidSignatureException;
@@ -54,7 +55,7 @@ class Handler extends ExceptionHandler
 
         $this->renderable(function (ThrottleRequestsException $e, $request) {
             $headers = $e->getHeaders();
-            $seconds = max(1, (int) ($headers['Retry-After'] ?? 60));
+            $seconds = max(1, min(AuthRateLimit::LOCKOUT_DECAY_SECONDS, (int) ($headers['Retry-After'] ?? AuthRateLimit::LOCKOUT_DECAY_SECONDS)));
 
             if ($request->is('api/*/admin/login')) {
                 $message = 'Too many failed login attempts. Please wait '.$seconds.' seconds before trying again.';

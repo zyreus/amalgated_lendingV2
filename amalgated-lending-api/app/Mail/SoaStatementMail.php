@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use App\Mail\Concerns\EmbedsMailLogo;
 use App\Models\SoaStatement;
+use App\Support\SoaStatementUrl;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
@@ -21,8 +22,6 @@ class SoaStatementMail extends Mailable
 
     public function build(): static
     {
-        $portalBase = rtrim((string) config('app.frontend_url', (string) config('app.url')), '/');
-
         return $this
             ->subject('Monthly Statement of Account - '.$this->statement->statement_month?->format('F Y'))
             ->view('mail.soa-statement', $this->mailViewData([
@@ -35,7 +34,8 @@ class SoaStatementMail extends Mailable
                 'penalties' => number_format((float) $this->statement->penalties, 2),
                 'remainingBalance' => number_format((float) $this->statement->remaining_balance, 2),
                 'totalDue' => number_format((float) $this->statement->total_due, 2),
-                'portalUrl' => $portalBase.'/borrower/statements',
+                'statementUrl' => SoaStatementUrl::signedPdfDownloadUrl($this->statement),
+                'portalUrl' => SoaStatementUrl::portalStatementsUrl($this->statement->id),
             ]));
     }
 }

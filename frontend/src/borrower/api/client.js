@@ -51,9 +51,11 @@ export async function borrowerApi(path, options = {}) {
   }
   if (!res.ok) {
     let msg = data.message || data.error
-    if (!msg && data.errors && typeof data.errors === 'object') {
-      const flat = Object.values(data.errors).flat()
-      if (flat.length) msg = flat.join(' ')
+    if (data.errors && typeof data.errors === 'object') {
+      const flat = Object.values(data.errors).flat().filter(Boolean)
+      if (flat.length) {
+        msg = flat.length === 1 ? flat[0] : flat.map((line) => `• ${line}`).join('\n')
+      }
     }
     if (!msg && res.status === 404) {
       msg = import.meta.env.DEV
@@ -63,6 +65,7 @@ export async function borrowerApi(path, options = {}) {
     const err = new Error(msg || `HTTP ${res.status}`)
     err.status = res.status
     err.body = data
+    if (data.retry_after != null) err.retry_after = Number(data.retry_after)
     throw err
   }
 

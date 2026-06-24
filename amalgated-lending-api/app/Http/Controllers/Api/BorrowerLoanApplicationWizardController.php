@@ -5,16 +5,20 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Mail\GeneralLoanApplicationStatusMail;
 use App\Models\ChattelMortgageDetail;
+use App\Models\CoMaker;
 use App\Models\Loan;
 use App\Models\LoanApplication;
+use App\Models\LoanDocument;
 use App\Models\LoanProduct;
 use App\Models\PensionLoanDetail;
 use App\Models\RealEstateDetail;
 use App\Models\SalaryLoanDetail;
 use App\Models\TravelAssistanceDetail;
+use App\Services\CoMakerRequirementService;
 use App\Services\CreditWellnessService;
 use App\Services\LoanApplicationWorkflowValidator;
 use App\Services\LoanCalculator;
+use App\Services\LoanProductDocumentRequirementsService;
 use App\Services\NotificationCenter;
 use App\Services\SignatureStorageService;
 use App\Services\TransactionalMailSender;
@@ -38,10 +42,23 @@ class BorrowerLoanApplicationWizardController extends Controller
         private LoanApplicationWorkflowValidator $validator,
         private SignatureStorageService $signatures,
         private LoanCalculator $calculator,
+        private PensionLoanCapacityService $pensionCapacity,
+        private LoanProductDocumentRequirementsService $documentRequirements,
     ) {}
 
     public function schema(): JsonResponse
     {
+        $documentsByType = config('amalgated_loans.general_documents');
+        $travelDocs = $documentsByType['travel_assistance'] ?? [];
+        if (is_array($travelDocs)) {
+            $documentsByType['travel_assistance'] = $this->documentRequirements->normalizeDefinitions(
+                array_filter(
+                    $travelDocs,
+                    fn (array $meta) => ($meta['borrower_visible'] ?? true) !== false,
+                ),
+            );
+        }
+
         return response()->json([
             'ok' => true,
             'data' => [
@@ -52,8 +69,19 @@ class BorrowerLoanApplicationWizardController extends Controller
                 'loan_type_product_map' => $this->loanTypeProductMap(),
                 'wizard_common' => config('amalgated_loans.wizard_common'),
                 'loan_type_fields' => config('amalgated_loans.general_form_fields'),
-                'documents_by_type' => config('amalgated_loans.general_documents'),
+                'documents_by_type' => $documentsByType,
                 'travel_assistance_documents_by_purpose' => config('amalgated_loans.travel_assistance_documents_by_purpose'),
+                'loan_types_requiring_co_makers' => config('amalgated_loans.loan_types_requiring_co_makers'),
+                'co_maker_document_categories' => CoMakerRequirementService::documentCategories(),
+                'co_maker_schema' => [
+                    'relationship_options' => config('co_maker.relationship_options'),
+                    'employment_status_options' => config('co_maker.employment_status_options'),
+                    'gender_options' => config('co_maker.gender_options'),
+                    'civil_status_options' => config('co_maker.civil_status_options'),
+                    'valid_id_types' => config('co_maker.valid_id_types'),
+                    'max_upload_mb' => config('co_maker.max_upload_mb'),
+                ],
+                'real_estate_property_step_documents' => config('amalgated_loans.real_estate_property_step_documents'),
                 'loan_products' => LoanProduct::query()
                     ->active()
                     ->orderBy('sort_order')
@@ -129,6 +157,7 @@ class BorrowerLoanApplicationWizardController extends Controller
     {
         $this->authorizeBorrower($request, $loanApplication);
         $this->ensureGeneralLoanApplication($loanApplication);
+        $loanApplication->loadMissing(['coMakers.documents']);
 
         return response()->json([
             'ok' => true,
@@ -140,21 +169,22 @@ class BorrowerLoanApplicationWizardController extends Controller
     {
         $this->authorizeBorrower($request, $loanApplication);
         $this->ensureGeneralLoanApplication($loanApplication);
-        if ($this->isLockedForBorrower($loanApplication)) {
+        if ($this->isFormLockedForBorrower($loanApplication)) {
             return response()->json(['ok' => false, 'message' => 'This application cannot be edited.'], 422);
         }
 
         $data = $request->validate([
             'form_data' => 'nullable|array',
             'loan_type' => 'sometimes|string|in:'.implode(',', array_keys(config('amalgated_loans.general_loan_types'))),
-            'draft_step' => 'sometimes|integer|min:1|max:6',
+            'draft_step' => 'sometimes|integer|min:1|max:8',
         ]);
 
         if (isset($data['loan_type'])) {
             $loanApplication->loan_type = $data['loan_type'];
         }
         if (array_key_exists('form_data', $data)) {
-            $loanApplication->form_data = array_merge($loanApplication->form_data ?? [], $data['form_data'] ?? []);
+            $merged = array_merge($loanApplication->form_data ?? [], $data['form_data'] ?? []);
+            $loanApplication->form_data = $this->stripStaffOnlyFormKeys($loanApplication, $merged);
         }
         $this->syncProductAndFinancialFieldsFromForm($loanApplication);
         if (isset($data['draft_step'])) {
@@ -169,7 +199,7 @@ class BorrowerLoanApplicationWizardController extends Controller
 
         return response()->json([
             'ok' => true,
-            'data' => $this->serializeApplication($loanApplication->fresh()),
+            'data' => $this->serializeApplication($loanApplication->fresh(['coMakers.documents'])),
         ]);
     }
 
@@ -177,18 +207,19 @@ class BorrowerLoanApplicationWizardController extends Controller
     {
         $this->authorizeBorrower($request, $loanApplication);
         $this->ensureGeneralLoanApplication($loanApplication);
-        if ($this->isLockedForBorrower($loanApplication)) {
+        if ($this->areDocumentsLockedForBorrower($loanApplication)) {
             return response()->json(['ok' => false, 'message' => 'Documents are locked for this application.'], 422);
         }
 
         $loanType = $loanApplication->loan_type;
-        $defs = config('amalgated_loans.general_documents.'.$loanType, []);
+        $loanApplication->loadMissing('loanProduct');
+        $defs = $this->documentRequirements->definitionsForApplication($loanApplication);
         if (! isset($defs[$docKey])) {
             return response()->json(['ok' => false, 'message' => 'Invalid document key for this loan type.'], 422);
         }
 
         $request->validate([
-            'file' => 'required|file|max:15360|mimes:jpg,jpeg,png,pdf',
+            'file' => 'required|file|max:20480|mimes:jpg,jpeg,png,pdf',
         ]);
 
         $meta = $defs[$docKey];
@@ -213,7 +244,7 @@ class BorrowerLoanApplicationWizardController extends Controller
 
         return response()->json([
             'ok' => true,
-            'data' => $this->serializeApplication($loanApplication->fresh()),
+            'data' => $this->serializeApplication($loanApplication->fresh(['coMakers.documents'])),
         ]);
     }
 
@@ -221,7 +252,7 @@ class BorrowerLoanApplicationWizardController extends Controller
     {
         $this->authorizeBorrower($request, $loanApplication);
         $this->ensureGeneralLoanApplication($loanApplication);
-        if ($this->isLockedForBorrower($loanApplication)) {
+        if ($this->areDocumentsLockedForBorrower($loanApplication)) {
             return response()->json(['ok' => false, 'message' => 'Documents are locked.'], 422);
         }
 
@@ -235,7 +266,8 @@ class BorrowerLoanApplicationWizardController extends Controller
             return response()->json(['ok' => true, 'data' => $this->serializeApplication($loanApplication)]);
         }
 
-        $defs = config('amalgated_loans.general_documents.'.$loanApplication->loan_type, []);
+        $loanApplication->loadMissing('loanProduct');
+        $defs = $this->documentRequirements->definitionsForApplication($loanApplication);
         $multiple = (bool) ($defs[$docKey]['multiple'] ?? false);
 
         $removedPaths = [];
@@ -279,7 +311,7 @@ class BorrowerLoanApplicationWizardController extends Controller
 
         return response()->json([
             'ok' => true,
-            'data' => $this->serializeApplication($loanApplication->fresh()),
+            'data' => $this->serializeApplication($loanApplication->fresh(['coMakers.documents'])),
         ]);
     }
 
@@ -288,14 +320,15 @@ class BorrowerLoanApplicationWizardController extends Controller
         $this->authorizeBorrower($request, $loanApplication);
         $this->ensureGeneralLoanApplication($loanApplication);
         $data = $request->validate([
-            'step' => 'required|integer|min:1|max:6',
+            'step' => 'required|integer|min:1|max:8',
         ]);
         $step = (int) $data['step'];
         $stepConfig = collect(config('amalgated_loans.product_application_steps.'.$loanApplication->loan_type, []))->firstWhere('id', $step);
         $section = is_array($stepConfig) ? ($stepConfig['section'] ?? null) : null;
         $errors = match ($section) {
+            'co_makers' => $this->validator->validateCoMakers($loanApplication->loadMissing('coMakers.documents')),
             'documents' => $this->validator->validateDocumentsComplete($loanApplication),
-            'review' => $this->validator->validateSubmit($loanApplication),
+            'review' => $this->validator->validateSubmit($loanApplication->loadMissing('coMakers.documents')),
             default => $this->validator->validateFormStep($loanApplication, $step),
         };
 
@@ -342,7 +375,7 @@ class BorrowerLoanApplicationWizardController extends Controller
 
         return response()->json([
             'ok' => true,
-            'data' => $this->serializeApplication($loanApplication->fresh()),
+            'data' => $this->serializeApplication($loanApplication->fresh(['coMakers.documents'])),
         ]);
     }
 
@@ -381,8 +414,8 @@ class BorrowerLoanApplicationWizardController extends Controller
 
                 if ($linkedLoan) {
                     $linkedLoan->borrower_id = $locked->user_id;
-                    $linkedLoan->principal = (float) ($locked->loan_amount ?? 0);
-                    $linkedLoan->requested_principal = round((float) ($locked->loan_amount ?? 0), 2);
+                    $linkedLoan->principal = 0;
+                    $linkedLoan->requested_principal = $this->legacyRequestedPrincipal($locked);
                     $linkedLoan->term_months = max(1, (int) ($locked->term_months ?? 1));
                     $linkedLoan->annual_interest_rate = $annualRate;
                     $linkedLoan->status = Loan::STATUS_PENDING;
@@ -392,8 +425,8 @@ class BorrowerLoanApplicationWizardController extends Controller
                 } else {
                     $loan = Loan::create([
                         'borrower_id' => $locked->user_id,
-                        'principal' => (float) ($locked->loan_amount ?? 0),
-                        'requested_principal' => round((float) ($locked->loan_amount ?? 0), 2),
+                        'principal' => 0,
+                        'requested_principal' => $this->legacyRequestedPrincipal($locked),
                         'term_months' => max(1, (int) ($locked->term_months ?? 1)),
                         'annual_interest_rate' => $annualRate,
                         'status' => Loan::STATUS_PENDING,
@@ -404,6 +437,11 @@ class BorrowerLoanApplicationWizardController extends Controller
                 }
 
                 if ($locked->loan_id) {
+                    $locked->coMakers()->update(['loan_id' => $locked->loan_id]);
+                    LoanDocument::query()
+                        ->where('loan_application_id', $locked->id)
+                        ->update(['loan_id' => $locked->loan_id]);
+
                     app(NotificationCenter::class)->notifyStaff(
                         NotificationCenter::CATEGORY_LOAN_SUBMITTED,
                         'loan_submitted',
@@ -438,6 +476,7 @@ class BorrowerLoanApplicationWizardController extends Controller
         $this->notifyBorrowerApplicationStatus($fresh, LoanApplication::STATUS_PENDING);
 
         $borrower = $request->user();
+        app(CreditWellnessService::class)->recalculateForUser($borrower, notify: false);
         $eligibility = app(CreditWellnessService::class)->eligibilityImpactForUser($borrower);
 
         return response()->json([
@@ -487,13 +526,60 @@ class BorrowerLoanApplicationWizardController extends Controller
         }
     }
 
-    private function isLockedForBorrower(LoanApplication $loanApplication): bool
+    private function isFormLockedForBorrower(LoanApplication $loanApplication): bool
     {
         if (! $loanApplication->isOfficiallySubmitted()) {
             return false;
         }
 
         return $loanApplication->status !== LoanApplication::STATUS_REJECTED;
+    }
+
+    private function areDocumentsLockedForBorrower(LoanApplication $loanApplication): bool
+    {
+        return in_array($loanApplication->status, [
+            LoanApplication::STATUS_REJECTED,
+            LoanApplication::STATUS_APPROVED,
+        ], true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $form
+     * @return array<string, mixed>
+     */
+    private function stripStaffOnlyFormKeys(LoanApplication $app, array $form): array
+    {
+        foreach ([
+            'loan_amount',
+            'requested_loan_amount',
+            'prospected_loan_amount',
+        ] as $key) {
+            unset($form[$key]);
+        }
+
+        if ($app->loan_type !== LoanApplication::TYPE_REAL_ESTATE) {
+            return $form;
+        }
+
+        foreach ([
+            'lot_area',
+            'floor_area',
+            'market_value',
+            'assessed_value',
+            'appraised_value',
+            'loanable_percentage',
+            'loanable_value',
+            'evaluation_remarks',
+        ] as $key) {
+            unset($form[$key]);
+        }
+
+        return $form;
+    }
+
+    private function isLockedForBorrower(LoanApplication $loanApplication): bool
+    {
+        return $this->isFormLockedForBorrower($loanApplication);
     }
 
     private function authorizeBorrower(Request $request, LoanApplication $loanApplication): void
@@ -560,6 +646,7 @@ class BorrowerLoanApplicationWizardController extends Controller
 
     private function serializeApplication(LoanApplication $a): array
     {
+        $a->loadMissing(['coMakers.documents']);
         $docs = [];
         foreach ($a->documents ?? [] as $key => $paths) {
             $urls = [];
@@ -596,6 +683,7 @@ class BorrowerLoanApplicationWizardController extends Controller
             ] : null,
             'loan_amount' => $a->loan_amount !== null ? (float) $a->loan_amount : null,
             'approved_amount' => $a->approved_amount !== null ? (float) $a->approved_amount : null,
+            'evaluation' => $this->serializeBorrowerEvaluation($a),
             'term_months' => $a->term_months !== null ? (int) $a->term_months : null,
             'computed_values' => $a->computed_values,
             'computation_breakdown' => $a->computation_breakdown,
@@ -617,6 +705,59 @@ class BorrowerLoanApplicationWizardController extends Controller
             'spouse_signature_path' => $a->spouse_signature,
             'comaker_signature_path' => $a->comaker_signature,
             'is_draft' => ! $a->isOfficiallySubmitted(),
+            'co_makers' => $a->coMakers->map(function ($cm) {
+                $docsByCategory = [];
+                foreach (CoMaker::DOCUMENT_CATEGORIES as $cat) {
+                    $docsByCategory[$cat] = [];
+                }
+                foreach ($cm->documents as $doc) {
+                    $cat = $doc->document_category ?? 'other_attachments';
+                    if (! isset($docsByCategory[$cat])) {
+                        $docsByCategory[$cat] = [];
+                    }
+                    $docsByCategory[$cat][] = [
+                        'id' => $doc->id,
+                        'original_name' => $doc->original_name,
+                        'file_url' => $doc->file_path ? PublicStorageUrl::apiUrl($doc->file_path) : null,
+                        'file_path' => $doc->file_path,
+                        'verification_status' => $doc->verification_status,
+                    ];
+                }
+
+                return [
+                    'id' => $cm->id,
+                    'first_name' => $cm->first_name,
+                    'middle_name' => $cm->middle_name,
+                    'last_name' => $cm->last_name,
+                    'suffix' => $cm->suffix,
+                    'full_name' => $cm->displayName(),
+                    'date_of_birth' => $cm->date_of_birth?->format('Y-m-d'),
+                    'age' => $cm->age,
+                    'gender' => $cm->gender,
+                    'civil_status' => $cm->civil_status,
+                    'contact_number' => $cm->contact_number,
+                    'alternate_contact_number' => $cm->alternate_contact_number,
+                    'email' => $cm->email,
+                    'house_street' => $cm->house_street,
+                    'relationship_to_borrower' => $cm->relationship_to_borrower,
+                    'employment_status' => $cm->employment_status,
+                    'occupation' => $cm->occupation,
+                    'employer_business_name' => $cm->employer_business_name,
+                    'length_of_employment' => $cm->length_of_employment,
+                    'monthly_income' => $cm->monthly_income !== null ? (float) $cm->monthly_income : null,
+                    'other_income_source' => $cm->other_income_source,
+                    'complete_address' => $cm->complete_address ?? $cm->address,
+                    'province' => $cm->province,
+                    'city_municipality' => $cm->city_municipality,
+                    'barangay' => $cm->barangay,
+                    'postal_code' => $cm->postal_code,
+                    'valid_id_type' => $cm->valid_id_type,
+                    'valid_id_number' => $cm->valid_id_number,
+                    'verification_status' => $cm->verification_status ?? CoMaker::VERIFY_PENDING,
+                    'review_notes' => $cm->review_notes,
+                    'documents_by_category' => $docsByCategory,
+                ];
+            })->values(),
             'print_url' => SignedPrintUrls::temporaryRoute(
                 'print.general-loan',
                 now()->addMinutes(45),
@@ -655,11 +796,16 @@ class BorrowerLoanApplicationWizardController extends Controller
             }
         }
 
-        if (array_key_exists('loan_amount', $form) && $form['loan_amount'] !== '' && $form['loan_amount'] !== null) {
-            $app->loan_amount = (float) $form['loan_amount'];
-        }
         if (array_key_exists('term_months', $form) && $form['term_months'] !== '' && $form['term_months'] !== null) {
             $app->term_months = max(1, (int) $form['term_months']);
+        }
+
+        if ($app->loan_type === LoanApplication::TYPE_REAL_ESTATE && ! empty($form['property_address'])) {
+            $app->property_location = trim((string) $form['property_address']);
+        }
+
+        if ($app->loan_type === LoanApplication::TYPE_TRAVEL_ASSISTANCE && ! $app->isOfficiallySubmitted()) {
+            $app->loan_amount = null;
         }
     }
 
@@ -720,10 +866,7 @@ class BorrowerLoanApplicationWizardController extends Controller
                     'title_number',
                     'tax_declaration_number',
                     'property_address',
-                    'lot_area',
-                    'floor_area',
-                    'market_value',
-                    'assessed_value',
+                    'property_description',
                     'loan_purpose',
                 ])
             ),
@@ -807,21 +950,90 @@ class BorrowerLoanApplicationWizardController extends Controller
             return null;
         }
 
-        return collect($model->toArray())->except(['id', 'loan_application_id', 'application_id', 'created_at', 'updated_at'])->all();
+        $hidden = ['id', 'loan_application_id', 'application_id', 'created_at', 'updated_at'];
+        if ($app->loan_type === LoanApplication::TYPE_REAL_ESTATE) {
+            $hidden = array_merge($hidden, [
+                'lot_area',
+                'floor_area',
+                'market_value',
+                'assessed_value',
+                'appraised_value',
+                'loanable_percentage',
+                'loanable_value',
+                'evaluation_remarks',
+                'evaluated_by',
+                'evaluated_at',
+            ]);
+        }
+
+        return collect($model->toArray())->except($hidden)->all();
     }
 
     private function applyProductComputation(LoanApplication $app): void
     {
-        if (! $app->loan_product_id || ! $app->loan_amount || $app->loan_amount <= 0) {
+        if (! $app->loan_product_id) {
             return;
         }
 
         $form = is_array($app->form_data) ? $app->form_data : [];
         $nature = (string) ($form['application_nature'] ?? 'new');
+        $termMonths = (int) ($app->term_months ?? $form['term_months'] ?? 0);
+        if ($termMonths <= 0) {
+            return;
+        }
+
+        $loanAmount = (float) ($app->loan_amount ?? 0);
+        if ($app->loan_type === LoanApplication::TYPE_SSS_PENSION) {
+            $monthlyPension = isset($form['monthly_pension']) && $form['monthly_pension'] !== ''
+                ? (float) $form['monthly_pension']
+                : 0.0;
+            if ($monthlyPension <= 0) {
+                $app->computed_values = null;
+                $app->computation_breakdown = null;
+
+                return;
+            }
+
+            $product = $app->loanProduct ?? LoanProduct::query()->find($app->loan_product_id);
+            if (! $product) {
+                return;
+            }
+
+            $estimate = $this->pensionCapacity->estimateFromPension($product, [
+                'monthly_pension' => $monthlyPension,
+                'term_months' => $termMonths,
+                'application_nature' => $nature,
+                'pension_type' => $form['pension_type'] ?? null,
+            ]);
+            $loanAmount = (float) ($estimate['estimated_loanable_amount'] ?? 0);
+            if ($loanAmount <= 0) {
+                $app->computed_values = [
+                    'pension_preview' => $estimate,
+                    'validation_errors' => $estimate['validation_errors'] ?? [],
+                ];
+                $app->computation_breakdown = null;
+
+                return;
+            }
+        } elseif ($app->loan_type === LoanApplication::TYPE_TRAVEL_ASSISTANCE) {
+            $quoted = isset($form['travel_cost']) && $form['travel_cost'] !== ''
+                ? (float) $form['travel_cost']
+                : 0.0;
+            if ($quoted <= 0) {
+                $app->computed_values = null;
+                $app->computation_breakdown = null;
+
+                return;
+            }
+            $loanAmount = $quoted;
+        } elseif ($loanAmount <= 0) {
+            return;
+        }
+
         $payload = [
             'product_id' => (int) $app->loan_product_id,
-            'loan_amount' => (float) $app->loan_amount,
-            'term_months' => (int) ($app->term_months ?? 1),
+            'loan_amount' => $loanAmount,
+            'term_months' => $termMonths,
             'application_nature' => $nature,
             'age' => isset($form['age']) && $form['age'] !== '' ? (int) $form['age'] : null,
             'monthly_pension' => isset($form['monthly_pension']) && $form['monthly_pension'] !== ''
@@ -830,6 +1042,7 @@ class BorrowerLoanApplicationWizardController extends Controller
             'pension_type' => isset($form['pension_type']) && $form['pension_type'] !== ''
                 ? (string) $form['pension_type']
                 : null,
+            'skip_borrower_amount_caps' => $app->loan_type === LoanApplication::TYPE_TRAVEL_ASSISTANCE,
         ];
 
         try {
@@ -838,8 +1051,15 @@ class BorrowerLoanApplicationWizardController extends Controller
                 'monthly_rate_percent_effective' => $compute['product']['monthly_rate_percent_effective'] ?? null,
                 'monthly_amortization' => $compute['breakdown']['monthly_amortization'] ?? null,
                 'net_proceeds' => $compute['breakdown']['net_proceeds'] ?? null,
+                'estimated_loanable_amount' => $loanAmount,
+                'quoted_travel_cost' => $app->loan_type === LoanApplication::TYPE_TRAVEL_ASSISTANCE ? $loanAmount : null,
+                'remaining_pension' => $compute['breakdown']['remaining_pension'] ?? null,
+                'pension_compliance_ok' => $compute['breakdown']['pension_compliance_ok'] ?? null,
             ];
             $app->computation_breakdown = $compute;
+            if ($app->loan_type === LoanApplication::TYPE_SSS_PENSION && $loanAmount > 0) {
+                $app->loan_amount = round($loanAmount, 2);
+            }
         } catch (ValidationException $e) {
             $app->computed_values = [
                 'validation_errors' => $e->errors(),
@@ -885,9 +1105,57 @@ class BorrowerLoanApplicationWizardController extends Controller
             'selected_rate_type' => 'monthly',
             'loan_type' => $app->loan_type,
             'application_nature' => $form['application_nature'] ?? 'new',
+            'monthly_pension' => isset($form['monthly_pension']) ? (float) $form['monthly_pension'] : null,
+            'pension_type' => $form['pension_type'] ?? null,
+            'estimated_loanable_amount' => is_numeric($computed['estimated_loanable_amount'] ?? null)
+                ? (float) $computed['estimated_loanable_amount']
+                : null,
             'full_name' => $form['full_name'] ?? null,
             'email' => $form['email'] ?? null,
             'phone' => $form['phone'] ?? null,
         ], fn ($v) => $v !== null && $v !== '');
+    }
+
+    /**
+     * Preserve borrower-entered amounts on legacy applications only.
+     */
+    private function legacyRequestedPrincipal(LoanApplication $app): ?float
+    {
+        $amount = $app->loan_amount;
+        if ($amount === null || (float) $amount <= 0) {
+            return null;
+        }
+
+        return round((float) $amount, 2);
+    }
+
+    /**
+     * Read-only evaluation summary for borrower portal views.
+     *
+     * @return array<string, mixed>
+     */
+    private function serializeBorrowerEvaluation(LoanApplication $app): array
+    {
+        $app->loadMissing(['loan']);
+        $loan = $app->loan;
+
+        $approved = null;
+        if ($loan?->approved_principal !== null && (float) $loan->approved_principal > 0) {
+            $approved = round((float) $loan->approved_principal, 2);
+        } elseif ($app->approved_amount !== null && (float) $app->approved_amount > 0) {
+            $approved = round((float) $app->approved_amount, 2);
+        }
+
+        $approvalStatus = (string) ($loan?->status ?? $app->status);
+        $remarks = trim((string) ($loan?->approval_notes ?? ''));
+        $evaluated = $approved !== null && $approved > 0;
+
+        return [
+            'status' => $evaluated ? 'evaluated' : 'pending',
+            'approval_status' => $approvalStatus,
+            'approved_loan_amount' => $approved,
+            'evaluation_remarks' => $remarks !== '' ? $remarks : null,
+            'evaluated_at' => $loan?->amount_modified_at?->toIso8601String(),
+        ];
     }
 }

@@ -20,6 +20,10 @@ use App\Models\Role;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\BorrowerLoanApplicationNotifier;
+use App\Services\CreditWellnessService;
+use App\Services\LoanAmountAdjustmentService;
+use App\Services\PropertyAppraisalService;
 use App\Services\StaffScopeService;
 use App\Services\LoanAmortizationService;
 use App\Services\LoanCalculator;
@@ -41,10 +45,18 @@ class LoanController extends Controller
     ) {}
 
     private const APPLICATION_STATUSES = [
+        Loan::STATUS_DRAFT,
+        Loan::STATUS_PENDING_DOCUMENTS,
+        Loan::STATUS_FOR_EVALUATION,
+        Loan::STATUS_UNDER_REVIEW,
         Loan::STATUS_PENDING,
+        Loan::STATUS_PARTIALLY_APPROVED,
         Loan::STATUS_PRE_APPROVED,
         Loan::STATUS_APPROVED,
+        Loan::STATUS_RELEASED,
+        Loan::STATUS_ONGOING,
         Loan::STATUS_REJECTED,
+        Loan::STATUS_CANCELLED,
         Loan::STATUS_COMPLETED,
     ];
 
@@ -108,7 +120,9 @@ class LoanController extends Controller
         $status = $this->normalizeApplicationStatus($request->query('status'));
         if ($status !== null) {
             if ($status === Loan::STATUS_APPROVED) {
-                $q->whereIn('status', [Loan::STATUS_APPROVED, Loan::STATUS_ONGOING]);
+                $q->whereIn('status', [Loan::STATUS_APPROVED, Loan::STATUS_RELEASED, Loan::STATUS_ONGOING, 'ongoing']);
+            } elseif ($status === Loan::STATUS_PARTIALLY_APPROVED || $status === Loan::STATUS_PRE_APPROVED) {
+                $q->whereIn('status', [Loan::STATUS_PARTIALLY_APPROVED, 'pre-approved', Loan::STATUS_PRE_APPROVED]);
             } else {
                 $q->where('status', $status);
             }
@@ -153,11 +167,8 @@ class LoanController extends Controller
         if ($value === '' || $value === 'all') {
             return null;
         }
-        if ($value === Loan::STATUS_ONGOING) {
-            return Loan::STATUS_APPROVED;
-        }
 
-        return in_array($value, self::APPLICATION_STATUSES, true) ? $value : null;
+        return Loan::normalizeStatus($value);
     }
 
     public function show(Request $request, Loan $loan): JsonResponse
@@ -170,10 +181,15 @@ class LoanController extends Controller
         $loan->load([
             'borrower',
             'approver',
+            'preApprover',
+            'releaser',
+            'amountModifier',
             'payments',
             'receipts',
-            'loanApplication.documents.verifiedBy',
+            'loanApplication.documents.uploadedBy',
+            'loanApplication.coMakers.documents.uploadedBy',
             'loanApplication.coMaker',
+            'loanApplication.realEstateDetail.evaluator',
             'loanApplication.travelLoanWizardForm',
             'loanApplication.dependents',
             'loanApplication.contactPersons',
@@ -194,6 +210,7 @@ class LoanController extends Controller
         return response()->json([
             'ok' => true,
             'loan' => $loan,
+            'document_permissions' => app(\App\Services\DocumentAccessService::class)->permissionsFor($request->user()),
             'last_loan_decision_email' => $this->formatLoanDecisionEmailLog($lastDecisionEmail),
         ]);
     }
@@ -202,7 +219,11 @@ class LoanController extends Controller
     {
         $request->validate([
             'admin_notes' => 'nullable|string|max:5000',
+            'approval_notes' => 'nullable|string|max:5000',
+            'approved_principal' => 'nullable|numeric|min:0.01',
         ]);
+
+        $previousApproved = round((float) ($loan->approved_principal ?? $loan->principal ?? 0), 2);
 
         $result = DB::transaction(function () use ($request, $loan, $logger) {
             $locked = Loan::query()
@@ -215,16 +236,39 @@ class LoanController extends Controller
                 return response()->json(['ok' => false, 'message' => 'Only pending applications can be pre-approved.'], 422);
             }
 
-            $locked->status = Loan::STATUS_PRE_APPROVED;
-            $locked->approved_by = $request->user()->id;
-            $locked->approved_at = now();
+            $locked->status = Loan::STATUS_PARTIALLY_APPROVED;
+            $locked->pre_approved_by = $request->user()->id;
+            $locked->pre_approved_at = now();
             $locked->rejected_at = null;
             $locked->rejection_reason = null;
+            $notes = $request->input('approval_notes') ?? $request->input('admin_notes');
+            $locked->approval_notes = $notes ?? $locked->approval_notes;
             $locked->admin_notes = $request->input('admin_notes') ?? $locked->admin_notes;
+
+            if ($request->filled('approved_principal')) {
+                $approvedAmount = round((float) $request->input('approved_principal'), 2);
+                $requested = (float) ($locked->requested_principal ?? $locked->principal);
+                $overrideCheck = $this->validateApprovedAmount($request, $approvedAmount, $requested);
+                if ($overrideCheck instanceof JsonResponse) {
+                    return $overrideCheck;
+                }
+                $locked->approved_principal = $approvedAmount;
+                $locked->principal = $approvedAmount;
+            }
+
+            $history = is_array($locked->approval_history) ? $locked->approval_history : [];
+            $history[] = [
+                'event' => 'partially_approved',
+                'at' => now()->toIso8601String(),
+                'user_id' => $request->user()->id,
+                'approved_principal' => $locked->approved_principal,
+                'notes' => $notes,
+            ];
+            $locked->approval_history = $history;
             $locked->save();
 
             if ($locked->loanApplication) {
-                $locked->loanApplication->status = LoanApplication::STATUS_PRE_APPROVED;
+                $locked->loanApplication->status = LoanApplication::STATUS_PARTIALLY_APPROVED;
                 $locked->loanApplication->verified_at = now();
                 $locked->loanApplication->rejection_reason = null;
                 $locked->loanApplication->save();
@@ -242,15 +286,30 @@ class LoanController extends Controller
         $result->loadMissing(['borrower', 'approver']);
         $this->notifyBorrowerPreApproved($result);
 
+        $newApproved = round((float) ($result->approved_principal ?? $result->principal), 2);
+        if ($request->filled('approved_principal')) {
+            app(BorrowerLoanApplicationNotifier::class)->notifyApprovedAmountChanged(
+                $result,
+                $request->user(),
+                $previousApproved,
+                $newApproved,
+                $result->approval_notes,
+            );
+        }
+
         $ts = (int) ($result->approved_at?->getTimestamp() ?? now()->getTimestamp());
         $nc = app(NotificationCenter::class);
         if ($result->borrower) {
+            $requested = $result->requested_principal ?? $result->loanApplication?->loan_amount;
+            $amountLine = $requested !== null
+                ? ' Requested: ₱'.number_format((float) $requested, 2).'. Approved: ₱'.number_format($newApproved, 2).'.'
+                : '';
             $nc->notifyBorrower(
                 $result->borrower,
                 NotificationCenter::CATEGORY_LOAN_PRE_APPROVED,
                 'loan_pre_approved',
                 'Application pre-approved',
-                'Your loan application #'.$result->id.' is pre-approved. Please wait for final approval and schedule an office visit to confirm your loan application.',
+                'Your loan application #'.$result->id.' is partially approved.'.$amountLine.' Please wait for final approval.',
                 ['loan_id' => $result->id],
                 ['dedupe_key' => 'loan_pre_approved:'.$result->id.':'.$ts, 'module' => NotificationCenter::MODULE_LOANS],
             );
@@ -292,13 +351,14 @@ class LoanController extends Controller
                 ->with('loanApplication')
                 ->firstOrFail();
 
-            if ($locked->status !== Loan::STATUS_PRE_APPROVED) {
-                return response()->json(['ok' => false, 'message' => 'Only pre-approved applications can return to pending.'], 422);
+            if ($locked->status !== Loan::STATUS_PARTIALLY_APPROVED && $locked->status !== Loan::STATUS_PRE_APPROVED && $locked->status !== 'pre-approved') {
+                return response()->json(['ok' => false, 'message' => 'Only partially approved applications can return to pending.'], 422);
             }
 
             $locked->status = Loan::STATUS_PENDING;
-            $locked->approved_by = null;
-            $locked->approved_at = null;
+            $locked->pre_approved_by = null;
+            $locked->pre_approved_at = null;
+            $locked->approved_principal = null;
             $locked->admin_notes = $request->input('admin_notes') ?? $locked->admin_notes;
             $locked->save();
 
@@ -324,13 +384,23 @@ class LoanController extends Controller
     {
         $request->validate([
             'admin_notes' => 'nullable|string|max:5000',
+            'approval_notes' => 'nullable|string|max:5000',
             'approved_principal' => 'sometimes|numeric|min:0.01',
             'term_months' => 'sometimes|integer|min:1|max:600',
             'monthly_rate_percent' => 'sometimes|numeric|min:0|max:100',
+            'force_amount_override' => 'sometimes|boolean',
         ]);
 
-        if (! in_array($loan->status, [Loan::STATUS_PENDING, Loan::STATUS_PRE_APPROVED], true)) {
-            return response()->json(['ok' => false, 'message' => 'Only pending or pre-approved applications can be approved.'], 422);
+        $approvableStatuses = [
+            Loan::STATUS_PENDING,
+            Loan::STATUS_PARTIALLY_APPROVED,
+            Loan::STATUS_PRE_APPROVED,
+            'pre-approved',
+            Loan::STATUS_FOR_EVALUATION,
+            Loan::STATUS_UNDER_REVIEW,
+        ];
+        if (! in_array($loan->status, $approvableStatuses, true)) {
+            return response()->json(['ok' => false, 'message' => 'Only pending or partially approved applications can be approved.'], 422);
         }
 
         $payload = is_array($loan->application_payload) ? $loan->application_payload : [];
@@ -364,15 +434,39 @@ class LoanController extends Controller
                 ->with('loanApplication')
                 ->firstOrFail();
 
-            if (! in_array($loan->status, [Loan::STATUS_PENDING, Loan::STATUS_PRE_APPROVED], true)) {
-                return response()->json(['ok' => false, 'message' => 'Only pending or pre-approved applications can be approved.'], 422);
+            $approvable = [
+                Loan::STATUS_PENDING,
+                Loan::STATUS_PARTIALLY_APPROVED,
+                Loan::STATUS_PRE_APPROVED,
+                'pre-approved',
+                Loan::STATUS_FOR_EVALUATION,
+                Loan::STATUS_UNDER_REVIEW,
+            ];
+            if (! in_array($loan->status, $approvable, true)) {
+                return response()->json(['ok' => false, 'message' => 'Only pending or partially approved applications can be approved.'], 422);
             }
 
-            $principal = (float) $loan->principal;
+            if ($loanApp = $loan->loanApplication) {
+                if ($loanApp->loan_amount !== null && $loan->requested_principal === null) {
+                    $loan->requested_principal = round((float) $loanApp->loan_amount, 2);
+                }
+            } elseif ($loan->requested_principal === null) {
+                $loan->requested_principal = round((float) $loan->principal, 2);
+            }
+
+            $principal = (float) ($loan->approved_principal ?? $loan->principal);
             if ($request->filled('approved_principal')) {
                 $principal = round((float) $request->input('approved_principal'), 2);
-                $loan->principal = $principal;
             }
+
+            $requested = (float) ($loan->requested_principal ?? $loan->principal);
+            $overrideCheck = $this->validateApprovedAmount($request, $principal, $requested);
+            if ($overrideCheck instanceof JsonResponse) {
+                return $overrideCheck;
+            }
+
+            $loan->approved_principal = $principal;
+            $loan->principal = $principal;
             $termUse = (int) $loan->term_months;
             if ($request->filled('term_months')) {
                 $termUse = (int) $request->input('term_months');
@@ -433,23 +527,32 @@ class LoanController extends Controller
             $loan->total_deductions = isset($breakdown['total_deductions']) ? round((float) $breakdown['total_deductions'], 2) : null;
             $loan->net_proceeds = isset($breakdown['net_proceeds']) ? round((float) $breakdown['net_proceeds'], 2) : null;
             $loan->total_payment = isset($breakdown['total_payment']) ? round((float) $breakdown['total_payment'], 2) : null;
-            $loan->status = Loan::STATUS_ONGOING;
+            $loan->status = Loan::STATUS_RELEASED;
             $loan->approved_by = $request->user()->id;
             $loan->approved_at = now();
+            $loan->released_by = $request->user()->id;
             $loan->rejected_at = null;
             $loan->disbursed_at = now();
+            $approvalNotes = $request->input('approval_notes') ?? $request->input('admin_notes');
+            $loan->approval_notes = $approvalNotes ?? $loan->approval_notes;
+            $loan->admin_notes = $request->input('admin_notes') ?? $loan->admin_notes;
             $loan->monthly_payment = isset($breakdown['monthly_amortization']) ? (float) $breakdown['monthly_amortization'] : $loan->monthly_payment;
             $loan->total_interest = isset($breakdown['total_add_on_interest']) ? (float) $breakdown['total_add_on_interest'] : $loan->total_interest;
             $loan->schedule_json = $schedule;
             $loan->outstanding_balance = round((float) array_sum(array_map(fn ($r) => (float) ($r['payment'] ?? 0), $schedule)), 2);
-            $loan->admin_notes = $request->input('admin_notes') ?? $loan->admin_notes;
+
+            $history = is_array($loan->approval_history) ? $loan->approval_history : [];
+            $history[] = [
+                'event' => 'approved_and_released',
+                'at' => now()->toIso8601String(),
+                'user_id' => $request->user()->id,
+                'requested_principal' => $loan->requested_principal,
+                'approved_principal' => $loan->approved_principal,
+                'notes' => $approvalNotes,
+            ];
+            $loan->approval_history = $history;
 
             $loanApp = $loan->loanApplication;
-            if ($loanApp && $loanApp->loan_amount !== null) {
-                $loan->requested_principal = round((float) $loanApp->loan_amount, 2);
-            } elseif ($loan->requested_principal === null) {
-                $loan->requested_principal = round((float) $loan->principal, 2);
-            }
 
             $overrideLogs = is_array($loan->admin_override_logs) ? $loan->admin_override_logs : [];
             $overrideLogs[] = [
@@ -479,7 +582,7 @@ class LoanController extends Controller
                 $loanApp->status = LoanApplication::STATUS_APPROVED;
                 $loanApp->verified_at = now();
                 $loanApp->rejection_reason = null;
-                $loanApp->approved_amount = round((float) $loan->principal, 2);
+                $loanApp->approved_amount = round((float) $loan->approved_principal, 2);
                 $loanApp->save();
             }
 
@@ -534,15 +637,25 @@ class LoanController extends Controller
         }
         $result->loadMissing(['borrower', 'approver']);
         $this->notifyBorrowerLoanDecision($result);
+        if ($result->borrower) {
+            app(CreditWellnessService::class)->recalculateForUser($result->borrower, notify: false);
+        }
 
         $nc = app(NotificationCenter::class);
         if ($result->borrower) {
+            $requested = $result->requested_principal ?? $result->loanApplication?->loan_amount;
+            $approved = $result->approved_principal ?? $result->principal;
+            $amountLine = '';
+            if ($requested !== null || $approved !== null) {
+                $amountLine = ' Requested: ₱'.number_format((float) ($requested ?? $approved), 2)
+                    .'. Approved: ₱'.number_format((float) $approved, 2).'.';
+            }
             $nc->notifyBorrower(
                 $result->borrower,
                 NotificationCenter::CATEGORY_LOAN_APPROVED,
                 'loan_approved',
                 'Loan approved',
-                'Your loan #'.$result->id.' was approved. Your repayment schedule is ready in the borrower portal.',
+                'Your loan #'.$result->id.' was approved.'.$amountLine.' Your repayment schedule is ready in the borrower portal.',
                 ['loan_id' => $result->id],
                 ['dedupe_key' => 'loan_decision:'.$result->id, 'module' => NotificationCenter::MODULE_LOANS],
             );
@@ -635,6 +748,9 @@ class LoanController extends Controller
         }
 
         $this->notifyBorrowerLoanDecision($result);
+        if ($result->borrower) {
+            app(CreditWellnessService::class)->recalculateForUser($result->borrower, notify: false);
+        }
 
         $nc = app(NotificationCenter::class);
         if ($result->borrower) {
@@ -808,6 +924,7 @@ class LoanController extends Controller
         $loan = Loan::create([
             'borrower_id' => $borrower->id,
             'principal' => $data['principal'],
+            'requested_principal' => $data['principal'],
             'term_months' => $data['term_months'],
             'annual_interest_rate' => $rate,
             'status' => Loan::STATUS_PENDING,
@@ -1099,6 +1216,19 @@ class LoanController extends Controller
         }
 
         $loan->refresh();
+        if ($status === 'requires_resubmission') {
+            $docLabel = 'Document';
+            if (! empty($data['loan_document_id'])) {
+                $doc = LoanDocument::query()->find((int) $data['loan_document_id']);
+                $docLabel = $doc?->document_type ?: ($doc?->original_name ?: 'Document');
+            }
+            app(BorrowerLoanApplicationNotifier::class)->notifyDocumentResubmissionRequired(
+                $loan,
+                $user,
+                (string) $docLabel,
+                $notes !== '' ? $notes : null,
+            );
+        }
         $loan->load([
             'borrower',
             'approver',
@@ -1324,6 +1454,224 @@ class LoanController extends Controller
         }
 
         return (float) $this->defaultAnnualRate();
+    }
+
+    /**
+     * Update approved/adjusted loan amount during evaluation or after release (staff only).
+     */
+    public function updateApprovedAmount(Request $request, Loan $loan, ActivityLogger $logger, LoanAmountAdjustmentService $amountService): JsonResponse
+    {
+        if (! $this->canEditLoanAmount($request->user())) {
+            return response()->json(['ok' => false, 'message' => 'You do not have permission to edit loan amounts.'], 403);
+        }
+
+        $staffScope = app(StaffScopeService::class);
+        if (! $staffScope->canAccessLoan($request->user(), $loan->assigned_officer_id, $loan->status)) {
+            return response()->json(['ok' => false, 'message' => 'This loan is not assigned to you.'], 403);
+        }
+
+        $request->validate([
+            'approved_principal' => 'required|numeric|min:0.01',
+            'approval_notes' => 'nullable|string|max:5000',
+            'force_amount_override' => 'sometimes|boolean',
+        ]);
+
+        if ($loan->status === Loan::STATUS_REJECTED || $loan->status === Loan::STATUS_CANCELLED || $loan->status === Loan::STATUS_COMPLETED) {
+            return response()->json(['ok' => false, 'message' => 'Loan amount cannot be changed for this loan status.'], 422);
+        }
+
+        $approvedAmount = round((float) $request->input('approved_principal'), 2);
+        $requested = (float) ($loan->requested_principal ?? $loan->principal);
+        $overrideCheck = $this->validateApprovedAmount($request, $approvedAmount, $requested);
+        if ($overrideCheck instanceof JsonResponse) {
+            return $overrideCheck;
+        }
+
+        $result = $amountService->adjustApprovedAmount(
+            $loan,
+            $request->user(),
+            $approvedAmount,
+            $request->input('approval_notes'),
+        );
+
+        $previous = $result['previous_amount'];
+        $actor = $request->user();
+        $message = sprintf(
+            '%s %s changed Loan Amount from ₱%s to ₱%s.',
+            $this->staffRoleLabel($actor),
+            $actor->name,
+            number_format($previous, 2),
+            number_format($approvedAmount, 2),
+        );
+
+        $logger->log($request->user(), 'loans.loan_amount_changed', $result['loan'], [
+            'loan_id' => $loan->id,
+            'message' => $message,
+            'old_amount' => $previous,
+            'new_amount' => $approvedAmount,
+            'ledger_rebuilt' => $result['ledger_rebuilt'],
+            'borrower_notified_in_app' => (bool) ($result['borrower_notification']['in_app'] ?? false),
+            'borrower_notified_email' => (bool) ($result['borrower_notification']['email_queued'] ?? false),
+            'notification_skipped' => (bool) ($result['borrower_notification']['skipped'] ?? false),
+            'notification_dedupe_key' => $result['borrower_notification']['dedupe_key'] ?? null,
+        ], 'loans', $loan->id);
+
+        if ($result['loan']->borrower) {
+            app(CreditWellnessService::class)->recalculateForUser($result['loan']->borrower, notify: false);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'loan' => $result['loan'],
+            'ledger_rebuilt' => $result['ledger_rebuilt'],
+            'audit_message' => $message,
+        ]);
+    }
+
+    /**
+     * Staff property appraisal / evaluation for real estate mortgage loans.
+     */
+    public function updatePropertyAppraisal(Request $request, Loan $loan, ActivityLogger $logger, PropertyAppraisalService $appraisalService): JsonResponse
+    {
+        if (! $this->canEditPropertyAppraisal($request->user())) {
+            return response()->json(['ok' => false, 'message' => 'You do not have permission to update property appraisal.'], 403);
+        }
+
+        $staffScope = app(StaffScopeService::class);
+        if (! $staffScope->canAccessLoan($request->user(), $loan->assigned_officer_id, $loan->status)) {
+            return response()->json(['ok' => false, 'message' => 'This loan is not assigned to you.'], 403);
+        }
+
+        $app = $loan->loanApplication;
+        if (! $app || $app->loan_type !== LoanApplication::TYPE_REAL_ESTATE) {
+            return response()->json(['ok' => false, 'message' => 'Property appraisal applies only to real estate mortgage loans.'], 422);
+        }
+
+        $data = $request->validate([
+            'property_type' => 'nullable|string|max:120',
+            'title_number' => 'nullable|string|max:255',
+            'tax_declaration_number' => 'nullable|string|max:255',
+            'property_address' => 'nullable|string|max:5000',
+            'lot_area' => 'nullable|numeric|min:0',
+            'floor_area' => 'nullable|numeric|min:0',
+            'market_value' => 'nullable|numeric|min:0',
+            'assessed_value' => 'nullable|numeric|min:0',
+            'appraised_value' => 'nullable|numeric|min:0',
+            'loanable_percentage' => 'nullable|numeric|min:0|max:100',
+            'loanable_value' => 'nullable|numeric|min:0',
+            'evaluation_remarks' => 'nullable|string|max:10000',
+        ]);
+
+        $previous = $app->realEstateDetail?->only([
+            'market_value',
+            'appraised_value',
+            'loanable_value',
+            'loanable_percentage',
+        ]) ?? [];
+
+        $result = $appraisalService->updateFromStaff($loan, $request->user(), $data);
+        $detail = $result['detail'];
+
+        $loan->load([
+            'borrower',
+            'loanApplication.realEstateDetail.evaluator',
+        ]);
+        if ($loan->loanApplication) {
+            $this->augmentLoanApplicationForAdminResponse($loan->loanApplication);
+        }
+
+        $logger->log($request->user(), 'loans.property_appraisal_updated', $loan, [
+            'loan_id' => $loan->id,
+            'previous' => $previous,
+            'current' => $detail->only([
+                'market_value',
+                'appraised_value',
+                'loanable_value',
+                'loanable_percentage',
+                'evaluated_at',
+            ]),
+        ], 'loans', $loan->id);
+
+        $evaluationNotify = app(BorrowerLoanApplicationNotifier::class)->notifyEvaluationUpdated(
+            $loan->fresh(['borrower', 'loanApplication']),
+            $request->user(),
+            $data['evaluation_remarks'] ?? null,
+        );
+        if ($evaluationNotify['email_queued'] ?? false) {
+            $logger->log($request->user(), 'loans.borrower_evaluation_notified', $loan, [
+                'loan_id' => $loan->id,
+                'in_app' => $evaluationNotify['in_app'] ?? false,
+                'email_queued' => $evaluationNotify['email_queued'] ?? false,
+            ], 'loans', $loan->id);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'loan' => $loan,
+            'real_estate_detail' => $detail,
+        ]);
+    }
+
+    private function canEditPropertyAppraisal(User $user): bool
+    {
+        if ($user->roles()->where('slug', 'super-admin')->exists()) {
+            return true;
+        }
+
+        return $user->hasPermission('loans.edit_amount') || $user->hasPermission('loans.approve');
+    }
+
+    private function canEditLoanAmount(User $user): bool
+    {
+        if ($user->roles()->where('slug', 'super-admin')->exists()) {
+            return true;
+        }
+
+        return $user->hasPermission('loans.edit_amount') || $user->hasPermission('loans.approve');
+    }
+
+    private function staffRoleLabel(User $user): string
+    {
+        $user->loadMissing('roles');
+        $slug = strtolower((string) ($user->roles->first()?->slug ?? ''));
+        if (str_contains($slug, 'officer')) {
+            return 'Loan Officer';
+        }
+        if ($slug === 'super-admin') {
+            return 'Super Admin';
+        }
+        if (str_contains($slug, 'admin') || str_contains($slug, 'manager')) {
+            return 'Admin';
+        }
+
+        return 'Staff';
+    }
+
+    private function validateApprovedAmount(Request $request, float $approvedAmount, float $requestedAmount): ?JsonResponse
+    {
+        if ($requestedAmount <= 0) {
+            return null;
+        }
+
+        if ($approvedAmount <= $requestedAmount) {
+            return null;
+        }
+
+        $canOverride = $request->boolean('force_amount_override')
+            && ($request->user()->hasPermission('loans.approve_amount_override')
+                || $request->user()->roles()->where('slug', 'super-admin')->exists());
+
+        if ($canOverride) {
+            return null;
+        }
+
+        return response()->json([
+            'ok' => false,
+            'message' => 'Approved amount exceeds requested amount. Super Admin override required.',
+            'warning' => 'amount_exceeds_requested',
+            'requested_principal' => round($requestedAmount, 2),
+            'approved_principal' => round($approvedAmount, 2),
+        ], 422);
     }
 
     private function defaultAnnualRate(): float

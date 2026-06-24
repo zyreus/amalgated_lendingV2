@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\User;
+use App\Services\SecurityPolicyService;
 use App\Support\AuthRateLimit;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
@@ -59,10 +60,10 @@ class RouteServiceProvider extends ServiceProvider
             return Limit::perMinute(20)->by($request->user()?->id ?: $request->ip());
         });
 
-        /** Admin login: 5 attempts / 5 minutes per username + IP (super-admin: 10). */
+        /** Admin login: attempts from security settings (super-admin: +5). */
         RateLimiter::for(AuthRateLimit::ADMIN_LOGIN, function (Request $request) {
             $login = mb_strtolower(trim((string) $request->input('username')));
-            $maxAttempts = 5;
+            $maxAttempts = app(SecurityPolicyService::class)->maxLoginAttempts();
 
             if ($login !== '') {
                 $user = User::query()
@@ -73,44 +74,51 @@ class RouteServiceProvider extends ServiceProvider
                     ->first();
 
                 if ($user && $user->roles()->where('slug', 'super-admin')->exists()) {
-                    $maxAttempts = 10;
+                    $maxAttempts = min(20, $maxAttempts + 5);
                 }
             }
 
-            return Limit::perMinutes(5, $maxAttempts)
+            return Limit::perSecond($maxAttempts, AuthRateLimit::LOCKOUT_DECAY_SECONDS)
                 ->by(AuthRateLimit::loginKey($request, $login));
         });
 
-        /** Borrower login: 5 attempts / 5 minutes per identifier + IP. */
+        /** Borrower login: attempts from security settings. */
         RateLimiter::for(AuthRateLimit::BORROWER_LOGIN, function (Request $request) {
             $login = mb_strtolower(trim((string) (AuthRateLimit::resolveLoginIdentifier($request))));
+            $maxAttempts = app(SecurityPolicyService::class)->maxLoginAttempts();
 
-            return Limit::perMinutes(5, 5)->by(AuthRateLimit::loginKey($request, $login));
+            return Limit::perSecond($maxAttempts, AuthRateLimit::LOCKOUT_DECAY_SECONDS)
+                ->by(AuthRateLimit::loginKey($request, $login));
         });
 
-        /** Generic JWT login: 5 attempts / 5 minutes per username + IP. */
+        /** Generic JWT login: attempts from security settings. */
         RateLimiter::for(AuthRateLimit::GENERIC_LOGIN, function (Request $request) {
             $login = mb_strtolower(trim((string) $request->input('username')));
+            $maxAttempts = app(SecurityPolicyService::class)->maxLoginAttempts();
 
-            return Limit::perMinutes(5, 5)->by(AuthRateLimit::loginKey($request, $login));
+            return Limit::perSecond($maxAttempts, AuthRateLimit::LOCKOUT_DECAY_SECONDS)
+                ->by(AuthRateLimit::loginKey($request, $login));
         });
 
         RateLimiter::for(AuthRateLimit::REGISTER, function (Request $request) {
-            return Limit::perMinutes(5, 6)->by(AuthRateLimit::loginKey($request, (string) $request->input('email')));
+            return Limit::perSecond(6, AuthRateLimit::LOCKOUT_DECAY_SECONDS)
+                ->by(AuthRateLimit::loginKey($request, (string) $request->input('email')));
         });
 
-        /** OTP verification: 10 attempts / 10 minutes per username + IP. */
+        /** OTP verification: 10 attempts / 30 seconds per username + IP. */
         RateLimiter::for(AuthRateLimit::OTP_VERIFY, function (Request $request) {
             $login = mb_strtolower(trim((string) $request->input('username')));
 
-            return Limit::perMinutes(10, 10)->by(AuthRateLimit::loginKey($request, $login));
+            return Limit::perSecond(10, AuthRateLimit::LOCKOUT_DECAY_SECONDS)
+                ->by(AuthRateLimit::loginKey($request, $login));
         });
 
-        /** Password reset + OTP request: 5 attempts / hour per email/username + IP. */
+        /** Password reset + OTP request: 5 attempts / 30 seconds per email/username + IP. */
         RateLimiter::for(AuthRateLimit::PASSWORD_RESET, function (Request $request) {
             $login = mb_strtolower(trim((string) (AuthRateLimit::resolveLoginIdentifier($request))));
 
-            return Limit::perHour(5)->by(AuthRateLimit::loginKey($request, $login));
+            return Limit::perSecond(AuthRateLimit::PASSWORD_RESET_MAX_ATTEMPTS, AuthRateLimit::LOCKOUT_DECAY_SECONDS)
+                ->by(AuthRateLimit::loginKey($request, $login));
         });
     }
 }

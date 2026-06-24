@@ -41,7 +41,7 @@ export default function WebsiteChatNotificationCard({
             <p className="mt-1 text-sm italic text-gray-600 dark:text-gray-400">{preview}</p>
           ) : null}
           {meta.conversationId ? (
-            <p className="mt-1 text-xs font-medium text-rose-700 dark:text-rose-300">
+            <p className="mt-1 break-all text-xs font-medium text-rose-700 dark:text-rose-300">
               Conversation #{meta.conversationId.slice(0, 24)}
             </p>
           ) : null}

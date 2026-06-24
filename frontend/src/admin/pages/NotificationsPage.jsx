@@ -181,18 +181,20 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
           else if (confirmDialog?.type === 'deleteSelected') await runDeleteSelected()
         }}
       />
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className={`flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center ${embedded ? 'sm:justify-end' : 'justify-between'} min-w-0`}>
         {!embedded ? (
           <div>
             <h1 className={admin.pageTitle}>Notifications</h1>
             <p className={admin.pageSubtitle}>New loan applications and system events.</p>
           </div>
-        ) : <span />}
-        <div className="flex flex-wrap items-center gap-2">
+        ) : null}
+        <div className={`flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2 ${embedded ? 'w-full' : ''}`}>
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 dark:border-white/15 dark:bg-transparent dark:text-gray-100"
+            className={`max-w-full rounded-xl border border-gray-200 bg-white text-gray-800 dark:border-white/15 dark:bg-transparent dark:text-gray-100 ${
+              embedded ? 'min-h-[36px] flex-1 px-2.5 py-1.5 text-xs sm:min-h-[40px] sm:flex-none sm:px-3 sm:py-2 sm:text-sm' : 'px-3 py-2 text-sm'
+            }`}
           >
             <option value="">All categories</option>
             {categories.map((c) => (
@@ -204,7 +206,9 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
           <button
             type="button"
             onClick={() => setUnreadOnly((v) => !v)}
-            className={`rounded-xl border px-3 py-2 text-sm transition ${
+            className={`rounded-xl border transition ${
+              embedded ? 'min-h-[36px] px-2.5 py-1.5 text-xs sm:min-h-[40px] sm:px-3 sm:py-2 sm:text-sm' : 'px-3 py-2 text-sm'
+            } ${
               unreadOnly
                 ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-950/25 dark:text-red-300'
                 : 'border-gray-200 text-gray-800 hover:bg-gray-100 dark:border-white/15 dark:text-gray-100 dark:hover:bg-white/5'
@@ -216,7 +220,9 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
             type="button"
             onClick={selectAll}
             disabled={rows.length === 0}
-            className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-800 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/15 dark:text-gray-100 dark:hover:bg-white/5"
+            className={`rounded-xl border border-gray-200 text-gray-800 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/15 dark:text-gray-100 dark:hover:bg-white/5 ${
+              embedded ? 'min-h-[36px] px-2.5 py-1.5 text-xs sm:min-h-[40px] sm:px-3 sm:py-2 sm:text-sm' : 'px-3 py-2 text-sm'
+            }`}
           >
             Select all
           </button>
@@ -224,7 +230,9 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
             type="button"
             onClick={unselectAll}
             disabled={selectedCount === 0}
-            className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-800 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/15 dark:text-gray-100 dark:hover:bg-white/5"
+            className={`rounded-xl border border-gray-200 text-gray-800 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/15 dark:text-gray-100 dark:hover:bg-white/5 ${
+              embedded ? 'min-h-[36px] px-2.5 py-1.5 text-xs sm:min-h-[40px] sm:px-3 sm:py-2 sm:text-sm' : 'px-3 py-2 text-sm'
+            }`}
           >
             Unselect all
           </button>
@@ -232,14 +240,18 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
             type="button"
             onClick={() => selectedCount > 0 && setConfirmDialog({ type: 'deleteSelected' })}
             disabled={selectedCount === 0}
-            className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-500/30 dark:bg-red-950/20 dark:text-red-300 dark:hover:bg-red-900/30"
+            className={`rounded-xl border border-red-300 bg-red-50 text-red-700 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-500/30 dark:bg-red-950/20 dark:text-red-300 dark:hover:bg-red-900/30 ${
+              embedded ? 'min-h-[36px] px-2.5 py-1.5 text-xs sm:min-h-[40px] sm:px-3 sm:py-2 sm:text-sm' : 'px-3 py-2 text-sm'
+            }`}
           >
             Delete selected{selectedCount ? ` (${selectedCount})` : ''}
           </button>
           <button
             type="button"
             onClick={markAll}
-            className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-800 transition hover:bg-gray-100 dark:border-white/15 dark:text-gray-100 dark:hover:bg-white/5"
+            className={`rounded-xl border border-gray-200 text-gray-800 transition hover:bg-gray-100 dark:border-white/15 dark:text-gray-100 dark:hover:bg-white/5 ${
+              embedded ? 'min-h-[36px] px-2.5 py-1.5 text-xs sm:min-h-[40px] sm:px-4 sm:py-2 sm:text-sm' : 'px-4 py-2 text-sm'
+            }`}
           >
             Mark all read
           </button>
@@ -247,7 +259,9 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
             type="button"
             onClick={() => rows.length > 0 && setConfirmDialog({ type: 'clearAll' })}
             disabled={rows.length === 0}
-            className="rounded-xl border border-red-300 px-4 py-2 text-sm text-red-700 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-500/30 dark:text-red-300"
+            className={`rounded-xl border border-red-300 text-red-700 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-500/30 dark:text-red-300 ${
+              embedded ? 'min-h-[36px] px-2.5 py-1.5 text-xs sm:min-h-[40px] sm:px-4 sm:py-2 sm:text-sm' : 'px-4 py-2 text-sm'
+            }`}
           >
             Clear all
           </button>
@@ -264,8 +278,8 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
             : 'border-red-300 bg-red-50 text-gray-900 dark:border-red-500/30 dark:bg-red-950/20 dark:text-gray-100'
           const body = (
             <>
-              <p className="font-semibold">{n.title}</p>
-              {n.body ? <p className={`mt-1 text-sm ${admin.textMuted}`}>{n.body}</p> : null}
+              <p className="font-semibold break-words">{n.title}</p>
+              {n.body ? <p className={`mt-1 break-words text-sm ${admin.textMuted}`}>{n.body}</p> : null}
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:bg-black/20 dark:text-red-300">
                   {CATEGORY_LABELS[n.category] || CATEGORY_LABELS[n.notification_type] || String(n.category || n.type || 'notice').replace(/_/g, ' ')}
@@ -275,8 +289,8 @@ export default function NotificationsPage({ embedded = false, onNavigate = null 
             </>
           )
           return (
-            <li key={n.id} className={`rounded-2xl border px-5 py-4 transition-colors duration-300 ${cardTone}`}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
+            <li key={n.id} className={`min-w-0 overflow-hidden rounded-2xl border transition-colors duration-300 ${embedded ? 'px-3 py-3 sm:px-5 sm:py-4' : 'px-5 py-4'} ${cardTone}`}>
+              <div className="flex min-w-0 flex-wrap items-start justify-between gap-2 sm:gap-3">
                 <label className="mt-0.5 inline-flex shrink-0 items-center">
                   <input
                     type="checkbox"

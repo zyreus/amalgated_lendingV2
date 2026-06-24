@@ -131,14 +131,18 @@ class SOAService
             return;
         }
 
-        $this->notifications->notifyBorrower(
-            $statement->borrower,
-            NotificationCenter::CATEGORY_PAYMENT_DUE,
-            'soa_statement',
-            'Monthly statement is ready',
-            'Your '.$statement->statement_month?->format('F Y').' statement of account is available in the borrower portal.',
-            ['soa_id' => $statement->id, 'loan_id' => $statement->loan_id, 'total_due' => (float) $statement->total_due],
-            ['dedupe_key' => 'soa:'.$statement->id, 'module' => NotificationCenter::MODULE_PAYMENTS]
-        );
+        try {
+            $this->notifications->notifyBorrower(
+                $statement->borrower,
+                NotificationCenter::CATEGORY_PAYMENT_DUE,
+                'soa_statement',
+                'Monthly statement is ready',
+                'Your '.$statement->statement_month?->format('F Y').' statement of account is available in the borrower portal.',
+                ['soa_id' => $statement->id, 'loan_id' => $statement->loan_id, 'total_due' => (float) $statement->total_due],
+                ['dedupe_key' => 'soa:'.$statement->id, 'module' => NotificationCenter::MODULE_PAYMENTS]
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 }

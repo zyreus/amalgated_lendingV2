@@ -58,13 +58,15 @@ class LoanCalculator
             ]);
         }
 
-        if ($product->max_amount !== null && (float) $product->max_amount > 0 && $amount > (float) $product->max_amount) {
+        if ($product->max_amount !== null && (float) $product->max_amount > 0 && $amount > (float) $product->max_amount
+            && ! ($input['skip_borrower_amount_caps'] ?? false)) {
             throw ValidationException::withMessages([
                 'loan_amount' => ['Loan amount exceeds product maximum of ₱'.number_format((float) $product->max_amount, 2).'.'],
             ]);
         }
 
-        if (! empty($cfg['min_principal']) && $amount < (float) $cfg['min_principal']) {
+        if (! empty($cfg['min_principal']) && $amount < (float) $cfg['min_principal']
+            && ! ($input['skip_borrower_amount_caps'] ?? false)) {
             throw ValidationException::withMessages([
                 'loan_amount' => ['Loan amount must be at least ₱'.number_format((float) $cfg['min_principal'], 2).'.'],
             ]);

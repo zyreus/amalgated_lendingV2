@@ -25,7 +25,14 @@ class SendPaymentReminderEmails extends Command
         }
 
         $dryRun = (bool) $this->option('dry-run');
-        $reminderDays = (array) config('mail_automation.payment_reminder_days_before', [1, 3, 5]);
+        $notificationSettings = setting('notifications');
+        $reminderDays = array_values(array_filter(
+            array_map('intval', (array) ($notificationSettings['reminder_days'] ?? [])),
+            fn (int $day) => $day > 0
+        ));
+        if ($reminderDays === []) {
+            $reminderDays = (array) config('mail_automation.payment_reminder_days_before', [1, 3, 5]);
+        }
         $sent = 0;
         $skipped = 0;
 

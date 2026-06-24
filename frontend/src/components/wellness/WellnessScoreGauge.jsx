@@ -1,6 +1,16 @@
-import { CATEGORY_COLORS, formatCategory } from './wellnessUtils.js'
+import { CATEGORY_COLORS, formatCategory, hasWellnessData } from './wellnessUtils.js'
 
-export default function WellnessScoreGauge({ score = 0, category, size = 'md', animated = true }) {
+export default function WellnessScoreGauge({ score = 0, category, size = 'md', animated = true, insufficient = false }) {
+  if (insufficient || category === 'insufficient') {
+    const dim = size === 'sm' ? 'h-24 w-24' : size === 'lg' ? 'h-44 w-44' : 'h-36 w-36'
+    return (
+      <div className={`flex ${dim} flex-col items-center justify-center rounded-full border-2 border-dashed border-gray-300 bg-gray-50 p-4 text-center dark:border-gray-600 dark:bg-gray-900/50`}>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Score</span>
+        <span className="mt-1 text-xs font-medium leading-snug text-gray-600 dark:text-gray-300">Insufficient data available</span>
+      </div>
+    )
+  }
+
   const s = Math.min(100, Math.max(0, Number(score) || 0))
   const color = CATEGORY_COLORS[category] || CATEGORY_COLORS.fair
   const pct = Math.min(100, Math.max(8, s))

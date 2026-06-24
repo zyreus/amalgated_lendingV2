@@ -12,6 +12,7 @@ use App\Models\SupportConversation;
 use App\Models\NotificationDeliveryLog;
 use App\Models\NotificationPreference;
 use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 
@@ -62,6 +63,12 @@ class NotificationCenter
     public const CATEGORY_PAYMENT_SUBMITTED = 'borrower_payment_submitted';
 
     public const CATEGORY_LOAN_OFFICER_ASSIGNED = 'loan_officer_assigned';
+
+    public const CATEGORY_LOAN_AMOUNT_UPDATED = 'loan_amount_updated';
+
+    public const CATEGORY_LOAN_EVALUATION_UPDATED = 'loan_evaluation_updated';
+
+    public const CATEGORY_LOAN_STATUS_UPDATED = 'loan_status_updated';
 
     public const MODULE_LOANS = 'loans';
 
@@ -156,36 +163,7 @@ class NotificationCenter
         $module = isset($options['module']) ? trim((string) $options['module']) : null;
         $channels = $options['delivery_channels'] ?? ['in_app'];
         $redirect = $this->redirectMetadata('borrower', $type, $category, $data, $options);
-        if ($dedupeKey !== '') {
-            $existing = BorrowerNotification::query()
-                ->where('user_id', $borrower->id)
-                ->where('dedupe_key', $dedupeKey)
-                ->first();
-            if ($existing) {
-                $existing->fill([
-                    'type' => $type,
-                    'notification_type' => $redirect['notification_type'],
-                    'category' => $category,
-                    'priority' => $priority,
-                    'module' => $module,
-                    'title' => $title,
-                    'body' => $body,
-                    'resource_type' => $redirect['resource_type'],
-                    'resource_id' => $redirect['resource_id'],
-                    'route_name' => $redirect['route_name'],
-                    'route_params' => $redirect['route_params'],
-                    'data' => $data,
-                    'delivery_channels' => $channels,
-                ]);
-                $existing->save();
-                $this->logBorrowerDelivery($existing->id, 'in_app', 'updated');
-
-                return $existing;
-            }
-        }
-
-        $row = BorrowerNotification::create([
-            'user_id' => $borrower->id,
+        $attributes = [
             'type' => $type,
             'notification_type' => $redirect['notification_type'],
             'category' => $category,
@@ -197,16 +175,72 @@ class NotificationCenter
             'resource_id' => $redirect['resource_id'],
             'route_name' => $redirect['route_name'],
             'route_params' => $redirect['route_params'],
-            'dedupe_key' => $dedupeKey !== '' ? $dedupeKey : null,
             'data' => $data,
             'delivery_channels' => $channels,
-            'read_at' => null,
-            'archived_at' => null,
-        ]);
+        ];
+
+        if ($dedupeKey !== '') {
+            $existing = $this->findBorrowerNotificationByDedupe($borrower->id, $dedupeKey);
+            if ($existing) {
+                return $this->refreshBorrowerNotification($existing, $attributes);
+            }
+        }
+
+        try {
+            $row = BorrowerNotification::create(array_merge([
+                'user_id' => $borrower->id,
+                'dedupe_key' => $dedupeKey !== '' ? $dedupeKey : null,
+                'read_at' => null,
+                'archived_at' => null,
+            ], $attributes));
+        } catch (QueryException $e) {
+            if ($dedupeKey === '' || ! $this->isDuplicateKeyException($e)) {
+                throw $e;
+            }
+
+            $existing = $this->findBorrowerNotificationByDedupe($borrower->id, $dedupeKey);
+            if (! $existing) {
+                throw $e;
+            }
+
+            return $this->refreshBorrowerNotification($existing, $attributes);
+        }
 
         $this->logBorrowerDelivery($row->id, 'in_app', 'sent');
 
         return $row;
+    }
+
+    private function findBorrowerNotificationByDedupe(int $userId, string $dedupeKey): ?BorrowerNotification
+    {
+        return BorrowerNotification::withTrashed()
+            ->where('user_id', $userId)
+            ->where('dedupe_key', $dedupeKey)
+            ->first();
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function refreshBorrowerNotification(BorrowerNotification $existing, array $attributes): BorrowerNotification
+    {
+        if ($existing->trashed()) {
+            $existing->restore();
+        }
+
+        $existing->fill(array_merge($attributes, ['archived_at' => null]));
+        $existing->save();
+        $this->logBorrowerDelivery($existing->id, 'in_app', 'updated');
+
+        return $existing;
+    }
+
+    private function isDuplicateKeyException(QueryException $e): bool
+    {
+        $sqlState = (string) ($e->errorInfo[0] ?? '');
+        $driverCode = (string) ($e->errorInfo[1] ?? '');
+
+        return $sqlState === '23000' || $driverCode === '1062' || str_contains($e->getMessage(), 'Duplicate entry');
     }
 
     /**

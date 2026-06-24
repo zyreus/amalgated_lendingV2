@@ -1,0 +1,1 @@
+import{j as o}from"./vendor-CdIfDld8.js";import{P as r}from"./PublicLoanProductPage-YebAHrBK.js";import{g as a}from"./publicLoanProductConfig-Cgg01rY-.js";import"./index-DGA9rdPf.js";function s(){const t=a("real-estate-mortgage");return t?o.jsx(r,{config:t}):null}export{s as default};

@@ -515,17 +515,6 @@ export default function BorrowerLoanWizardPage() {
                 </select>
               </label>
               <label className="block text-sm">
-                <span className="text-gray-700 dark:text-gray-300">Loan amount</span>
-                <input
-                  type="number"
-                  min="0"
-                  max={selectedProduct?.max_amount || undefined}
-                  className={`mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-[#0F172A] ${ui.input}`}
-                  value={formData.loan_amount ?? ''}
-                  onChange={(e) => onField('loan_amount', e.target.value)}
-                />
-              </label>
-              <label className="block text-sm">
                 <span className="text-gray-700 dark:text-gray-300">Term (months)</span>
                 <input
                   type="number"
@@ -597,7 +586,7 @@ export default function BorrowerLoanWizardPage() {
                 </label>
               ))}
             </div>
-            {app?.computation_breakdown?.breakdown ? (
+            {app?.computation_breakdown?.breakdown && formData.loan_amount ? (
               <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3 text-sm dark:border-emerald-800/50 dark:bg-emerald-900/10">
                 <p className="font-semibold text-emerald-900 dark:text-emerald-200">Live product computation</p>
                 <div className="mt-2 grid gap-1 text-xs text-emerald-900 dark:text-emerald-200/90 md:grid-cols-2">

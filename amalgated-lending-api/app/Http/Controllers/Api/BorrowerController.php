@@ -28,6 +28,8 @@ class BorrowerController extends Controller
     private const REASON_DELETED_PENDING = 'Deleted Pending';
     private const ONGOING_LOAN_DELETE_MESSAGE = 'This borrower cannot be deleted because they still have an ongoing loan.';
 
+    private const ARCHIVE_REQUIRES_NO_LOANS_MESSAGE = 'Only borrowers with no loans can be archived.';
+
     /**
      * Resolve optional verification-table presence using the SAME connection as the User model.
      * Uses Schema::connection() so probes match Eloquent queries (avoids mismatches when
@@ -594,6 +596,10 @@ class BorrowerController extends Controller
 
         if ($borrower->is_archived) {
             return response()->json(['ok' => false, 'message' => 'Borrower is already archived.'], 422);
+        }
+
+        if ($borrower->loans()->exists()) {
+            return response()->json(['ok' => false, 'message' => self::ARCHIVE_REQUIRES_NO_LOANS_MESSAGE], 422);
         }
 
         $archived = $this->archiveBorrower($borrower, $admin, self::REASON_MANUALLY_ARCHIVED, $logger);

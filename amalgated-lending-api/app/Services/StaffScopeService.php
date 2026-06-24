@@ -46,7 +46,7 @@ final class StaffScopeService
 
     public function hasGlobalStaffAccess(User $user): bool
     {
-        if ($user->hasPermission('users.manage') || $user->hasPermission('roles.manage') || $user->hasPermission('settings.manage')) {
+        if ($user->hasPermission('users.manage') || $user->hasPermission('roles.manage') || $user->hasPermission('settings.manage') || $user->hasPermission('settings.view')) {
             return true;
         }
 
@@ -108,7 +108,7 @@ final class StaffScopeService
                             ->orWhereIn('status', [Loan::STATUS_PENDING, Loan::STATUS_PRE_APPROVED]);
                     });
                 })->orWhereHas('loanApplications', function (Builder $appQuery): void {
-                    $appQuery->whereIn('status', ['pending', 'pre-approved', 'pre_approved']);
+                    $appQuery->whereIn('status', ['pending', 'partially-approved', 'pre-approved', 'pre_approved']);
                 });
             });
         }

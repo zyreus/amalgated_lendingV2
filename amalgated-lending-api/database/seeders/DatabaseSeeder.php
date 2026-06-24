@@ -23,6 +23,7 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Manage roles & permissions', 'slug' => 'roles.manage', 'group_name' => 'Roles'],
             ['name' => 'View loans', 'slug' => 'loans.view', 'group_name' => 'Loans'],
             ['name' => 'Approve / reject loans', 'slug' => 'loans.approve', 'group_name' => 'Loans'],
+            ['name' => 'Edit loan amount', 'slug' => 'loans.edit_amount', 'group_name' => 'Loans'],
             ['name' => 'Assign loan officer', 'slug' => 'loans.assign', 'group_name' => 'Loans'],
             ['name' => 'Manage payments', 'slug' => 'payments.manage', 'group_name' => 'Payments'],
             ['name' => 'Adjust final loan payment', 'slug' => 'payments.adjust_final', 'group_name' => 'Payments'],
@@ -38,6 +39,16 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Manage statements of account', 'slug' => 'soa.manage', 'group_name' => 'Statements'],
             ['name' => 'Manage CMS', 'slug' => 'cms.manage', 'group_name' => 'CMS'],
             ['name' => 'Manage settings', 'slug' => 'settings.manage', 'group_name' => 'Settings'],
+            ['name' => 'View settings', 'slug' => 'settings.view', 'group_name' => 'Settings'],
+            ['name' => 'Manage general settings', 'slug' => 'settings.general.manage', 'group_name' => 'Settings'],
+            ['name' => 'Manage loan settings', 'slug' => 'settings.loans.manage', 'group_name' => 'Settings'],
+            ['name' => 'Manage collection settings', 'slug' => 'settings.collections.manage', 'group_name' => 'Settings'],
+            ['name' => 'Manage financial settings', 'slug' => 'settings.financial.manage', 'group_name' => 'Settings'],
+            ['name' => 'Manage communication settings', 'slug' => 'settings.communication.manage', 'group_name' => 'Settings'],
+            ['name' => 'Manage operations settings', 'slug' => 'settings.operations.manage', 'group_name' => 'Settings'],
+            ['name' => 'Manage document settings', 'slug' => 'settings.documents.manage', 'group_name' => 'Settings'],
+            ['name' => 'Manage security settings', 'slug' => 'settings.security.manage', 'group_name' => 'Settings'],
+            ['name' => 'Manage system settings', 'slug' => 'settings.system.manage', 'group_name' => 'Settings'],
             ['name' => 'View activity logs', 'slug' => 'activity.view', 'group_name' => 'Audit'],
             ['name' => 'View notifications', 'slug' => 'notifications.view', 'group_name' => 'Notifications'],
             ['name' => 'Manage printable PDF forms', 'slug' => 'forms.printable.manage', 'group_name' => 'Forms'],
@@ -59,7 +70,7 @@ class DatabaseSeeder extends Seeder
         $super->permissions()->sync($ids);
 
         $bySlug = Permission::whereIn('slug', [
-            'dashboard.view', 'loans.view', 'loans.approve', 'loans.assign', 'borrowers.view',
+            'dashboard.view', 'loans.view', 'loans.approve', 'loans.edit_amount', 'loans.assign', 'borrowers.view', 'borrowers.archive',
             'payments.manage', 'payments.verify', 'payments.export', 'notifications.view', 'reports.view', 'soa.view', 'soa.manage',
         ])->pluck('id')->all();
         Role::updateOrCreate(
@@ -71,7 +82,7 @@ class DatabaseSeeder extends Seeder
             ['slug' => 'collector'],
             ['name' => 'Collector', 'description' => 'Collections and payment recording.']
         )->permissions()->sync(Permission::whereIn('slug', [
-            'dashboard.view', 'loans.view', 'borrowers.view', 'payments.manage', 'payments.export', 'notifications.view', 'soa.view',
+            'dashboard.view', 'loans.view', 'borrowers.view', 'borrowers.archive', 'payments.manage', 'payments.export', 'notifications.view', 'soa.view',
         ])->pluck('id')->all());
 
         Role::updateOrCreate(

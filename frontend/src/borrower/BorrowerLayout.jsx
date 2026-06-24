@@ -1,11 +1,14 @@
-import { NavLink, Outlet } from 'react-router-dom'
-import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+import { Link, Outlet, useLocation } from 'react-router-dom'
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock.js'
 import { useBorrowerAuth } from './context/useBorrowerAuth.js'
 import { useLogoutConfirm } from '../context/useLogoutConfirm.js'
 import { borrowerApi } from './api/client.js'
 import { getLaravelStorageFileUrl } from '../utils/lendingLaravelApi.js'
 import { COOKIE_PREFERENCES_EVENT } from '../components/privacy/CookiePreferencesModal.jsx'
+import { NotificationPanelShell } from '../components/NotificationPanelShell.jsx'
+import { BORROWER_NAV_GROUPS, BORROWER_DASHBOARD_NAV } from './borrowerNavConfig.js'
+import BorrowerSidebarAccordion from './components/BorrowerSidebarAccordion.jsx'
 import {
   ClipboardList,
   CreditCard,
@@ -63,46 +66,6 @@ function CookiePrefsIcon({ className = 'h-5 w-5' }) {
   )
 }
 
-const navGroups = [
-  {
-    label: 'Overview',
-    items: [
-      { to: '/borrower/dashboard', label: 'Dashboard', icon: 'dashboard' },
-      { to: '/borrower/credit-health', label: 'Credit & wellness', icon: 'wellness' },
-    ],
-  },
-  {
-    label: 'Loans',
-    items: [
-      { to: '/borrower/applications', label: 'Applications', icon: 'applications' },
-      { to: '/borrower/apply-loan', label: 'Apply', icon: 'apply' },
-    ],
-  },
-  {
-    label: 'Money',
-    items: [
-      { to: '/borrower/payments', label: 'Payments', icon: 'payments' },
-      { to: '/borrower/statements', label: 'Statements', icon: 'statements' },
-    ],
-  },
-  {
-    label: 'Support',
-    items: [
-      { to: '/borrower/chat', label: 'Live chat', icon: 'chat' },
-      { to: '/borrower/help', label: 'Help center', icon: 'help' },
-      { to: '/borrower/tickets', label: 'Tickets', icon: 'tickets' },
-    ],
-  },
-  {
-    label: 'Account',
-    items: [
-      { to: '/borrower/profile', label: 'Profile', icon: 'profile' },
-      { to: '/borrower/settings/privacy', label: 'Privacy', icon: 'privacy' },
-      { to: '/borrower/security', label: 'Password', icon: 'password' },
-    ],
-  },
-]
-
 const BORROWER_ICON_CONFIG = {
   dashboard: { Icon: LayoutDashboard, wrapper: 'bg-rose-100 text-rose-600' },
   wellness: { Icon: ShieldPlus, wrapper: 'bg-emerald-100 text-emerald-600' },
@@ -119,16 +82,37 @@ const BORROWER_ICON_CONFIG = {
   logout: { Icon: LogOut, wrapper: 'bg-red-100 text-red-600' },
 }
 
-function BorrowerNavIcon({ name, active = false }) {
+function buildBorrowerNavGroups() {
+  return BORROWER_NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.map((item, i) => ({
+      id: `nav-${group.id}-${i}`,
+      path: item.to,
+      label: item.label,
+      icon_key: item.icon_key,
+      match_end: Boolean(item.match_end),
+    })),
+  })).filter((group) => group.items.length > 0)
+}
+
+function buildBorrowerTopNavItems() {
+  return [
+    {
+      id: 'nav-dashboard',
+      path: BORROWER_DASHBOARD_NAV.to,
+      label: BORROWER_DASHBOARD_NAV.label,
+      icon_key: BORROWER_DASHBOARD_NAV.icon_key,
+      match_end: Boolean(BORROWER_DASHBOARD_NAV.match_end),
+    },
+  ]
+}
+
+function BorrowerNavIcon({ name }) {
   const config = BORROWER_ICON_CONFIG[name] || BORROWER_ICON_CONFIG.dashboard
   const Icon = config.Icon
   return (
-    <span
-      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all duration-150 ${
-        active ? 'bg-white/20 text-white ring-1 ring-white/30' : config.wrapper
-      }`}
-    >
-      <Icon className="size-4 stroke-[2]" aria-hidden />
+    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${config.wrapper}`}>
+      <Icon className="size-[17px] stroke-[2]" aria-hidden />
     </span>
   )
 }
@@ -169,6 +153,9 @@ function prefetchBorrowerRoutes() {
 export default function BorrowerLayout() {
   const { user } = useBorrowerAuth()
   const { openLogoutModal } = useLogoutConfirm()
+  const location = useLocation()
+  const navGroups = useMemo(() => buildBorrowerNavGroups(), [])
+  const topNavItems = useMemo(() => buildBorrowerTopNavItems(), [])
   const [mobileOpen, setMobileOpen] = useState(false)
   useBodyScrollLock(mobileOpen)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
@@ -218,40 +205,26 @@ export default function BorrowerLayout() {
       if (document.visibilityState === 'visible') fetchCount()
     }
     const onNotificationNavigate = () => setNotifModalOpen(false)
+    const onOpenNotifications = () => setNotifModalOpen(true)
     window.addEventListener('borrower-notifications-changed', onChange)
     window.addEventListener('borrower-notification-navigate', onNotificationNavigate)
+    window.addEventListener('borrower-open-notifications', onOpenNotifications)
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       cancelled = true
       clearInterval(id)
       window.removeEventListener('borrower-notifications-changed', onChange)
       window.removeEventListener('borrower-notification-navigate', onNotificationNavigate)
+      window.removeEventListener('borrower-open-notifications', onOpenNotifications)
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [user])
 
-  useEffect(() => {
-    if (!notifModalOpen) return undefined
-    const onDocClick = (e) => {
-      if (!notifWrapRef.current) return
-      if (!notifWrapRef.current.contains(e.target)) setNotifModalOpen(false)
-    }
-    const onEsc = (e) => {
-      if (e.key === 'Escape') setNotifModalOpen(false)
-    }
-    document.addEventListener('mousedown', onDocClick)
-    document.addEventListener('keydown', onEsc)
-    return () => {
-      document.removeEventListener('mousedown', onDocClick)
-      document.removeEventListener('keydown', onEsc)
-    }
-  }, [notifModalOpen])
-
   const asideBase =
-    'fixed inset-y-0 left-0 z-50 flex h-[100dvh] flex-col border-r border-slate-200 bg-[#F8F8F8] shadow-sm transition-[transform,width] duration-300 ease-out dark:border-[#1F2937] dark:bg-gradient-to-b dark:from-[#0F172A] dark:via-[#0c1220] dark:to-[#020617] lg:translate-x-0'
+    'fixed inset-y-0 left-0 z-50 flex h-[100dvh] flex-col border-r border-[#E5E7EB] bg-white font-[Inter,system-ui,sans-serif] shadow-[4px_0_24px_rgba(15,23,42,0.04)] transition-[transform,width] duration-300 ease-out dark:border-[#1F2937] dark:bg-[#0F172A] lg:translate-x-0'
   const sidebarTransform = mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-  const asideWidthClass = sidebarCollapsed ? 'w-[210px] lg:w-[72px]' : 'w-[210px]'
-  const mainPlClass = sidebarCollapsed ? 'lg:pl-[72px]' : 'lg:pl-[210px]'
+  const asideWidthClass = sidebarCollapsed ? 'w-[240px] lg:w-[72px]' : 'w-[240px]'
+  const mainPlClass = sidebarCollapsed ? 'lg:pl-[72px]' : 'lg:pl-[240px]'
   const toggleSidebarCollapsed = () => {
     setSidebarCollapsed((prev) => {
       const next = !prev
@@ -273,14 +246,14 @@ export default function BorrowerLayout() {
       ) : null}
 
       <aside className={`${asideBase} ${asideWidthClass} ${sidebarTransform}`}>
-        <div className="flex h-full min-h-0 flex-col px-2.5 py-3">
-          <div className={`shrink-0 rounded-2xl border border-slate-200/80 bg-white/70 px-3 py-3 shadow-sm dark:border-[#1F2937] dark:bg-white/5 ${sidebarCollapsed ? 'lg:px-2 lg:py-2' : ''}`}>
+        <div className="flex h-full min-h-0 flex-col gap-2 px-3 py-4">
+          <div className={`shrink-0 rounded-2xl border border-slate-200/80 bg-[#F8FAFC] px-3 py-3 shadow-sm dark:border-[#1F2937] dark:bg-white/5 ${sidebarCollapsed ? 'lg:px-2 lg:py-2' : ''}`}>
             <div className={`flex items-center justify-between gap-2 ${sidebarCollapsed ? 'lg:flex-col lg:justify-center' : ''}`}>
               <p className={`min-w-0 truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-primary ${sidebarCollapsed ? 'lg:sr-only' : ''}`}>Borrower Portal</p>
               <button
                 type="button"
                 onClick={toggleSidebarCollapsed}
-                className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-all duration-150 hover:bg-white hover:text-slate-900 hover:shadow-sm lg:inline-flex"
+                className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#E5E7EB] bg-white text-[#64748B] shadow-sm transition hover:scale-105 hover:text-[#0F172A] lg:inline-flex dark:border-[#374151] dark:bg-[#111827] dark:text-gray-400 dark:hover:text-gray-100"
                 title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                 aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                 aria-expanded={!sidebarCollapsed}
@@ -288,7 +261,12 @@ export default function BorrowerLayout() {
                 <Menu className="h-4 w-4" aria-hidden />
               </button>
             </div>
-            <div className={`mt-2 flex items-center gap-2.5 ${sidebarCollapsed ? 'lg:justify-center' : ''}`}>
+            <Link
+              to="/borrower/dashboard"
+              onClick={() => setMobileOpen(false)}
+              className={`mt-2 flex items-center gap-2.5 rounded-xl transition hover:bg-white/80 dark:hover:bg-white/5 ${sidebarCollapsed ? 'lg:justify-center' : ''}`}
+              title="Dashboard"
+            >
               {avatarUrl ? (
                 <img
                   src={avatarUrl}
@@ -310,51 +288,25 @@ export default function BorrowerLayout() {
                 </p>
                 <p className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-gray-400">Amalgated Lending Inc.</p>
               </div>
-            </div>
+            </Link>
           </div>
 
           <nav
             id="borrower-sidebar-nav"
-            className="scrollbar-thin scrollbar-thumb-[#D8D8D8] scrollbar-track-transparent min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain py-3 [scrollbar-color:#D8D8D8_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#D8D8D8] [&::-webkit-scrollbar-track]:bg-transparent"
+            className="scrollbar-thin scrollbar-thumb-[#D8D8D8] scrollbar-track-transparent min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden overscroll-contain scroll-smooth py-2 [scrollbar-color:#D8D8D8_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#D8D8D8] [&::-webkit-scrollbar-track]:bg-transparent"
             aria-label="Borrower portal navigation"
           >
-            {navGroups.map((group) => (
-              <div key={group.label} className="mt-4 first:mt-0">
-                <p className={`mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-gray-500 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>{group.label}</p>
-                <div className="space-y-1">
-                  {group.items.map((item) => (
-                    <div key={item.to} className="group relative">
-                      <NavLink
-                        to={item.to}
-                        end={item.to === '/borrower/dashboard'}
-                        title={sidebarCollapsed ? item.label : undefined}
-                        onClick={() => setMobileOpen(false)}
-                        className={({ isActive }) =>
-                          [
-                            'flex h-[38px] items-center gap-2.5 rounded-xl px-3 text-[13px] font-medium transition-all duration-150',
-                            sidebarCollapsed ? 'lg:justify-center lg:gap-0 lg:px-0' : '',
-                            isActive
-                              ? 'bg-rose-600 text-white shadow-sm'
-                              : 'text-slate-600 hover:bg-white hover:shadow-sm dark:text-gray-300 dark:hover:bg-white/5',
-                          ].join(' ')
-                        }
-                      >
-                        {({ isActive }) => (
-                          <>
-                            <BorrowerNavIcon name={item.icon} active={isActive} />
-                            <span className={`min-w-0 truncate ${sidebarCollapsed ? 'lg:sr-only' : ''}`}>{item.label}</span>
-                          </>
-                        )}
-                      </NavLink>
-                      {sidebarCollapsed ? <BorrowerSidebarTooltip>{item.label}</BorrowerSidebarTooltip> : null}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+            <BorrowerSidebarAccordion
+              groups={navGroups}
+              topItems={topNavItems}
+              sidebarCollapsed={sidebarCollapsed}
+              pathname={location.pathname}
+              onNavigate={() => setMobileOpen(false)}
+              iconConfig={BORROWER_ICON_CONFIG}
+            />
           </nav>
 
-          <div className="shrink-0 border-t border-slate-200 pt-3 dark:border-[#1F2937]">
+          <div className="shrink-0 border-t border-[#E5E7EB] pt-3 dark:border-[#1F2937]">
             <div className="group relative">
               <button
                 type="button"
@@ -362,7 +314,7 @@ export default function BorrowerLayout() {
                   setMobileOpen(false)
                   openLogoutModal('borrower')
                 }}
-                className={`flex h-[38px] w-full items-center gap-2.5 rounded-xl px-3 text-left text-[13px] font-medium text-red-600 transition-all duration-150 hover:bg-white hover:shadow-sm dark:hover:bg-red-950/30 ${sidebarCollapsed ? 'lg:justify-center lg:gap-0 lg:px-0' : ''}`}
+                className={`flex min-h-[44px] w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left text-[14px] font-medium text-red-600 transition-all duration-200 hover:bg-[#FEECEC] dark:text-red-400 dark:hover:bg-red-950/30 ${sidebarCollapsed ? 'lg:justify-center lg:gap-0 lg:px-2' : ''}`}
               >
                 <BorrowerNavIcon name="logout" />
                 <span className={sidebarCollapsed ? 'lg:sr-only' : ''}>Log out</span>
@@ -460,42 +412,35 @@ export default function BorrowerLayout() {
                     </span>
                   ) : null}
                 </button>
-                <div
-                  role="region"
-                  aria-labelledby="borrower-notif-panel-title"
-                  aria-hidden={!notifModalOpen}
-                  inert={!notifModalOpen}
-                  className={`absolute right-0 top-[calc(100%+10px)] z-[80] w-[min(92vw,30rem)] origin-top-right rounded-2xl border border-gray-200 bg-white shadow-2xl transition-all duration-200 dark:border-[#1F2937] dark:bg-[#111827] ${
-                    notifModalOpen ? 'pointer-events-auto translate-y-0 scale-100 opacity-100' : 'pointer-events-none -translate-y-1 scale-95 opacity-0'
-                  }`}
-                >
-                  <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-[#1F2937]">
-                    <h2 id="borrower-notif-panel-title" className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                      Notifications
-                    </h2>
+                <NotificationPanelShell
+                  open={notifModalOpen}
+                  onClose={() => setNotifModalOpen(false)}
+                  anchorRef={notifWrapRef}
+                  title="Notifications"
+                  titleId="borrower-notif-panel-title"
+                  headerActions={(
                     <button
                       type="button"
-                      className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/10"
+                      className="shrink-0 rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-[#374151] dark:text-gray-200 dark:hover:bg-white/10"
                       onClick={() => setNotifModalOpen(false)}
                       aria-label="Close notifications"
                     >
                       Close
                     </button>
-                  </div>
-                  <div className="max-h-[68vh] overflow-y-auto p-3">
-                    <Suspense
-                      fallback={
-                        <div className="space-y-2 p-1" aria-hidden>
-                          {Array.from({ length: 3 }).map((_, i) => (
-                            <div key={i} className="h-12 animate-pulse rounded-lg bg-gray-100 dark:bg-white/5" />
-                          ))}
-                        </div>
-                      }
-                    >
-                      <BorrowerNotificationsPage embedded />
-                    </Suspense>
-                  </div>
-                </div>
+                  )}
+                >
+                  <Suspense
+                    fallback={
+                      <div className="space-y-2 p-1" aria-hidden>
+                        {Array.from({ length: 3 }).map((_, i) => (
+                          <div key={i} className="h-12 animate-pulse rounded-lg bg-gray-100 dark:bg-white/5" />
+                        ))}
+                      </div>
+                    }
+                  >
+                    <BorrowerNotificationsPage embedded />
+                  </Suspense>
+                </NotificationPanelShell>
               </div>
 
               <button

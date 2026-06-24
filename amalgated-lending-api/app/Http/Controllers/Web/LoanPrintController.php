@@ -37,7 +37,7 @@ class LoanPrintController extends Controller
         ]);
 
         $documents = $loanApplication->documents ?? [];
-        $docStatus = LoanApplicationDocumentStatus::forGeneralLoanType($loanApplication->loan_type, $documents);
+        $docStatus = LoanApplicationDocumentStatus::forApplication($loanApplication);
 
         // Merge loan.application_payload with form_data so print matches admin/submitted data without gaps;
         // form_data wins on key conflicts.

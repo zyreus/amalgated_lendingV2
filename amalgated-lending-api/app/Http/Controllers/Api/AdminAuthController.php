@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\AuthSecurityRecorder;
+use App\Services\SecurityPolicyService;
 use App\Support\AuthRateLimit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,6 +14,10 @@ use Illuminate\Support\Facades\Hash;
 
 class AdminAuthController extends Controller
 {
+    public function __construct(private SecurityPolicyService $securityPolicy)
+    {
+    }
+
     private function chatApiSecret(): ?string
     {
         $secret = trim((string) config('app.lending_admin_api_secret', ''));
@@ -45,6 +50,8 @@ class AdminAuthController extends Controller
             return response()->json(['ok' => false, 'message' => 'Only staff accounts can use admin login.'], 403);
         }
 
+        $ttlMinutes = $this->securityPolicy->sessionTimeoutMinutes();
+        auth('api')->factory()->setTTL($ttlMinutes);
         $token = auth('api')->login($user);
         /** @var User $authUser */
         $authUser = auth('api')->user();
@@ -58,7 +65,7 @@ class AdminAuthController extends Controller
             'token' => $token,
             'access_token' => $token,
             'token_type' => 'bearer',
-            'expires_in' => auth('api')->factory()->getTTL() * 60,
+            'expires_in' => $ttlMinutes * 60,
             'user' => $authUser->toAuthPayload(),
         ]);
     }

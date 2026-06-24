@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\LoanProduct;
 use App\Services\LoanCalculationEngine;
+use App\Services\PensionLoanCapacityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -14,6 +15,7 @@ class LoanProductController extends Controller
 {
     public function __construct(
         private readonly LoanCalculationEngine $loanEngine,
+        private readonly PensionLoanCapacityService $pensionCapacity,
     ) {}
 
     /** Public: active products only */
@@ -135,10 +137,29 @@ class LoanProductController extends Controller
                 'monthly_pension' => 'required|numeric|min:0',
             ]);
             $pension = (float) $request->input('monthly_pension');
-            $mult = (float) ($cfg['pension_multiplier'] ?? 10);
-            $cap = (float) ($cfg['max_principal'] ?? 500000);
-            $principal = min($pension * $mult, $cap);
+            $estimate = $this->pensionCapacity->estimateFromPension($product, [
+                'monthly_pension' => $pension,
+                'term_months' => $term,
+                'application_nature' => (string) $request->input('application_nature', 'new'),
+                'pension_type' => $request->input('pension_type'),
+            ]);
+            $principal = (float) ($estimate['estimated_loanable_amount'] ?? 0);
             $mode = 'pension';
+            if ($principal <= 0) {
+                return response()->json([
+                    'ok' => true,
+                    'calculator_mode' => $mode,
+                    'estimated_loanable_amount' => 0,
+                    'monthly_amortization' => 0,
+                    'term_months' => $term,
+                    'eligible' => false,
+                    'monthly_pension' => round($pension, 2),
+                    'remaining_pension' => (float) ($estimate['remaining_pension'] ?? $pension),
+                    'minimum_remaining_pension' => $estimate['minimum_remaining_pension'] ?? null,
+                    'maximum_deduction_allowed' => $estimate['maximum_deduction_allowed'] ?? null,
+                    'message' => $estimate['message'] ?? 'Adjust monthly pension or term to estimate principal.',
+                ]);
+            }
         } else {
             $request->validate([
                 'principal' => 'required|numeric|min:0|max:100000000',
@@ -237,6 +258,20 @@ class LoanProductController extends Controller
             'term_months' => $term,
             'interest_rate_monthly_percent' => round($monthlyRatePercent, 4),
         ];
+
+        if ($pensionMode) {
+            $payload['eligible'] = (bool) ($breakdown['pension_compliance_ok'] ?? true);
+            $payload['monthly_pension'] = round((float) $request->input('monthly_pension'), 2);
+            $payload['monthly_principal_component'] = round($principalPart, 2);
+            $payload['monthly_interest_component'] = round($interestPart, 2);
+            $payload['monthly_deduction'] = round($monthly, 2);
+            $payload['remaining_pension'] = isset($breakdown['remaining_pension']) ? round((float) $breakdown['remaining_pension'], 2) : null;
+            $payload['minimum_remaining_pension'] = isset($breakdown['pension_retention_threshold']) ? round((float) $breakdown['pension_retention_threshold'], 2) : null;
+            $payload['maximum_deduction_allowed'] = $payload['minimum_remaining_pension'] !== null
+                ? round(max(0, $payload['monthly_pension'] - $payload['minimum_remaining_pension']), 2)
+                : null;
+            $payload['note'] = 'Pension loan: amount derived from pension capacity, retention buffer, and product rules.';
+        }
 
         if ($feeProfile === 'travel') {
             $payload['monthly_interest_component'] = round($interestPart, 2);

@@ -1,0 +1,1 @@
+import{j as t}from"./vendor-CbldgrQw.js";import{P as o}from"./ProductLoanApplicationPage-TqO2Lr3S.js";import"./index-eoDPAsWi.js";import"./PrivacyConsentCheckbox-B-0g9lkv.js";import"./LoanApplicationUi-BDAfo_Yr.js";import"./UniversalCoMakerModule-DpoRd0Ra.js";import"./sssLoanCalculator-BPaZmwWn.js";function l(){return t.jsx(o,{loanType:"chattel"})}export{l as default};

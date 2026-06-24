@@ -86,7 +86,12 @@ export function AdminApiAuthProvider({ children }) {
   const can = useCallback(
     (slug) => {
       if (!user?.permissions?.length) return false
-      return user.permissions.some((p) => p.slug === slug)
+      const has = (s) => user.permissions.some((p) => p.slug === s)
+      if (slug === 'settings.view') {
+        if (has('settings.manage') || has('settings.view')) return true
+        return user.permissions.some((p) => p.slug.startsWith('settings.') && p.slug.endsWith('.manage'))
+      }
+      return has(slug)
     },
     [user],
   )

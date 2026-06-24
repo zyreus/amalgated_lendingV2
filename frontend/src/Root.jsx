@@ -51,7 +51,18 @@ const LoanDetailPage = lazy(() => import('./admin/pages/LoanDetailPage.jsx'))
 const TravelLoanApplicationsPage = lazy(() => import('./admin/pages/TravelLoanApplicationsPage.jsx'))
 const PaymentsPage = lazy(() => import('./admin/pages/PaymentsPage.jsx'))
 const AdminSoaManagementPage = lazy(() => import('./admin/pages/AdminSoaManagementPage.jsx'))
-const SettingsPage = lazy(() => import('./admin/pages/SettingsPage.jsx'))
+const SettingsLayout = lazy(() => import('./admin/settings/SettingsLayout.jsx'))
+const SettingsHubPage = lazy(() => import('./admin/settings/SettingsHubPage.jsx'))
+const GeneralSettingsPage = lazy(() => import('./admin/settings/pages/GeneralSettingsPage.jsx'))
+const UserManagementHubPage = lazy(() => import('./admin/settings/pages/UserManagementHubPage.jsx'))
+const LoanSettingsPage = lazy(() => import('./admin/settings/pages/LoanSettingsPage.jsx'))
+const CollectionSettingsPage = lazy(() => import('./admin/settings/pages/CollectionSettingsPage.jsx'))
+const FinancialSettingsPage = lazy(() => import('./admin/settings/pages/FinancialSettingsPage.jsx'))
+const CommunicationSettingsPage = lazy(() => import('./admin/settings/pages/CommunicationSettingsPage.jsx'))
+const DocumentSettingsHubPage = lazy(() => import('./admin/settings/pages/DocumentSettingsHubPage.jsx'))
+const OperationsSettingsPage = lazy(() => import('./admin/settings/pages/OperationsSettingsPage.jsx'))
+const SecuritySettingsPage = lazy(() => import('./admin/settings/pages/SecuritySettingsPage.jsx'))
+const SystemSettingsPage = lazy(() => import('./admin/settings/pages/SystemSettingsPage.jsx'))
 const ActivityPage = lazy(() => import('./admin/pages/ActivityPage.jsx'))
 const BorrowersPage = lazy(() => import('./admin/pages/BorrowersPage.jsx'))
 const ArchivedBorrowersPage = lazy(() => import('./admin/pages/ArchivedBorrowersPage.jsx'))
@@ -221,7 +232,19 @@ export default function Root() {
                     <Route path="soa" element={<AdminSoaManagementPage />} />
                     <Route path="newsletter" element={<NewsletterPage />} />
                     <Route path="cms" element={<Navigate to="/admin/dashboard" replace />} />
-                    <Route path="settings" element={<SettingsPage />} />
+                    <Route path="settings" element={<SettingsLayout />}>
+                      <Route index element={<SettingsHubPage />} />
+                      <Route path="general" element={<GeneralSettingsPage />} />
+                      <Route path="users" element={<UserManagementHubPage />} />
+                      <Route path="loans" element={<LoanSettingsPage />} />
+                      <Route path="collections" element={<CollectionSettingsPage />} />
+                      <Route path="financial" element={<FinancialSettingsPage />} />
+                      <Route path="communication" element={<CommunicationSettingsPage />} />
+                      <Route path="documents" element={<DocumentSettingsHubPage />} />
+                      <Route path="operations" element={<OperationsSettingsPage />} />
+                      <Route path="security" element={<SecuritySettingsPage />} />
+                      <Route path="system" element={<SystemSettingsPage />} />
+                    </Route>
                     <Route path="activity" element={<ActivityPage />} />
                     <Route path="notifications" element={<NotificationsPage />} />
                     <Route path="chat-crm" element={<AdminChatCRM />} />

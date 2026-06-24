@@ -33,6 +33,18 @@ class LoanListResource extends JsonResource
             'loan_number' => $this->loan_number,
             'principal' => (float) $this->principal,
             'requested_principal' => $this->requested_principal !== null ? (float) $this->requested_principal : null,
+            'approved_principal' => $this->approved_principal !== null ? (float) $this->approved_principal : null,
+            'applied_principal' => (float) $this->applied_principal,
+            'effective_approved_principal' => (float) $this->effective_approved_principal,
+            'loan_to_value_ratio' => $this->loan_to_value_ratio,
+            'approval_notes' => $this->approval_notes,
+            'amount_modified_at' => optional($this->amount_modified_at)?->toIso8601String(),
+            'amount_modifier' => $this->whenLoaded('amountModifier', function () {
+                return [
+                    'id' => $this->amountModifier?->id,
+                    'name' => $this->amountModifier?->name,
+                ];
+            }),
             'term_months' => (int) $this->term_months,
             'annual_interest_rate' => (float) $this->annual_interest_rate,
             'loan_product_slug' => $snippet['loan_product_slug'] ?? null,

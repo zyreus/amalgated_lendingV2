@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { ArrowLeft, AtSign, KeyRound } from 'lucide-react'
 import { LoadingButton, FormLoadingOverlay } from '../../components/loading'
 import { useBorrowerAuth } from '../context/useBorrowerAuth.js'
+import { throttleMessage, useAuthThrottleCountdown } from '../../utils/authThrottleUi.js'
 
 function textInputClass(disabled = false) {
   return `w-full rounded-xl border border-gray-200 bg-white py-3 pl-11 pr-4 text-sm text-gray-900 shadow-sm outline-none transition placeholder:text-gray-400 hover:border-gray-300 focus:border-brand-primary/60 focus:ring-2 focus:ring-brand-primary/15 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#1F2937] dark:bg-[#0F172A] dark:text-gray-100 dark:placeholder:text-gray-500 dark:hover:border-[#374151]`
@@ -28,9 +29,11 @@ export default function BorrowerForgotPasswordPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
+  const { retrySeconds, lockedOut, applyThrottleError } = useAuthThrottleCountdown('password_reset')
 
   const onSubmit = async (e) => {
     e.preventDefault()
+    if (loading || lockedOut) return
     setLoading(true)
     setErrorMsg('')
     setMessage('')
@@ -40,11 +43,14 @@ export default function BorrowerForgotPasswordPage() {
       setMessage(res.message || 'If the account exists, a reset OTP was sent.')
       setTimeout(() => navigate(`/borrower/reset-password?identifier=${encodeURIComponent(trimmedIdentifier)}`), 600)
     } catch (err) {
-      setErrorMsg(err.message || 'Request failed.')
+      const throttleMsg = applyThrottleError(err)
+      setErrorMsg(throttleMsg || err.message || 'Request failed.')
     } finally {
       setLoading(false)
     }
   }
+
+  const displayError = lockedOut ? throttleMessage(retrySeconds, 'password_reset') : errorMsg
 
   return (
     <div className="relative flex min-h-screen flex-col page-shell-bg text-gray-900 transition-colors duration-300">
@@ -92,24 +98,27 @@ export default function BorrowerForgotPasswordPage() {
                     value={identifier}
                     onChange={(e) => {
                       setIdentifier(e.target.value)
-                      setErrorMsg('')
-                      setMessage('')
+                      if (!lockedOut) {
+                        setErrorMsg('')
+                        setMessage('')
+                      }
                     }}
                     required
                     placeholder="Enter email or mobile number"
                     inputMode="email"
                     autoComplete="username"
-                    disabled={loading}
+                    disabled={loading || lockedOut}
                     className={textInputClass(loading)}
                   />
                 </Field>
 
-                {errorMsg ? (
+                {displayError ? (
                   <p
                     className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300"
                     role="alert"
+                    aria-live="polite"
                   >
-                    {errorMsg}
+                    {displayError}
                   </p>
                 ) : null}
 
@@ -123,10 +132,11 @@ export default function BorrowerForgotPasswordPage() {
                   type="submit"
                   loading={loading}
                   loadingKey="send"
+                  disabled={lockedOut}
                   minWidth="100%"
-                  className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white transition hover:bg-brand-primary-hover"
+                  className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white transition hover:bg-brand-primary-hover disabled:opacity-60"
                 >
-                  Send reset OTP
+                  {lockedOut ? `Try again in ${retrySeconds}s` : 'Send reset OTP'}
                 </LoadingButton>
               </form>
             </FormLoadingOverlay>

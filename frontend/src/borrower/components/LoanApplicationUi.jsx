@@ -61,7 +61,6 @@ const FIELD_PLACEHOLDERS = {
   complete_address: 'House no., street, barangay, city',
   property_address: 'Full property location',
   company_address: 'Office or business address',
-  loan_amount: 'e.g. 500000',
   term_months: 'e.g. 12',
   monthly_income: 'e.g. 35000',
   monthly_gross_salary: 'e.g. 45000',
@@ -322,15 +321,48 @@ export function ComputationCard({ breakdown }) {
   )
 }
 
-export function DocumentUploadZone({ docKey, meta, dragging, onDragState, onUpload, uploadedUrls, resolveUrl }) {
-  const uploaded = uploadedUrls?.length > 0
+export function DocumentUploadZone({
+  docKey,
+  meta,
+  dragging,
+  onDragState,
+  onUpload,
+  onRemove,
+  uploadedItems = [],
+  resolveUrl,
+  uploading = false,
+  uploadProgress = 0,
+  canRemove = true,
+  maxMb = 20,
+}) {
+  const fileCount = uploadedItems?.length || 0
+  const uploaded = fileCount > 0
+  const multiple = meta?.multiple !== false
+
+  const handleFiles = (fileList) => {
+    if (!fileList?.length) return
+    const files = multiple ? Array.from(fileList) : [fileList[0]]
+    files.forEach((file) => {
+      if (file) onUpload(docKey, file)
+    })
+  }
+
   return (
     <li className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-[#1F2937] dark:bg-[#0F172A]/30">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{meta.label}</p>
+          {meta.description ? (
+            <p className="mt-1 text-xs leading-relaxed text-gray-600 dark:text-gray-400">{meta.description}</p>
+          ) : null}
+          {Array.isArray(meta.accepted) && meta.accepted.length ? (
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Accepted: {meta.accepted.join(' · ')}
+            </p>
+          ) : null}
           <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
             {meta.required ? 'Required document' : 'Optional document'}
+            {multiple ? ' · Multiple files allowed' : ''}
           </p>
         </div>
         <span
@@ -340,7 +372,7 @@ export function DocumentUploadZone({ docKey, meta, dragging, onDragState, onUplo
               : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
           }`}
         >
-          {uploaded ? 'Uploaded' : 'Pending'}
+          {uploaded ? `${fileCount} file${fileCount === 1 ? '' : 's'}` : 'Pending'}
         </span>
       </div>
       <label
@@ -352,8 +384,7 @@ export function DocumentUploadZone({ docKey, meta, dragging, onDragState, onUplo
         onDrop={(e) => {
           e.preventDefault()
           onDragState('')
-          const dropped = e.dataTransfer?.files?.[0]
-          if (dropped) onUpload(docKey, dropped)
+          handleFiles(e.dataTransfer?.files)
         }}
         className={`mt-3 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-4 py-6 text-center transition ${
           dragging
@@ -364,21 +395,68 @@ export function DocumentUploadZone({ docKey, meta, dragging, onDragState, onUplo
         <input
           type="file"
           accept=".pdf,.jpg,.jpeg,.png"
+          multiple={multiple}
           className="hidden"
-          onChange={(e) => onUpload(docKey, e.target.files?.[0])}
+          onChange={(e) => {
+            handleFiles(e.target.files)
+            e.target.value = ''
+          }}
         />
         <FileUp className="mb-2 size-5 text-brand-primary/80" />
-        <span className="text-sm font-medium text-gray-800 dark:text-gray-100">Drag & drop or browse</span>
-        <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">PDF, JPG, or PNG · max 15 MB</span>
+        <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
+          Drag & drop or browse{multiple ? ' (multi-select)' : ''}
+        </span>
+        <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">PDF, JPG, JPEG, or PNG · max {maxMb} MB per file</span>
       </label>
+      {uploading ? (
+        <div className="mt-3">
+          <div className="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <div
+              className="h-full rounded-full bg-brand-primary transition-all duration-300"
+              style={{ width: `${Math.min(100, uploadProgress)}%` }}
+            />
+          </div>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Uploading… {uploadProgress > 0 ? `${uploadProgress}%` : ''}</p>
+        </div>
+      ) : null}
       {uploaded ? (
-        <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-400">
-          {uploadedUrls.map((u) => (
-            <a key={u} href={resolveUrl(u)} target="_blank" rel="noreferrer" className="mr-2 underline">
-              View file
-            </a>
-          ))}
-        </p>
+        <ul className="mt-3 space-y-2">
+          {uploadedItems.map((item, idx) => {
+            const url = resolveUrl(item.url || item)
+            const path = item.path || null
+            const name = item.name || item.original_name || `File ${idx + 1}`
+            const isImage = /\.(jpe?g|png)$/i.test(name) || String(item.mime_type || '').startsWith('image/')
+            return (
+              <li
+                key={path || url || idx}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2 text-xs dark:border-[#1F2937] dark:bg-[#0F172A]/40"
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  {isImage && url ? (
+                    <img src={url} alt="" className="size-10 rounded object-cover" />
+                  ) : null}
+                  <a href={url} target="_blank" rel="noreferrer" className="truncate font-medium text-brand-primary hover:underline">
+                    {name}
+                  </a>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a href={url} target="_blank" rel="noreferrer" className="text-gray-600 hover:underline dark:text-gray-300">
+                    Download
+                  </a>
+                  {canRemove && onRemove && path ? (
+                    <button
+                      type="button"
+                      onClick={() => onRemove(docKey, path)}
+                      className="font-medium text-red-600 hover:underline dark:text-red-400"
+                    >
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
       ) : null}
     </li>
   )
@@ -408,5 +486,77 @@ export function ReviewGrid({ items }) {
         </div>
       ))}
     </dl>
+  )
+}
+
+function formatEvaluationPeso(value) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return '—'
+  return `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function formatEvaluationStatus(status) {
+  const s = String(status || '').toLowerCase()
+  if (s === 'evaluated') return 'Evaluated'
+  if (s === 'pending') return 'Pending evaluation'
+  return s ? s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Pending evaluation'
+}
+
+function formatApprovalStatus(status) {
+  const s = String(status || '').toLowerCase().replace(/_/g, '-')
+  const map = {
+    pending: 'Pending review',
+    'for-evaluation': 'For evaluation',
+    'under-review': 'Under review',
+    'partially-approved': 'Partially approved',
+    approved: 'Approved',
+    rejected: 'Rejected',
+    released: 'Released',
+    ongoing: 'Ongoing',
+  }
+  return map[s] || (status ? String(status).replace(/_/g, ' ') : '—')
+}
+
+/** Read-only loan evaluation summary for borrowers after staff review. */
+export function LoanEvaluationSummaryCard({ evaluation }) {
+  if (!evaluation) return null
+
+  const evaluated = evaluation.status === 'evaluated' || Number(evaluation.approved_loan_amount) > 0
+
+  return (
+    <div className="rounded-2xl border border-blue-200/80 bg-blue-50/50 p-4 dark:border-blue-800/40 dark:bg-blue-900/15">
+      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Loan evaluation</h4>
+      <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+        {evaluated
+          ? 'Your application has been evaluated by our team. Amounts below are read-only.'
+          : 'Your application is under review. The final loan amount will be determined after evaluation.'}
+      </p>
+      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div>
+          <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Evaluation status</dt>
+          <dd className="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100">{formatEvaluationStatus(evaluation.status)}</dd>
+        </div>
+        <div>
+          <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Approval status</dt>
+          <dd className="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100">{formatApprovalStatus(evaluation.approval_status)}</dd>
+        </div>
+        <div>
+          <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Approved loan amount</dt>
+          <dd className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{formatEvaluationPeso(evaluation.approved_loan_amount)}</dd>
+        </div>
+        {evaluation.evaluated_at ? (
+          <div>
+            <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Evaluated on</dt>
+            <dd className="mt-1 text-sm text-gray-900 dark:text-gray-100">{new Date(evaluation.evaluated_at).toLocaleString()}</dd>
+          </div>
+        ) : null}
+        {evaluation.evaluation_remarks ? (
+          <div className="sm:col-span-2">
+            <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Evaluation remarks</dt>
+            <dd className="mt-1 text-sm text-gray-800 dark:text-gray-200">{evaluation.evaluation_remarks}</dd>
+          </div>
+        ) : null}
+      </dl>
+    </div>
   )
 }

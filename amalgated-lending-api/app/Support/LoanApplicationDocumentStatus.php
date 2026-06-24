@@ -2,11 +2,26 @@
 
 namespace App\Support;
 
+use App\Models\LoanApplication;
+use App\Services\LoanProductDocumentRequirementsService;
+
 /**
  * Checklist helpers for print views and borrower API (uploaded vs missing).
  */
 class LoanApplicationDocumentStatus
 {
+    /**
+     * Product-aware checklist (pension loans honor loan_products.rules.document_requirements).
+     *
+     * @return array<string, array{label: string, ok: bool, paths: array<int, string>, required: bool, description?: ?string}>
+     */
+    public static function forApplication(LoanApplication $app): array
+    {
+        $defs = app(LoanProductDocumentRequirementsService::class)->definitionsForApplication($app);
+
+        return self::buildStatus($defs, $app->documents ?? []);
+    }
+
     /**
      * @param  array<string, mixed>|null  $documents  JSON from loan_applications.documents
      * @return array<string, array{label: string, ok: bool, paths: array<int, string>}>
@@ -15,11 +30,21 @@ class LoanApplicationDocumentStatus
     {
         $loanType = $loanType ?: '';
         $documents = $documents ?? [];
-        $defs = config('amalgated_loans.general_documents.'.$loanType, []);
-        if ($loanType === 'travel_assistance') {
-            $defs = self::travelDefinitionsForPurpose(null);
-        }
+        $defs = app(LoanProductDocumentRequirementsService::class)->definitions($loanType, null);
+
+        return self::buildStatus($defs, $documents);
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $defs
+     * @param  array<string, mixed>|null  $documents
+     * @return array<string, array{label: string, ok: bool, paths: array<int, string>, required: bool, description?: ?string}>
+     */
+    private static function buildStatus(array $defs, ?array $documents): array
+    {
+        $documents = $documents ?? [];
         $out = [];
+
         foreach ($defs as $key => $meta) {
             $paths = $documents[$key] ?? null;
             $list = [];
@@ -30,11 +55,16 @@ class LoanApplicationDocumentStatus
             }
             $required = (bool) ($meta['required'] ?? false);
             $ok = ! $required || count($list) > 0;
-            $out[$key] = [
+            $row = [
                 'label' => (string) ($meta['label'] ?? $key),
                 'ok' => $ok,
                 'paths' => $list,
+                'required' => $required,
             ];
+            if (! empty($meta['description'])) {
+                $row['description'] = (string) $meta['description'];
+            }
+            $out[$key] = $row;
         }
 
         return $out;

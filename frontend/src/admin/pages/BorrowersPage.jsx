@@ -57,9 +57,18 @@ function fallbackAvatar(name) {
 }
 
 const ONGOING_LOAN_DELETE_MESSAGE = 'This borrower cannot be deleted because they still have an ongoing loan.'
+const ARCHIVE_REQUIRES_NO_LOANS_MESSAGE = 'Only borrowers with no loans can be archived.'
 
 function hasOngoingLoan(borrower) {
   return Boolean(borrower?.has_ongoing_loan)
+}
+
+function canArchiveBorrower(borrower) {
+  return Number(borrower?.loans_count ?? 0) === 0
+}
+
+function canManageBorrowerArchive(can) {
+  return can('borrowers.archive') || can('borrowers.delete')
 }
 
 export default function BorrowersPage() {
@@ -95,7 +104,11 @@ export default function BorrowersPage() {
   const rows = data?.data || []
 
   const openArchiveConfirm = (b) => {
-    if (!can('borrowers.archive') || actionLoadingId) return
+    if (!canManageBorrowerArchive(can) || actionLoadingId) return
+    if (!canArchiveBorrower(b)) {
+      showToast(ARCHIVE_REQUIRES_NO_LOANS_MESSAGE, 'error')
+      return
+    }
     setConfirmAction({ type: 'archive', borrower: b })
   }
 
@@ -109,7 +122,11 @@ export default function BorrowersPage() {
   }
 
   const handleArchive = async (b) => {
-    if (!can('borrowers.archive') || actionLoadingId) return
+    if (!canManageBorrowerArchive(can) || actionLoadingId) return
+    if (!canArchiveBorrower(b)) {
+      showToast(ARCHIVE_REQUIRES_NO_LOANS_MESSAGE, 'error')
+      return
+    }
     setActionLoadingId(b.id)
     try {
       await api(`/borrowers/${b.id}/archive`, { method: 'POST', body: '{}' })
@@ -147,7 +164,7 @@ export default function BorrowersPage() {
   const confirmDescription =
     confirmAction?.type === 'delete'
       ? 'This moves the borrower to Archived Borrowers as Deleted Pending. Permanent deletion is only available from the archive.'
-      : 'Are you sure you want to archive this borrower?'
+      : 'Archive this borrower? They have no loans and will move to Archived Borrowers.'
 
   return (
     <div className="w-full min-w-0 space-y-6">
@@ -276,7 +293,7 @@ export default function BorrowersPage() {
                   <Eye className="h-4 w-4" />
                   View
                 </Link>
-                {can('borrowers.archive') ? (
+                {canManageBorrowerArchive(can) && canArchiveBorrower(b) ? (
                   <button
                     type="button"
                     disabled={actionLoadingId === b.id}
@@ -397,7 +414,7 @@ export default function BorrowersPage() {
                         <Eye className="h-4 w-4" />
                         View
                       </Link>
-                      {can('borrowers.archive') ? (
+                      {canManageBorrowerArchive(can) && canArchiveBorrower(b) ? (
                         <button
                           type="button"
                           disabled={actionLoadingId === b.id}

@@ -15,15 +15,16 @@ import WellnessProgressTimeline from '../../components/wellness/WellnessProgress
 import FinancialTips from '../../components/wellness/FinancialTips.jsx'
 import LoanEligibilityInsights, { UpcomingMilestones } from '../../components/wellness/LoanEligibilityInsights.jsx'
 import WellnessAlertsPanel from '../../components/wellness/WellnessAlertsPanel.jsx'
-import { getCreditRating, computeWellnessAlerts } from '../../components/wellness/wellnessUtils.js'
+import { getCreditRating, computeWellnessAlerts, formatCategory, formatRepaymentHint, formatPaymentStreak } from '../../components/wellness/wellnessUtils.js'
 const CreditWellnessChart = lazy(() => import('../components/CreditWellnessChart.jsx'))
 
 const CATEGORY_LABELS = {
   excellent: 'Excellent',
   good: 'Good',
   fair: 'Fair',
-  at_risk: 'At Risk',
-  critical: 'Critical',
+  at_risk: 'Poor',
+  critical: 'Very Poor',
+  insufficient: 'Insufficient data',
 }
 
 const HEALTH_LABELS = {
@@ -32,10 +33,6 @@ const HEALTH_LABELS = {
   delayed: 'Delayed',
   high_risk: 'High Risk',
   default_risk: 'Default Risk',
-}
-
-function formatCategory(cat) {
-  return CATEGORY_LABELS[cat] || (cat ? String(cat).replace(/_/g, ' ') : '—')
 }
 
 function formatHealth(status) {
@@ -93,6 +90,7 @@ export default function BorrowerCreditHealthPage() {
 
   const score = data?.wellness_score ?? 0
   const prevScore = data?.history?.[1]?.score
+  const insufficient = data?.insufficient_data || data?.score_category === 'insufficient'
 
   if (loading && !data) {
     return (
@@ -139,7 +137,7 @@ export default function BorrowerCreditHealthPage() {
 
       <Box className="flex flex-wrap items-center gap-3">
         <RiskBadge level={data?.default_risk_level || data?.risk_level} size="lg" />
-        <BorrowerTierBadge score={score} />
+        <BorrowerTierBadge score={insufficient ? 0 : score} />
         {data?.improvement_trend ? <TrendIndicator trend={data.improvement_trend} /> : null}
         {data?.credit_score != null ? (
           <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-300">
@@ -151,17 +149,17 @@ export default function BorrowerCreditHealthPage() {
       <Box className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiStat
           label="Credit wellness score"
-          value={data ? `${data.wellness_score}/100` : '—'}
+          value={insufficient ? 'Insufficient data' : data ? `${data.wellness_score}/100` : '—'}
           hint={formatCategory(data?.score_category)}
         />
         <KpiStat
-          label="Repayment success rate"
-          value={data ? `${Number(data.repayment_rate).toFixed(0)}%` : '—'}
-          hint="On-time vs evaluated payments"
+          label="Repayment rate"
+          value={data && !insufficient ? `${Number(data.repayment_rate).toFixed(0)}%` : '—'}
+          hint={formatRepaymentHint(data)}
         />
         <KpiStat
           label="Payment streak"
-          value={data?.payment_streak ?? 0}
+          value={insufficient ? '—' : formatPaymentStreak(data?.payment_streak ?? 0)}
           hint="Consecutive on-time payments"
         />
         <KpiStat
@@ -174,7 +172,7 @@ export default function BorrowerCreditHealthPage() {
       <Box className="grid gap-6 lg:grid-cols-2">
         <PortalCard title="Wellness overview" subtitle={data?.improvement_trend ? `Trend: ${data.improvement_trend}` : undefined}>
           <div className="flex flex-col items-center justify-center gap-4 py-6 text-center sm:flex-row sm:text-left">
-            <WellnessScoreGauge score={score} category={data?.score_category} />
+            <WellnessScoreGauge score={score} category={data?.score_category} insufficient={insufficient} />
             <div className="max-w-sm space-y-2 text-sm text-gray-600 dark:text-gray-400">
               {user?.email ? (
                 <p>

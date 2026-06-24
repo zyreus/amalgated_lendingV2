@@ -14,6 +14,7 @@ use App\Models\SoaStatement;
 use App\Models\TravelApplication;
 use App\Models\User;
 use App\Services\BorrowerChatLeadService;
+use App\Services\CreditWellnessService;
 use App\Services\NotificationCenter;
 use App\Services\PaymentReceiptPdfService;
 use App\Support\LoanApplicationDocumentStatus;
@@ -71,6 +72,9 @@ class BorrowerPortalController extends Controller
 
         $out = [];
         foreach ($formData as $key => $value) {
+            if (in_array($key, ['loan_amount', 'requested_loan_amount', 'prospected_loan_amount'], true)) {
+                continue;
+            }
             if (is_array($value) || is_object($value) || $value === null || $value === '') {
                 continue;
             }
@@ -189,6 +193,7 @@ class BorrowerPortalController extends Controller
                     'borrower_id',
                     'principal',
                     'requested_principal',
+                    'approved_principal',
                     'term_months',
                     'annual_interest_rate',
                     'status',
@@ -213,6 +218,7 @@ class BorrowerPortalController extends Controller
                     'borrower_id',
                     'principal',
                     'requested_principal',
+                    'approved_principal',
                     'term_months',
                     'annual_interest_rate',
                     'status',
@@ -260,7 +266,7 @@ class BorrowerPortalController extends Controller
                         ])
                         ->with(['encodedByUser:id,name', 'recordedByUser:id,name', 'confirmedByUser:id,name'])
                         ->orderBy('due_date'),
-                    'loanApplication:id,loan_id,loan_type,loan_amount,approved_amount,monthly_pension',
+                    'loanApplication:id,loan_id,loan_type,loan_amount,monthly_pension',
                 ])
                 ->first();
         }
@@ -296,7 +302,8 @@ class BorrowerPortalController extends Controller
                 'status' => $l->status,
                 'principal' => $l->principal,
                 'requested_principal' => $l->requested_principal !== null ? (float) $l->requested_principal : null,
-                'applied_principal' => (float) ($l->requested_principal ?? $l->principal),
+                'approved_principal' => $l->approved_principal !== null ? (float) $l->approved_principal : null,
+                'applied_principal' => (float) ($l->approved_principal ?? $l->requested_principal ?? $l->principal),
                 'term_months' => $l->term_months,
                 'annual_interest_rate' => $l->annual_interest_rate,
                 'loan_product_slug' => $slug,
@@ -340,7 +347,12 @@ class BorrowerPortalController extends Controller
             ->map(fn (BorrowerNotification $n) => [
                 'id' => $n->id,
                 'type' => $n->type,
+                'category' => $n->category,
+                'title' => $n->title,
+                'body' => $n->body,
                 'read' => $n->read_at !== null,
+                'read_at' => $n->read_at?->toIso8601String(),
+                'created_at' => $n->created_at?->toIso8601String(),
                 'priority' => (int) ($n->priority ?? 2),
                 'message' => $n->body ? $n->title.' — '.$n->body : $n->title,
             ])
@@ -680,6 +692,7 @@ class BorrowerPortalController extends Controller
         }
 
         $user->save();
+        app(CreditWellnessService::class)->recalculateForUser($user, notify: false);
 
         return response()->json([
             'ok' => true,
@@ -1063,9 +1076,8 @@ class BorrowerPortalController extends Controller
      */
     private function serializeSubmittedGeneralLendingApplication(LoanApplication $a): array
     {
-        $docStatus = $a->loan_type === LoanApplication::TYPE_TRAVEL_ASSISTANCE
-            ? LoanApplicationDocumentStatus::forTravelPurpose((string) (($a->form_data ?? [])['travel_purpose'] ?? ''), $a->documents)
-            : LoanApplicationDocumentStatus::forGeneralLoanType($a->loan_type, $a->documents);
+        $a->loadMissing(['loan']);
+        $docStatus = LoanApplicationDocumentStatus::forApplication($a);
 
         return [
             'id' => $a->id,
@@ -1088,6 +1100,32 @@ class BorrowerPortalController extends Controller
                 'spouse' => $a->spouse_signature ? PublicStorageUrl::apiUrl($a->spouse_signature) : null,
                 'comaker' => $a->comaker_signature ? PublicStorageUrl::apiUrl($a->comaker_signature) : null,
             ],
+            'evaluation' => $this->serializeBorrowerEvaluationSummary($a),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeBorrowerEvaluationSummary(LoanApplication $app): array
+    {
+        $loan = $app->loan;
+        $approved = null;
+        if ($loan?->approved_principal !== null && (float) $loan->approved_principal > 0) {
+            $approved = round((float) $loan->approved_principal, 2);
+        } elseif ($app->approved_amount !== null && (float) $app->approved_amount > 0) {
+            $approved = round((float) $app->approved_amount, 2);
+        }
+
+        $remarks = trim((string) ($loan?->approval_notes ?? ''));
+        $evaluated = $approved !== null && $approved > 0;
+
+        return [
+            'status' => $evaluated ? 'evaluated' : 'pending',
+            'approval_status' => (string) ($loan?->status ?? $app->status),
+            'approved_loan_amount' => $approved,
+            'evaluation_remarks' => $remarks !== '' ? $remarks : null,
+            'evaluated_at' => $loan?->amount_modified_at?->toIso8601String(),
         ];
     }
 

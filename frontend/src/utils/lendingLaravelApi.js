@@ -348,6 +348,7 @@ export async function publicLaravelPost(path, body) {
     const err = new Error(msg || `HTTP ${res.status}`)
     err.status = res.status
     err.body = data
+    if (data.retry_after != null) err.retry_after = Number(data.retry_after)
     throw err
   }
   return data

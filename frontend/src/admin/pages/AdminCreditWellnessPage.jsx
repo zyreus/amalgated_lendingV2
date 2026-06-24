@@ -85,14 +85,16 @@ export default function AdminCreditWellnessPage() {
   }, [data])
 
   const trendChart = useMemo(() => {
-    const improving = data?.improving_borrowers?.length ?? 0
-    const highRisk = data?.high_risk_borrowers?.length ?? 0
+    const trend = data?.score_trend ?? []
+    if (trend.length > 0) {
+      return trend.map((row) => ({
+        date: row.date,
+        score: Number(row.score) || 0,
+      }))
+    }
     const avg = data?.avg_wellness_score ?? 0
-    return [
-      { date: 'Prior', score: Math.max(0, avg - 2) },
-      { date: 'Current', score: avg },
-      { date: 'Improving', score: avg + (improving > highRisk ? 1 : 0) },
-    ]
+    if (!avg) return []
+    return [{ date: 'Current', score: avg }]
   }, [data])
 
   const segs = data?.segments ?? {}
@@ -126,8 +128,8 @@ export default function AdminCreditWellnessPage() {
       {/* Primary KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <KpiCard label="Total borrowers" value={loading ? '…' : data?.total_borrowers ?? 0} />
-        <KpiCard label="Excellent" value={loading ? '…' : segs.excellent ?? 0} accent="text-emerald-600 dark:text-emerald-400" sub="Score 90+" />
-        <KpiCard label="Good" value={loading ? '…' : segs.good ?? 0} accent="text-green-600 dark:text-green-400" sub="Score 75–89" />
+        <KpiCard label="Excellent" value={loading ? '…' : segs.excellent ?? 0} accent="text-emerald-600 dark:text-emerald-400" sub="Score 85+" />
+        <KpiCard label="Good" value={loading ? '…' : segs.good ?? 0} accent="text-green-600 dark:text-green-400" sub="Score 75–84" />
         <KpiCard label="High-risk" value={loading ? '…' : data?.high_risk_borrowers?.length ?? 0} accent="text-red-600 dark:text-red-400" sub="At risk + critical" />
         <KpiCard label="Avg. wellness score" value={loading ? '…' : data?.avg_wellness_score ?? '—'} accent="text-brand-primary" />
         <KpiCard label="Delayed accounts" value={loading ? '…' : data?.delayed_accounts?.length ?? 0} accent="text-amber-600 dark:text-amber-400" />

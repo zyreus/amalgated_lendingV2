@@ -8,6 +8,7 @@ use App\Models\LoanHealthMetric;
 use App\Models\Payment;
 use App\Models\User;
 use App\Models\WellnessHistory;
+use App\Services\CreditWellnessAnalytics;
 use App\Services\CreditWellnessService;
 use App\Services\CreditScoreService;
 use App\Services\NotificationCenter;
@@ -126,6 +127,51 @@ class CreditWellnessServiceTest extends TestCase
             $table->json('snapshot')->nullable();
             $table->timestamp('recorded_at');
         });
+
+        Schema::create('borrower_profiles', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id');
+            $table->string('employment_status')->nullable();
+            $table->decimal('monthly_income', 12, 2)->nullable();
+            $table->string('phone_number')->nullable();
+            $table->text('address')->nullable();
+            $table->date('date_of_birth')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('loan_applications', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id');
+            $table->foreignId('loan_id')->nullable();
+            $table->string('status')->default('pending');
+            $table->decimal('loan_amount', 12, 2)->nullable();
+            $table->decimal('monthly_salary', 12, 2)->nullable();
+            $table->json('form_data')->nullable();
+            $table->json('documents')->nullable();
+            $table->timestamp('submitted_at')->nullable();
+            $table->boolean('is_submitted')->default(false);
+            $table->timestamps();
+        });
+
+        Schema::create('system_settings', function (Blueprint $table) {
+            $table->id();
+            $table->string('key')->unique();
+            $table->json('value')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('co_makers', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('loan_application_id');
+            $table->timestamps();
+        });
+
+        Schema::create('loan_documents', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('loan_application_id')->nullable();
+            $table->string('verification_status')->nullable();
+            $table->timestamps();
+        });
     }
 
     private function service(): CreditWellnessService
@@ -136,6 +182,7 @@ class CreditWellnessServiceTest extends TestCase
         return new CreditWellnessService(
             new CreditScoreService,
             $notifications,
+            new CreditWellnessAnalytics,
         );
     }
 

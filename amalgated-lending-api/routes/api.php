@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\BorrowerAuthController;
 use App\Http\Controllers\Api\BorrowerController;
 use App\Http\Controllers\Api\BorrowerEmailVerificationController;
 use App\Http\Controllers\Api\BorrowerLendingSignatureController;
+use App\Http\Controllers\Api\BorrowerCoMakerController;
 use App\Http\Controllers\Api\BorrowerLoanApplicationWizardController;
 use App\Http\Controllers\Api\BorrowerNotificationController;
 use App\Http\Controllers\Api\BorrowerPortalController;
@@ -33,7 +34,9 @@ use App\Http\Controllers\Api\InternalChatRagController;
 use App\Http\Controllers\Api\LivenessController;
 use App\Http\Controllers\Api\LoanApplicationController;
 use App\Http\Controllers\Api\LoanComputationController;
+use App\Http\Controllers\Api\CoMakerController;
 use App\Http\Controllers\Api\LoanController;
+use App\Http\Controllers\Api\LoanDocumentController;
 use App\Http\Controllers\Api\LoanProductController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\NavigationController;
@@ -183,7 +186,7 @@ Route::prefix('v1')->group(function () {
         ->middleware(['support.sync', 'throttle:120,1'])
         ->withoutMiddleware(['throttle:api']);
 
-    Route::middleware(['auth:api', 'active'])->group(function () {
+    Route::middleware(['auth:api', 'active', 'maintenance.app', 'session.timeout'])->group(function () {
         Route::get('/loan-applications/draft', [DocumentLoanApplicationController::class, 'currentDraft']);
         Route::get('/application/{documentLoanApplication}/print', [DocumentLoanApplicationController::class, 'printApplication']);
         Route::get('/loan-applications/{documentLoanApplication}', [DocumentLoanApplicationController::class, 'show']);
@@ -231,13 +234,27 @@ Route::prefix('v1')->group(function () {
         Route::middleware('permission:loans.approve')->group(function () {
             Route::post('/loans', [LoanController::class, 'store']);
             Route::patch('/loans/{loan}/document-review', [LoanController::class, 'patchDocumentReview']);
+            Route::patch('/loans/{loan}/property-appraisal', [LoanController::class, 'updatePropertyAppraisal']);
             Route::post('/applications/{loan}/pre-approve', [LoanController::class, 'preApprove']);
             Route::post('/applications/{loan}/return-to-pending', [LoanController::class, 'returnToPending']);
             Route::post('/loans/{loan}/approve', [LoanController::class, 'approve']);
             Route::post('/loans/{loan}/reject', [LoanController::class, 'reject']);
+            Route::get('/loans/{loan}/co-makers', [CoMakerController::class, 'index']);
+            Route::post('/loans/{loan}/co-makers', [CoMakerController::class, 'store']);
+            Route::put('/loans/{loan}/co-makers/{coMaker}', [CoMakerController::class, 'update']);
+            Route::delete('/loans/{loan}/co-makers/{coMaker}', [CoMakerController::class, 'destroy']);
+            Route::post('/loans/{loan}/co-makers/{coMaker}/review', [CoMakerController::class, 'review']);
+            Route::get('/loans/{loan}/documents', [LoanDocumentController::class, 'index']);
+            Route::post('/loans/{loan}/documents', [LoanDocumentController::class, 'store']);
+            Route::post('/loans/{loan}/documents/{document}/replace', [LoanDocumentController::class, 'replace']);
+            Route::delete('/loans/{loan}/documents/{document}', [LoanDocumentController::class, 'destroy']);
             Route::put('/loan/{loanApplication}', [TravelLoanApplicationAdminController::class, 'update']);
             Route::delete('/loan/{loanApplication}', [TravelLoanApplicationAdminController::class, 'destroy']);
             Route::post('/loan/{loanApplication}/receipt', [TravelLoanApplicationAdminController::class, 'upsertReceipt']);
+        });
+
+        Route::middleware('permission:loans.edit_amount|loans.approve')->group(function () {
+            Route::patch('/loans/{loan}/approved-amount', [LoanController::class, 'updateApprovedAmount']);
         });
 
         Route::middleware('permission:loans.view')->group(function () {
@@ -275,7 +292,7 @@ Route::prefix('v1')->group(function () {
             Route::delete('/borrowers/{borrower}/permanent', [BorrowerController::class, 'permanentDestroy']);
         });
 
-        Route::middleware('permission:borrowers.archive')->group(function () {
+        Route::middleware('permission:borrowers.archive|borrowers.delete')->group(function () {
             Route::post('/borrowers/{borrower}/archive', [BorrowerController::class, 'archive']);
         });
 
@@ -333,10 +350,15 @@ Route::prefix('v1')->group(function () {
             Route::get('/newsletter-subscribers', [CmsController::class, 'newsletterSubscribers']);
         });
 
-        Route::middleware('permission:settings.manage')->group(function () {
-            Route::get('/settings', [SystemSettingController::class, 'index']);
-            Route::get('/settings/{key}', [SystemSettingController::class, 'show']);
+        Route::get('/settings', [SystemSettingController::class, 'index']);
+        Route::get('/settings/{key}', [SystemSettingController::class, 'show']);
+
+        Route::middleware('settings.write')->group(function () {
+            Route::post('/settings/batch', [SystemSettingController::class, 'batchUpsert']);
             Route::post('/settings/{key}', [SystemSettingController::class, 'upsert']);
+        });
+
+        Route::middleware('permission:settings.manage|settings.communication.manage')->group(function () {
             Route::get('/admin/email/status', [AdminEmailController::class, 'status']);
             Route::get('/admin/email/health', [AdminEmailController::class, 'health']);
             Route::get('/admin/email/logs', [AdminEmailController::class, 'logs']);
@@ -488,6 +510,12 @@ Route::prefix('v1')->group(function () {
         Route::patch('/loan-applications/{loanApplication}', [BorrowerLoanApplicationWizardController::class, 'update']);
         Route::post('/loan-applications/{loanApplication}/documents/{docKey}', [BorrowerLoanApplicationWizardController::class, 'uploadDocument']);
         Route::delete('/loan-applications/{loanApplication}/documents/{docKey}', [BorrowerLoanApplicationWizardController::class, 'removeDocument']);
+        Route::get('/loan-applications/{loanApplication}/co-makers', [BorrowerCoMakerController::class, 'index']);
+        Route::post('/loan-applications/{loanApplication}/co-makers', [BorrowerCoMakerController::class, 'store']);
+        Route::put('/loan-applications/{loanApplication}/co-makers/{coMaker}', [BorrowerCoMakerController::class, 'update']);
+        Route::delete('/loan-applications/{loanApplication}/co-makers/{coMaker}', [BorrowerCoMakerController::class, 'destroy']);
+        Route::post('/loan-applications/{loanApplication}/co-makers/{coMaker}/documents/{category}', [BorrowerCoMakerController::class, 'uploadDocument']);
+        Route::delete('/loan-applications/{loanApplication}/co-makers/{coMaker}/documents/{document}', [BorrowerCoMakerController::class, 'destroyDocument']);
         Route::post('/loan-applications/{loanApplication}/validate-step', [BorrowerLoanApplicationWizardController::class, 'validateStep']);
         Route::post('/loan-applications/{loanApplication}/signature', [BorrowerLoanApplicationWizardController::class, 'saveSignature']);
         Route::post('/loan-applications/{loanApplication}/submit', [BorrowerLoanApplicationWizardController::class, 'submit']);

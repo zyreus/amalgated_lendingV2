@@ -1,11 +1,12 @@
-/** Shared wellness display helpers — derived from existing API fields, no business logic changes. */
+/** Shared wellness display helpers — values come from the credit wellness API. */
 
 export const CATEGORY_LABELS = {
   excellent: 'Excellent',
   good: 'Good',
   fair: 'Fair',
-  at_risk: 'At Risk',
-  critical: 'Critical',
+  at_risk: 'Poor',
+  critical: 'Very Poor',
+  insufficient: 'Insufficient data',
 }
 
 export const CATEGORY_COLORS = {
@@ -14,6 +15,7 @@ export const CATEGORY_COLORS = {
   fair: '#fbbf24',
   at_risk: '#f97316',
   critical: '#ef4444',
+  insufficient: '#94a3b8',
 }
 
 export const TIER_CONFIG = {
@@ -44,16 +46,20 @@ export const LOAN_RECOMMENDATION = {
 }
 
 export const ACHIEVEMENT_DEFS = {
-  perfect_payer: { label: 'Perfect Payer', desc: '100% repayment success rate', icon: '★' },
-  trusted_borrower: { label: 'Trusted Borrower', desc: 'Wellness score 75+', icon: '◆' },
+  perfect_payer: { label: 'Perfect Payer', desc: '100% repayment rate with no late payments', icon: '★' },
+  trusted_borrower: { label: 'Trusted Borrower', desc: 'At least 2 completed loans with no defaults', icon: '◆' },
   '12_month_streak': { label: '12-Month Streak', desc: '12+ consecutive on-time payments', icon: '▲' },
   zero_penalties: { label: 'Zero Penalties', desc: 'No penalty charges on record', icon: '○' },
-  premium_member: { label: 'Premium Member', desc: 'Platinum-tier wellness score', icon: '♦' },
-  fast_approval: { label: 'Fast Approval Eligible', desc: 'Qualifies for expedited review', icon: '⚡' },
+  premium_member: { label: 'Premium Member', desc: 'Credit score 90+ with no delinquent loans', icon: '♦' },
+  fast_approval: { label: 'Fast Approval Eligible', desc: 'Excellent score, complete documents, no collection issues', icon: '⚡' },
 }
 
 export function formatCategory(cat) {
   return CATEGORY_LABELS[cat] || (cat ? String(cat).replace(/_/g, ' ') : '—')
+}
+
+export function hasWellnessData(data) {
+  return data && !data.insufficient_data && data.wellness_score != null
 }
 
 export function getBorrowerTier(score) {
@@ -74,7 +80,7 @@ export function getCreditRating(creditScore) {
 }
 
 export function getLoanRecommendation(data) {
-  if (!data) return 'requires_review'
+  if (!data || data.insufficient_data) return 'requires_review'
   const risk = data.default_risk_level || data.risk_level
   if (risk === 'critical' || risk === 'high') return 'not_recommended'
   if (data.eligibility_impact?.requires_manual_approval) return 'requires_review'
@@ -84,83 +90,70 @@ export function getLoanRecommendation(data) {
 }
 
 export function computeAchievements(data) {
-  if (!data) return []
-  const earned = []
-  if (Number(data.repayment_rate) >= 100) earned.push('perfect_payer')
-  if ((data.wellness_score ?? 0) >= 75) earned.push('trusted_borrower')
-  if ((data.payment_streak ?? 0) >= 12) earned.push('12_month_streak')
-  if (Number(data.total_penalties ?? 0) === 0 && (data.active_loan_count ?? 0) > 0) earned.push('zero_penalties')
-  if ((data.wellness_score ?? 0) >= 90) earned.push('premium_member')
-  if (data.eligibility_impact?.fast_track_eligible) earned.push('fast_approval')
-  return earned.map((id) => ({ id, ...ACHIEVEMENT_DEFS[id], earned: true }))
+  const ids = data?.achievements ?? data?.eligibility_impact?.achievements ?? []
+  if (!Array.isArray(ids) || !ids.length) return []
+  return ids.map((id) => ({ id, ...ACHIEVEMENT_DEFS[id], earned: true })).filter((a) => a.label)
 }
 
 export function computeScoreBreakdown(data) {
-  if (!data) return []
-  return [
-    { label: 'Repayment success', value: Number(data.repayment_rate) || 0, weight: 35 },
-    { label: 'Payment consistency', value: Math.max(0, 100 - (Number(data.delayed_payment_rate) || 0)), weight: 25 },
-    { label: 'Payment streak', value: Math.min(100, ((data.payment_streak ?? 0) / 12) * 100), weight: 20 },
-    { label: 'Penalty-free record', value: Number(data.total_penalties) === 0 ? 100 : Math.max(0, 100 - Number(data.total_penalties) / 10), weight: 10 },
-    { label: 'Active loan health', value: computeLoanHealthAvg(data.loan_health), weight: 10 },
-  ]
-}
-
-function computeLoanHealthAvg(loanHealth) {
-  if (!Array.isArray(loanHealth) || loanHealth.length === 0) return 50
-  const total = loanHealth.reduce((sum, l) => sum + (Number(l.payment_consistency) || 0), 0)
-  return total / loanHealth.length
+  const items = data?.score_breakdown ?? data?.eligibility_impact?.score_breakdown ?? []
+  return Array.isArray(items) ? items : []
 }
 
 export function computeWellnessAlerts(data, prevScore) {
-  if (!data) return []
-  const alerts = []
+  const alerts = data?.wellness_alerts ?? data?.eligibility_impact?.wellness_alerts ?? []
+  if (Array.isArray(alerts) && alerts.length) return alerts
+
+  if (!data || data.insufficient_data) {
+    return [{ type: 'warning', message: 'Insufficient data available' }]
+  }
+
+  const fallback = []
   const score = data.wellness_score ?? 0
   if (prevScore != null && score < prevScore - 5) {
-    alerts.push({ type: 'warning', message: `Wellness score dropped by ${prevScore - score} points recently.` })
+    fallback.push({ type: 'warning', message: `Wellness score dropped by ${prevScore - score} points recently.` })
   }
-  if ((data.missed_payment_count ?? 0) > 0 || Number(data.current_overdue_amount) > 0) {
-    alerts.push({ type: 'urgent', message: 'Missed or overdue payment detected — review account immediately.' })
-  }
-  if (data.improvement_trend === 'declining') {
-    alerts.push({ type: 'warning', message: 'Payment consistency is declining.' })
-  }
-  const tier = getBorrowerTier(score)
-  if (tier.tier === 'platinum') {
-    alerts.push({ type: 'positive', message: 'Borrower reached Platinum tier — eligible for premium products.' })
-  }
-  if (data.default_risk_level === 'high' || data.default_risk_level === 'critical') {
-    alerts.push({ type: 'urgent', message: 'Borrower flagged as high risk.' })
-  }
-  if (data.eligibility_impact?.fast_track_eligible) {
-    alerts.push({ type: 'positive', message: 'Borrower eligible for fast-track approval.' })
-  }
-  return alerts
+  return fallback
 }
 
 export function computeLoanDecisionSupport(data) {
-  if (!data) return null
-  const score = data.wellness_score ?? 0
-  const multiplier = data.eligibility_impact?.loan_limit_multiplier ?? 1
-  const baseLimit = 500000
-  return {
-    recommended_loan_limit: Math.round(baseLimit * multiplier),
-    approval_confidence: Math.min(99, Math.max(10, score)),
-    risk_assessment: formatCategory(data.score_category),
-    stability_score: Math.round((Number(data.repayment_rate) || 0) * 0.6 + score * 0.4),
+  if (!data || data.insufficient_data) {
+    return {
+      insufficient: true,
+      recommended_loan_limit: null,
+      approval_confidence: null,
+      approval_confidence_label: null,
+      risk_assessment: 'Insufficient data available',
+      stability_score: null,
+    }
   }
+
+  const support = data.decision_support ?? data.eligibility_impact?.decision_support
+  if (support) {
+    return {
+      insufficient: false,
+      recommended_loan_limit: support.recommended_loan_limit ?? null,
+      approval_confidence: support.approval_confidence ?? null,
+      approval_confidence_label: support.approval_confidence_label ?? null,
+      risk_assessment: support.risk_assessment ?? formatCategory(data.score_category),
+      stability_score: support.stability_score ?? null,
+      recommended_loan_limit_basis: support.recommended_loan_limit_basis ?? null,
+    }
+  }
+
+  return null
 }
 
 export function computeMilestones(data) {
-  if (!data) return []
+  if (!hasWellnessData(data)) return []
   const milestones = []
   const streak = data.payment_streak ?? 0
   const score = data.wellness_score ?? 0
   const tier = getBorrowerTier(score)
 
   if (tier.tier !== 'platinum') {
-    const nextTierScore = tier.tier === 'bronze' ? 60 : tier.tier === 'silver' ? 75 : 90
-    milestones.push({ label: `${nextTierScore - score} points to reach ${getBorrowerTier(nextTierScore).label} tier`, progress: (score / nextTierScore) * 100 })
+    const nextTierScore = tier.tier === 'bronze' ? 60 : tier.tier === 'silver' ? 75 : 85
+    milestones.push({ label: `${Math.max(0, nextTierScore - score)} points to reach ${getBorrowerTier(nextTierScore).label} tier`, progress: (score / nextTierScore) * 100 })
   }
   if (streak < 12) {
     milestones.push({ label: `${12 - streak} more on-time payments for 12-Month Streak badge`, progress: (streak / 12) * 100 })
@@ -176,7 +169,10 @@ export function computeMilestones(data) {
 
 export function computeFinancialTips(data) {
   const tips = []
-  if (!data) return tips
+  if (!data || data.insufficient_data) {
+    tips.push('Complete your borrower profile and submit a loan application to unlock personalized wellness insights.')
+    return tips
+  }
   if (Number(data.delayed_payment_rate) > 10) {
     tips.push('Set up payment reminders to reduce delayed payments and improve your wellness score.')
   }
@@ -218,4 +214,18 @@ export function buildBorrowerRanking(portfolio) {
     }
   }
   return unique.sort((a, b) => (b.wellness_score ?? 0) - (a.wellness_score ?? 0))
+}
+
+export function formatRepaymentHint(data) {
+  const paid = data?.paid_installments
+  const due = data?.total_due_installments
+  if (paid != null && due != null && due > 0) {
+    return `${paid} paid / ${due} due installments`
+  }
+  return 'Paid installments vs total due'
+}
+
+export function formatPaymentStreak(streak) {
+  const n = Number(streak) || 0
+  return n === 1 ? '1 month' : `${n} months`
 }

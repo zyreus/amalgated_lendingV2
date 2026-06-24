@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Web\BorrowerEmailVerificationController;
 use App\Http\Controllers\Web\LoanPrintController;
+use App\Http\Controllers\Web\SoaStatementDownloadController;
 use App\Http\Controllers\Web\SiteController;
 use Illuminate\Support\Facades\Route;
 
@@ -33,6 +34,11 @@ Route::middleware(['throttle:72,1'])->group(function () {
 
     Route::get('/borrower/email/verify', [BorrowerEmailVerificationController::class, 'verifyLegacyQuery'])
         ->name('borrower.email.verify.legacy');
+
+    Route::get('/borrower/statements/{statement}/download/{hash}', [SoaStatementDownloadController::class, 'download'])
+        ->middleware('signed')
+        ->where(['statement' => '[0-9]+', 'hash' => '[a-f0-9]+'])
+        ->name('borrower.soa.download');
 });
 
 Route::domain('www.amalgatedlending.com')

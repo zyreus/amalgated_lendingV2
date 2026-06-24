@@ -41,6 +41,8 @@ class EmailLog extends Model
 
     public const NOTIFICATION_NEWSLETTER_UPDATE = 'newsletter_update';
 
+    public const NOTIFICATION_LOAN_APPLICATION_UPDATE = 'loan_application_update';
+
     protected $fillable = [
         'dedupe_key',
         'loan_id',

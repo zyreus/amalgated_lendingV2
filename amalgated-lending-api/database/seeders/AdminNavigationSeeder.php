@@ -29,7 +29,7 @@ class AdminNavigationSeeder extends Seeder
             ['path' => '/admin/cms', 'label' => 'CMS', 'icon_key' => 'cms', 'sort_order' => 80, 'permission_slug' => 'cms.manage', 'match_end' => false],
             ['path' => '/admin/newsletter', 'label' => 'News & announcements', 'icon_key' => 'bell', 'sort_order' => 87, 'permission_slug' => 'cms.manage', 'match_end' => false],
             ['path' => '/admin/printable-forms', 'label' => 'Printable PDF forms', 'icon_key' => 'forms', 'sort_order' => 89, 'permission_slug' => 'forms.printable.manage', 'match_end' => false],
-            ['path' => '/admin/settings', 'label' => 'Settings', 'icon_key' => 'settings', 'sort_order' => 90, 'permission_slug' => 'settings.manage', 'match_end' => false],
+            ['path' => '/admin/settings', 'label' => 'Settings', 'icon_key' => 'settings', 'sort_order' => 90, 'permission_slug' => 'settings.view', 'match_end' => false],
             ['path' => '/admin/activity', 'label' => 'Activity Logs', 'icon_key' => 'activity', 'sort_order' => 100, 'permission_slug' => 'activity.view', 'match_end' => false],
             ['path' => '/admin/notifications', 'label' => 'Notifications', 'icon_key' => 'bell', 'sort_order' => 110, 'permission_slug' => 'notifications.view', 'match_end' => false],
             ['path' => '/admin/chat-crm', 'label' => 'CRM & Chat', 'icon_key' => 'chat', 'sort_order' => 115, 'permission_slug' => null, 'match_end' => false],

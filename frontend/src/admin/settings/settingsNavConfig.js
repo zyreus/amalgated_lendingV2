@@ -1,0 +1,123 @@
+import {
+  Building2,
+  Users,
+  Landmark,
+  CreditCard,
+  MessageSquare,
+  FileText,
+  Shield,
+  Server,
+  CalendarClock,
+  ChevronRight,
+  Search,
+  Database,
+} from 'lucide-react'
+
+export const SETTINGS_CATEGORIES = [
+  {
+    id: 'general',
+    label: 'General',
+    description: 'Company profile, branches, business hours, and locale.',
+    icon: Building2,
+    to: '/admin/settings/general',
+    type: 'page',
+    keys: ['company', 'locale'],
+  },
+  {
+    id: 'users',
+    label: 'User Management',
+    description: 'Users, roles, permissions, and access policies.',
+    icon: Users,
+    to: '/admin/settings/users',
+    type: 'hub',
+    links: [
+      { label: 'Users', to: '/admin/users', description: 'Staff and admin accounts' },
+      { label: 'Roles & Permissions', to: '/admin/roles', description: 'Role-based access control' },
+      { label: 'Activity Logs', to: '/admin/activity', description: 'Audit trail and login history' },
+    ],
+  },
+  {
+    id: 'loans',
+    label: 'Loan Settings',
+    description: 'Defaults, interest, penalties, grace periods, and terms.',
+    icon: Landmark,
+    to: '/admin/settings/loans',
+    type: 'page',
+    keys: ['loan_defaults', 'loan_configuration', 'interest_settings'],
+    links: [{ label: 'Loan Products', to: '/admin/loan-products', description: 'Per-product fees and calculator config' }],
+  },
+  {
+    id: 'collections',
+    label: 'Collection Settings',
+    description: 'Due dates, collector rules, and SOA automation.',
+    icon: CalendarClock,
+    to: '/admin/settings/collections',
+    type: 'page',
+    keys: ['collection_settings'],
+    links: [{ label: 'SOA Management', to: '/admin/soa', description: 'Generate and send statements' }],
+  },
+  {
+    id: 'financial',
+    label: 'Financial Settings',
+    description: 'Payment methods, currency, and receipt configuration.',
+    icon: CreditCard,
+    to: '/admin/settings/financial',
+    type: 'page',
+    keys: ['payment_settings'],
+  },
+  {
+    id: 'communication',
+    label: 'Communication',
+    description: 'Email SMTP, SMS, notifications, and chat alerts.',
+    icon: MessageSquare,
+    to: '/admin/settings/communication',
+    type: 'page',
+    keys: ['notifications', 'email_settings'],
+  },
+  {
+    id: 'documents',
+    label: 'Document Settings',
+    description: 'Printable forms, promissory notes, and PDF branding.',
+    icon: FileText,
+    to: '/admin/settings/documents',
+    type: 'hub',
+    keys: ['branding'],
+    links: [
+      { label: 'Printable PDF Forms', to: '/admin/printable-forms', description: 'Manage form templates' },
+      { label: 'SOA Management', to: '/admin/soa', description: 'Statement of account templates' },
+    ],
+  },
+  {
+    id: 'operations',
+    label: 'Reports & Integrations',
+    description: 'Credit scoring, dashboards, and third-party services.',
+    icon: Server,
+    to: '/admin/settings/operations',
+    type: 'page',
+    keys: ['credit_scoring', 'reports', 'integrations'],
+  },
+  {
+    id: 'security',
+    label: 'Security',
+    description: 'Session timeout, 2FA, password policies, and audit toggles.',
+    icon: Shield,
+    to: '/admin/settings/security',
+    type: 'page',
+    keys: ['security', 'audit'],
+  },
+  {
+    id: 'system',
+    label: 'System',
+    description: 'Maintenance mode, backups, and data retention.',
+    icon: Database,
+    to: '/admin/settings/system',
+    type: 'page',
+    keys: ['system', 'log_cleanup'],
+  },
+]
+
+export function findCategoryByPath(pathname) {
+  return SETTINGS_CATEGORIES.find((c) => c.to === pathname) || null
+}
+
+export { Building2, Users, Landmark, CreditCard, MessageSquare, FileText, Shield, Server, CalendarClock, ChevronRight, Search }

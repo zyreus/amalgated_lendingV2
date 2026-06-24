@@ -37,6 +37,18 @@ function statusLabel(value) {
   return String(value || 'ready').replace(/_/g, ' ')
 }
 
+function borrowerLoanAmountLine(loan) {
+  const approved = Number(loan?.approved_principal)
+  if (Number.isFinite(approved) && approved > 0) {
+    return `Approved ${formatPeso(approved)}`
+  }
+  const legacyRequested = Number(loan?.requested_principal ?? loan?.applied_principal)
+  if (Number.isFinite(legacyRequested) && legacyRequested > 0) {
+    return `Requested ${formatPeso(legacyRequested)}`
+  }
+  return 'Amount pending evaluation'
+}
+
 async function downloadBorrowerSoaPdf(statement) {
   const token = getBorrowerToken()
   let lastError = null
@@ -409,8 +421,7 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
                 <div>
                   <p className="font-medium text-gray-900 dark:text-gray-100">Loan #{l.id}</p>
                   <p className={`text-xs ${ui.tableMuted}`}>
-                    Applied {formatPeso(l.applied_principal ?? l.requested_principal ?? l.principal)} · Approved{' '}
-                    {formatPeso(l.principal)} · {l.term_months} mo · submitted {formatDate(l.created_at)}
+                    {borrowerLoanAmountLine(l)} · {l.term_months} mo · submitted {formatDate(l.created_at)}
                   </p>
                   {l.print_statement_url ? (
                     <a
@@ -764,16 +775,40 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
         </div>
 
         <div className="rounded-2xl border border-gray-200/90 bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.06)] transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#111827] dark:shadow-lg lg:p-10">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Notifications</h3>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Notification Center</h3>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('borrower-open-notifications'))}
+              className="text-xs font-semibold text-brand-primary hover:underline"
+            >
+              View all
+            </button>
+          </div>
           <div className="mt-3 space-y-2">
             {notifications.length ? (
-              notifications.map((n, idx) => (
-                <p
-                  key={`${n.type}-${idx}`}
-                  className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700 transition-colors duration-300 dark:border-[#1F2937] dark:bg-[#0F172A]/50 dark:text-gray-300"
+              notifications.map((n) => (
+                <div
+                  key={n.id}
+                  className={`rounded-lg border px-3 py-2.5 text-xs transition-colors ${
+                    n.read
+                      ? 'border-gray-200 bg-gray-50 text-gray-600 dark:border-[#1F2937] dark:bg-[#0F172A]/40 dark:text-gray-400'
+                      : 'border-red-100 bg-red-50/50 text-gray-800 dark:border-red-900/40 dark:bg-red-950/20 dark:text-gray-200'
+                  }`}
                 >
-                  {n.message}
-                </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">{n.title || 'Notification'}</p>
+                    {!n.read ? (
+                      <span className="shrink-0 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">
+                        New
+                      </span>
+                    ) : null}
+                  </div>
+                  {n.body ? <p className="mt-1 leading-relaxed">{n.body}</p> : null}
+                  {n.created_at ? (
+                    <p className={`mt-1.5 text-[10px] ${ui.textMuted}`}>{formatDate(n.created_at)}</p>
+                  ) : null}
+                </div>
               ))
             ) : (
               <p className={`text-sm ${ui.textMuted}`}>No new alerts.</p>
@@ -915,10 +950,15 @@ ${paymentOrArInvoiceSnippetHtml(payment)}
             </p>
           )}
           <dl className="mt-3 space-y-2 text-sm">
-            <Row label="Amount applied" value={formatPeso(loan?.applied_principal ?? loan?.requested_principal ?? loan?.principal)} />
             <Row
-              label="Approved principal"
-              value={formatPeso(loan?.loan_application?.approved_amount ?? loan?.principal)}
+              label="Approved loan amount"
+              value={
+                Number(loan?.approved_principal) > 0
+                  ? formatPeso(loan.approved_principal)
+                  : Number(loan?.requested_principal ?? loan?.applied_principal) > 0
+                    ? formatPeso(loan?.requested_principal ?? loan?.applied_principal)
+                    : 'Pending evaluation'
+              }
             />
             {amortizationOnlyLoanUi ? (
               <Row label="Monthly amortization" value={formatPeso(loan?.monthly_payment)} />

@@ -68,6 +68,8 @@ export default function LoansPage() {
         loan.loan_number || loan.id,
         loan.borrower?.name || '',
         loan.borrower?.email || '',
+        loan.requested_principal ?? '',
+        loan.approved_principal ?? loan.principal,
         loan.principal,
         applicationStatusLabel(loan.status),
         loan.term_months,
@@ -82,7 +84,7 @@ export default function LoansPage() {
   const handleCsvExport = () => {
     downloadCsv(
       `applications-${status || 'all'}.csv`,
-      ['Loan ID', 'Borrower', 'Borrower Email', 'Principal', 'Status', 'Term (months)', 'Rate Monthly', 'Created At'],
+      ['Loan ID', 'Borrower', 'Borrower Email', 'Requested', 'Approved', 'Principal', 'Status', 'Term (months)', 'Rate Monthly', 'Created At'],
       exportRows,
     )
     showToast('Applications CSV downloaded.', 'success')
@@ -92,7 +94,7 @@ export default function LoansPage() {
     const ok = openPrintPdf(
       'Applications Report',
       exportSubtitle,
-      ['Loan ID', 'Borrower', 'Email', 'Principal', 'Status', 'Term', 'Rate'],
+      ['Loan ID', 'Borrower', 'Email', 'Requested', 'Approved', 'Principal', 'Status', 'Term', 'Rate'],
       rows.map((loan) => [
         loan.loan_number || `#${loan.id}`,
         loan.borrower?.name || '',

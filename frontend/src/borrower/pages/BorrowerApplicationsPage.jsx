@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { borrowerApi } from '../api/client.js'
 import { admin as ui } from '../../admin/components/AdminUi.jsx'
 import { formatDate } from '../utils/formatters.js'
+import { LoanEvaluationSummaryCard } from '../components/LoanApplicationUi.jsx'
 import { AdminPageSkeleton } from '../../components/AppSkeletons.jsx'
 import { Link } from 'react-router-dom'
 import { getBorrowerDocumentLoanApplications } from '../../utils/documentLoanApi.js'
@@ -164,6 +165,11 @@ export default function BorrowerApplicationsPage() {
                       <p className={`text-xs capitalize ${ui.tableMuted}`}>
                         {row.status} {row.submitted_at ? `· Submitted ${formatDate(row.submitted_at)}` : ''}
                       </p>
+                      {row.evaluation ? (
+                        <div className="mt-3">
+                          <LoanEvaluationSummaryCard evaluation={row.evaluation} />
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                   <DocumentLinks docs={row.uploaded_documents} />

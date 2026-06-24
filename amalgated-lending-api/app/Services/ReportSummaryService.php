@@ -67,7 +67,7 @@ class ReportSummaryService
 
         $disbursed = Loan::query()
             ->whereBetween('disbursed_at', [$from, $to])
-            ->whereIn('status', [Loan::STATUS_ONGOING, Loan::STATUS_COMPLETED]);
+            ->whereIn('status', array_merge(Loan::activeServicingStatuses(), ['ongoing']));
 
         $collections = Payment::query()
             ->whereBetween('paid_at', [$from, $to])

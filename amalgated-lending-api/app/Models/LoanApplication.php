@@ -22,9 +22,18 @@ class LoanApplication extends Model
 
     public const STATUS_DRAFT = 'draft';
 
+    public const STATUS_PENDING_DOCUMENTS = 'pending-documents';
+
+    public const STATUS_FOR_EVALUATION = 'for-evaluation';
+
+    public const STATUS_UNDER_REVIEW = 'under-review';
+
     public const STATUS_PENDING = 'pending';
 
-    public const STATUS_PRE_APPROVED = 'pre-approved';
+    public const STATUS_PARTIALLY_APPROVED = 'partially-approved';
+
+    /** @deprecated Alias for STATUS_PARTIALLY_APPROVED */
+    public const STATUS_PRE_APPROVED = 'partially-approved';
 
     public const STATUS_APPROVED = 'approved';
 
@@ -174,6 +183,11 @@ class LoanApplication extends Model
     public function coMaker(): BelongsTo
     {
         return $this->belongsTo(User::class, 'co_maker_id');
+    }
+
+    public function coMakers(): HasMany
+    {
+        return $this->hasMany(CoMaker::class)->orderBy('sort_order')->orderBy('id');
     }
 
     public function documents(): HasMany

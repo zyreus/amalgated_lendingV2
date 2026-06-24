@@ -13,10 +13,18 @@ class EnsurePermission
         if (! $user) {
             return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
         }
-        if (! $user->hasPermission($permissionSlug)) {
+
+        $slugs = array_values(array_filter(array_map('trim', explode('|', $permissionSlug))));
+        if ($slugs === []) {
             return response()->json(['ok' => false, 'message' => 'Forbidden.'], 403);
         }
 
-        return $next($request);
+        foreach ($slugs as $slug) {
+            if ($user->hasPermission($slug)) {
+                return $next($request);
+            }
+        }
+
+        return response()->json(['ok' => false, 'message' => 'Forbidden.'], 403);
     }
 }

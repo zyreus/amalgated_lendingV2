@@ -8,6 +8,7 @@ use App\Models\EmailVerificationLog;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\SecurityPolicyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -16,6 +17,18 @@ use Illuminate\Validation\Rule;
 class UserController extends Controller
 {
     private const EXPORT_COLUMNS = ['ID', 'Name', 'Username', 'Email', 'Phone', 'Roles', 'Loans', 'Status', 'Created At'];
+
+    public function __construct(private SecurityPolicyService $securityPolicy)
+    {
+    }
+
+    private function passwordRules(bool $required = true): array
+    {
+        $min = $this->securityPolicy->passwordMinLength();
+        $rule = $required ? 'required' : 'nullable';
+
+        return [$rule, 'string', 'min:'.$min, 'max:72'];
+    }
 
     public function index(Request $request): JsonResponse
     {
@@ -53,7 +66,7 @@ class UserController extends Controller
             'name' => 'required|string|max:255',
             'username' => 'required|string|max:80|alpha_dash|unique:users,username',
             'email' => 'required|email|unique:users,email',
-            'password' => 'required|string|min:8',
+            'password' => $this->passwordRules(true),
             'phone' => 'nullable|string|max:32',
             'is_active' => 'boolean',
             'role' => 'nullable|in:admin,loan_officer,collector,accountant,borrower',
@@ -100,7 +113,7 @@ class UserController extends Controller
             'name' => 'sometimes|string|max:255',
             'username' => ['sometimes', 'string', 'max:80', 'alpha_dash', Rule::unique('users', 'username')->ignore($user->id)],
             'email' => ['sometimes', 'email', Rule::unique('users', 'email')->ignore($user->id)],
-            'password' => 'nullable|string|min:8',
+            'password' => $this->passwordRules(false),
             'phone' => 'nullable|string|max:32',
             'is_active' => 'boolean',
             'role' => 'nullable|in:admin,loan_officer,collector,accountant,borrower',

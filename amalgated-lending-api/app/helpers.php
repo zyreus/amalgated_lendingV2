@@ -1,10 +1,11 @@
 <?php
 
-use App\Models\SystemSetting;
+use App\Services\SettingsService;
+use Illuminate\Support\Facades\App;
 
 if (! function_exists('setting')) {
     function setting(string $key): array
     {
-        return optional(SystemSetting::where('key', $key)->first())->value ?? [];
+        return App::make(SettingsService::class)->get($key, []);
     }
 }
