@@ -151,7 +151,7 @@ function prefetchBorrowerRoutes() {
 }
 
 export default function BorrowerLayout() {
-  const { user } = useBorrowerAuth()
+  const { user, loadMe } = useBorrowerAuth()
   const { openLogoutModal } = useLogoutConfirm()
   const location = useLocation()
   const navGroups = useMemo(() => buildBorrowerNavGroups(), [])
@@ -173,6 +173,17 @@ export default function BorrowerLayout() {
         : isImagePath(user?.id_document_path)
           ? getLaravelStorageFileUrl(user?.id_document_path)
           : null
+  const borrowerContactLine = useMemo(
+    () => String(user?.email || user?.username || user?.phone || '').trim(),
+    [user?.email, user?.username, user?.phone],
+  )
+
+  useEffect(() => {
+    if (!user) return
+    if (!user.email && !user.username) {
+      void loadMe()
+    }
+  }, [user, loadMe])
 
   useEffect(() => {
     if (!user) return undefined
@@ -286,6 +297,13 @@ export default function BorrowerLayout() {
                 <p className="truncate text-[14px] font-semibold tracking-tight text-slate-800 dark:text-gray-100">
                   {user?.name || 'Borrower'}
                 </p>
+                {borrowerContactLine ? (
+                  <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-gray-400" title={borrowerContactLine}>
+                    {borrowerContactLine}
+                  </p>
+                ) : (
+                  <p className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-gray-500">—</p>
+                )}
                 <p className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-gray-400">Amalgated Lending Inc.</p>
               </div>
             </Link>
@@ -333,7 +351,7 @@ export default function BorrowerLayout() {
         >
           <div className="mx-auto flex min-h-[3.25rem] w-full min-w-0 max-w-[min(100%,var(--width-content-standard))] items-center justify-between gap-2 px-4 pb-3 pt-[max(0.5rem,env(safe-area-inset-top,0px))] sm:min-h-16 sm:gap-3 sm:px-6 sm:pb-4 lg:min-h-20 lg:px-12 xl:px-20 2xl:max-w-[min(100%,var(--width-content-wide))]">
             {/* Left: menu (mobile) → avatar → name, then portal label */}
-            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
+            <div className="flex min-w-0 flex-1 items-start gap-2 py-0.5 sm:items-center sm:gap-2.5 sm:py-0">
               <button
                 type="button"
                 onClick={() => setMobileOpen((v) => !v)}
@@ -369,12 +387,18 @@ export default function BorrowerLayout() {
                   {initials(user?.name || 'Borrower')}
                 </span>
               )}
-              <div className="min-w-0 flex-1 leading-tight">
+              <div className="min-w-0 flex-1 leading-snug">
                 <p
                   className="truncate text-[15px] font-semibold tracking-tight text-gray-900 sm:text-base dark:text-gray-100"
                   title={user?.name || 'Borrower'}
                 >
                   {user?.name || 'Borrower'}
+                </p>
+                <p
+                  className="truncate text-[11px] text-slate-600 sm:text-xs dark:text-gray-300"
+                  title={borrowerContactLine || 'Account email'}
+                >
+                  {borrowerContactLine || '—'}
                 </p>
                 <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-primary sm:text-[11px] sm:tracking-[0.2em]">
                   Borrower Portal

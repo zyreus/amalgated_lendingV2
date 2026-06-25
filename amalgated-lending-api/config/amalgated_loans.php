@@ -108,11 +108,11 @@ return [
                 ['key' => 'chassis_number', 'label' => 'Chassis Number', 'type' => 'text', 'required' => true],
                 ['key' => 'or_number', 'label' => 'OR Number', 'type' => 'text', 'required' => true],
                 ['key' => 'cr_number', 'label' => 'CR Number', 'type' => 'text', 'required' => true],
-                ['key' => 'market_value', 'label' => 'Market Value', 'type' => 'numeric', 'required' => true],
             ],
             'loan' => [
                 ['key' => 'loan_product_id', 'label' => 'Loan Product', 'type' => 'loan_product', 'required' => true],
                 ['key' => 'term_months', 'label' => 'Loan Term', 'type' => 'numeric', 'required' => true],
+                ['key' => 'loan_amount', 'label' => 'Loan Amount (PHP)', 'type' => 'numeric', 'required' => false, 'borrower_readonly' => true],
                 ['key' => 'loan_purpose', 'label' => 'Loan Purpose', 'type' => 'textarea', 'required' => true],
             ],
         ],

@@ -35,6 +35,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class LoanController extends Controller
 {
@@ -1457,6 +1458,72 @@ class LoanController extends Controller
     }
 
     /**
+     * Set proposed loan amount on a chattel application (shown read-only to borrower).
+     */
+    public function updateApplicationLoanAmount(Request $request, Loan $loan, ActivityLogger $logger): JsonResponse
+    {
+        if (! $this->canEditLoanAmount($request->user())) {
+            return response()->json(['ok' => false, 'message' => 'You do not have permission to edit loan amounts.'], 403);
+        }
+
+        $staffScope = app(StaffScopeService::class);
+        if (! $staffScope->canAccessLoan($request->user(), $loan->assigned_officer_id, $loan->status)) {
+            return response()->json(['ok' => false, 'message' => 'This loan is not assigned to you.'], 403);
+        }
+
+        $request->validate([
+            'loan_amount' => 'required|numeric|min:0.01',
+        ]);
+
+        if (in_array($loan->status, [Loan::STATUS_REJECTED, Loan::STATUS_CANCELLED, Loan::STATUS_COMPLETED], true)) {
+            return response()->json(['ok' => false, 'message' => 'Loan amount cannot be changed for this loan status.'], 422);
+        }
+
+        $loan->loadMissing('loanApplication.loanProduct');
+        $app = $loan->loanApplication;
+        if (! $app) {
+            return response()->json(['ok' => false, 'message' => 'No linked loan application found.'], 422);
+        }
+
+        if ($app->loan_type !== LoanApplication::TYPE_CHATTEL) {
+            return response()->json(['ok' => false, 'message' => 'Proposed amount can only be set for chattel mortgage applications.'], 422);
+        }
+
+        $newAmount = round((float) $request->input('loan_amount'), 2);
+        $previous = $app->loan_amount !== null ? round((float) $app->loan_amount, 2) : null;
+
+        DB::transaction(function () use ($loan, $app, $newAmount) {
+            $app->loan_amount = $newAmount;
+            $this->recomputeChattelApplication($app);
+            $app->save();
+
+            if ($loan->requested_principal === null || (float) $loan->requested_principal <= 0) {
+                $loan->requested_principal = $newAmount;
+            }
+            $loan->save();
+        });
+
+        $actor = $request->user();
+        $logger->log($actor, 'loans.application_loan_amount_changed', $loan->fresh(['loanApplication']), [
+            'loan_id' => $loan->id,
+            'loan_application_id' => $app->id,
+            'previous_amount' => $previous,
+            'new_amount' => $newAmount,
+            'message' => sprintf(
+                '%s %s set proposed chattel loan amount to ₱%s.',
+                $this->staffRoleLabel($actor),
+                $actor->name,
+                number_format($newAmount, 2),
+            ),
+        ], 'loans', $loan->id);
+
+        return response()->json([
+            'ok' => true,
+            'loan' => $loan->fresh(['loanApplication', 'loanApplication.loanProduct']),
+        ]);
+    }
+
+    /**
      * Update approved/adjusted loan amount during evaluation or after release (staff only).
      */
     public function updateApprovedAmount(Request $request, Loan $loan, ActivityLogger $logger, LoanAmountAdjustmentService $amountService): JsonResponse
@@ -1610,6 +1677,47 @@ class LoanController extends Controller
             'loan' => $loan,
             'real_estate_detail' => $detail,
         ]);
+    }
+
+    private function recomputeChattelApplication(LoanApplication $app): void
+    {
+        if (! $app->loan_product_id) {
+            $app->computed_values = null;
+            $app->computation_breakdown = null;
+
+            return;
+        }
+
+        $form = is_array($app->form_data) ? $app->form_data : [];
+        $termMonths = (int) ($app->term_months ?? $form['term_months'] ?? 0);
+        $loanAmount = (float) ($app->loan_amount ?? 0);
+        if ($termMonths <= 0 || $loanAmount <= 0) {
+            $app->computed_values = null;
+            $app->computation_breakdown = null;
+
+            return;
+        }
+
+        $nature = (string) ($form['application_nature'] ?? 'new');
+
+        try {
+            $compute = $this->calculator->compute([
+                'product_id' => (int) $app->loan_product_id,
+                'loan_amount' => $loanAmount,
+                'term_months' => $termMonths,
+                'application_nature' => $nature,
+            ]);
+            $app->computed_values = [
+                'monthly_rate_percent_effective' => $compute['product']['monthly_rate_percent_effective'] ?? null,
+                'monthly_amortization' => $compute['breakdown']['monthly_amortization'] ?? null,
+                'net_proceeds' => $compute['breakdown']['net_proceeds'] ?? null,
+                'estimated_loanable_amount' => $loanAmount,
+            ];
+            $app->computation_breakdown = $compute;
+        } catch (ValidationException) {
+            $app->computed_values = null;
+            $app->computation_breakdown = null;
+        }
     }
 
     private function canEditPropertyAppraisal(User $user): bool

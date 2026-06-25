@@ -56,7 +56,7 @@ const SECTION_HINTS = {
   pension: 'Enter your pension details and monthly benefit amount. Your capacity preview updates as you type.',
   travel: 'Travel plans and cost estimates guide your assistance request.',
   documents: 'Upload clear, readable copies of each required document.',
-  co_makers: 'Add co-maker details and upload their supporting documents before continuing.',
+  co_makers: 'Save at least one co-maker, then you can continue. Complete all details and documents before final submit.',
   review: 'Review all entries before submitting your application.',
 }
 
@@ -299,18 +299,45 @@ export default function ProductLoanApplicationPage({ loanType }) {
     return Object.entries(field.required_if).every(([key, expected]) => formData[key] === expected)
   }
 
+  const isBorrowerHiddenField = (field) => {
+    if (field?.borrower_readonly) return false
+    const hiddenKeys = loanType === 'sss_pension' ? PENSION_BORROWER_HIDDEN_KEYS : BORROWER_HIDDEN_FIELD_KEYS
+    return hiddenKeys.has(field?.key)
+  }
+
   const goToStep = (nextStep) => {
     setDirection(nextStep > step ? 1 : -1)
     setStep(nextStep)
   }
 
   const renderField = (field) => {
-    const hiddenKeys = loanType === 'sss_pension' ? PENSION_BORROWER_HIDDEN_KEYS : BORROWER_HIDDEN_FIELD_KEYS
-    if (hiddenKeys.has(field.key)) return null
+    if (isBorrowerHiddenField(field)) return null
     if (!shouldShowField(field)) return null
     const placeholder = fieldPlaceholder(field)
     const required = Boolean(field.required || field.required_if)
     const spanClass = field.type === 'textarea' || field.type === 'loan_product' || field.type === 'computed_sum' ? 'md:col-span-2' : ''
+    const readonlyValue = field.borrower_readonly && field.key === 'loan_amount'
+      ? (app?.loan_amount ?? '')
+      : (formData[field.key] ?? '')
+
+    if (field.borrower_readonly) {
+      return (
+        <Field
+          key={field.key}
+          label={field.label}
+          hint="Set by our lending team after review. Refresh this page if it was recently updated."
+          className={spanClass}
+        >
+          <input
+            type={field.type === 'numeric' ? 'number' : 'text'}
+            className={textInputClass(true)}
+            placeholder={placeholder}
+            value={readonlyValue}
+            readOnly
+          />
+        </Field>
+      )
+    }
 
     if (field.type === 'loan_product') {
       return (
@@ -497,13 +524,15 @@ export default function ProductLoanApplicationPage({ loanType }) {
   const reviewItems = [
     ...Object.entries(fieldsBySection)
       .flatMap(([, rows]) => rows)
-      .filter((field) => !BORROWER_HIDDEN_FIELD_KEYS.has(field.key))
+      .filter((field) => !isBorrowerHiddenField(field))
       .filter((field) => !(loanType === 'sss_pension' && field.key === 'loan_product_id'))
       .filter(shouldShowField)
       .map((field) => ({
         key: field.key,
         label: field.label,
-        value: formatValue(formData[field.key]),
+        value: field.borrower_readonly && field.key === 'loan_amount'
+          ? formatValue(app?.loan_amount)
+          : formatValue(formData[field.key]),
       })),
     ...(loanType === 'sss_pension' && app?.computed_values?.estimated_loanable_amount
       ? [
@@ -617,6 +646,11 @@ export default function ProductLoanApplicationPage({ loanType }) {
                           You do not enter a loan amount. The system computes your maximum eligible loan from your monthly pension, term, interest rate, and required pension excess.
                         </div>
                       ) : null}
+                      {currentSection === 'loan' && loanType === 'chattel' ? (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-xs text-slate-700 dark:border-[#1F2937] dark:bg-[#0F172A]/40 dark:text-gray-300 md:col-span-2">
+                          Loan amount is determined by our team after collateral review. It will appear here once set — you cannot edit it yourself.
+                        </div>
+                      ) : null}
                       {currentSection === 'loan' && selectedProduct ? <ProductRulesCard product={selectedProduct} /> : null}
                       {currentSection === 'loan' && loanType === 'sss_pension' ? (
                         <PensionLoanPreviewCard
@@ -625,7 +659,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
                           breakdown={app?.computation_breakdown}
                         />
                       ) : null}
-                      {currentSection === 'loan' && loanType !== 'sss_pension' && !BORROWER_HIDDEN_FIELD_KEYS.has('loan_amount') && app?.computation_breakdown ? (
+                      {currentSection === 'loan' && loanType !== 'sss_pension' && app?.computation_breakdown ? (
                         <ComputationCard breakdown={app.computation_breakdown} />
                       ) : null}
                     </div>

@@ -255,6 +255,7 @@ Route::prefix('v1')->group(function () {
 
         Route::middleware('permission:loans.edit_amount|loans.approve')->group(function () {
             Route::patch('/loans/{loan}/approved-amount', [LoanController::class, 'updateApprovedAmount']);
+            Route::patch('/loans/{loan}/application-loan-amount', [LoanController::class, 'updateApplicationLoanAmount']);
         });
 
         Route::middleware('permission:loans.view')->group(function () {

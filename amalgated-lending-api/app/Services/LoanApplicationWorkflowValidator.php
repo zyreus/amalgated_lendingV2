@@ -91,7 +91,7 @@ class LoanApplicationWorkflowValidator
                 return [];
             }
 
-            return $this->validateCoMakers($app);
+            return $this->validateCoMakersStepMinimum($app);
         }
         if (! $section || in_array($section, ['documents', 'review'], true)) {
             return [];
@@ -218,6 +218,9 @@ class LoanApplicationWorkflowValidator
     {
         $errors = [];
         foreach ($rows as $row) {
+            if ($row['borrower_readonly'] ?? false) {
+                continue;
+            }
             if (! $this->isProductFieldRequired($row, $data)) {
                 continue;
             }
@@ -317,6 +320,29 @@ class LoanApplicationWorkflowValidator
             $this->validateCoMakers($app),
             $this->validateDocumentsComplete($app)
         );
+    }
+
+    /**
+     * Step navigation: at least one saved co-maker is enough to continue.
+     *
+     * @return array<int, string>
+     */
+    public function validateCoMakersStepMinimum(LoanApplication $app): array
+    {
+        $app->loadMissing('loanProduct');
+        if (! CoMakerRequirementService::requiresCoMakers($app)) {
+            return [];
+        }
+
+        $count = $app->relationLoaded('coMakers')
+            ? $app->coMakers->count()
+            : $app->coMakers()->count();
+
+        if ($count < 1) {
+            return ['Add at least one co-maker before continuing.'];
+        }
+
+        return [];
     }
 
     /**

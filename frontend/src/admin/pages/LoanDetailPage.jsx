@@ -769,6 +769,7 @@ export default function LoanDetailPage() {
             loanType={app?.loan_type}
             loanStatus={loan.status}
             requestedAmount={requestedAmount}
+            applicationLoanAmount={app?.loan_amount}
             approvedAmount={approvedAmount}
             approvalNotes={loan.approval_notes || ''}
             realEstateDetail={realEstateDetail}

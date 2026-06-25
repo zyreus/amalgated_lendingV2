@@ -66,7 +66,7 @@ const FIELD_PLACEHOLDERS = {
   monthly_gross_salary: 'e.g. 45000',
   monthly_net_salary: 'e.g. 38000',
   monthly_pension: 'e.g. 15000',
-  market_value: 'e.g. 850000',
+  loan_amount: 'e.g. 500000',
   loan_purpose: 'Describe how you plan to use the loan',
   destination_country: 'e.g. Japan',
   destination_city: 'e.g. Tokyo',

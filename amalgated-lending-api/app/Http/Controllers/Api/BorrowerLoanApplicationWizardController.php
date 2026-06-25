@@ -20,6 +20,7 @@ use App\Services\LoanApplicationWorkflowValidator;
 use App\Services\LoanCalculator;
 use App\Services\LoanProductDocumentRequirementsService;
 use App\Services\NotificationCenter;
+use App\Services\PensionLoanCapacityService;
 use App\Services\SignatureStorageService;
 use App\Services\TransactionalMailSender;
 use App\Support\PublicStorageUrl;
@@ -326,7 +327,7 @@ class BorrowerLoanApplicationWizardController extends Controller
         $stepConfig = collect(config('amalgated_loans.product_application_steps.'.$loanApplication->loan_type, []))->firstWhere('id', $step);
         $section = is_array($stepConfig) ? ($stepConfig['section'] ?? null) : null;
         $errors = match ($section) {
-            'co_makers' => $this->validator->validateCoMakers($loanApplication->loadMissing('coMakers.documents')),
+            'co_makers' => $this->validator->validateCoMakersStepMinimum($loanApplication->loadMissing('coMakers')),
             'documents' => $this->validator->validateDocumentsComplete($loanApplication),
             'review' => $this->validator->validateSubmit($loanApplication->loadMissing('coMakers.documents')),
             default => $this->validator->validateFormStep($loanApplication, $step),
@@ -850,7 +851,6 @@ class BorrowerLoanApplicationWizardController extends Controller
                     'chassis_number',
                     'or_number',
                     'cr_number',
-                    'market_value',
                     'loan_purpose',
                 ])
             ),

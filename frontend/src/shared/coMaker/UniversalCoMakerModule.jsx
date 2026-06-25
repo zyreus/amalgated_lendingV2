@@ -602,7 +602,7 @@ export default function UniversalCoMakerModule({
     <div className="space-y-6">
       <FormSection
         title="Co-Maker Information"
-        description="Add one or more co-makers who will support this loan application. Each co-maker needs complete details and required documents."
+        description="Save at least one co-maker to continue. Complete all required fields and documents before you submit the application."
         icon={UserPlus}
       >
         {coMakers.length > 0 ? (
