@@ -43,7 +43,6 @@ export default function LoanEvaluationPanel({
   const [saving, setSaving] = useState(false)
 
   const isRealEstate = loanType === 'real_estate'
-  const isChattel = loanType === 'chattel'
   const legacyRequested = Number(requestedAmount) > 0 ? Number(requestedAmount) : null
 
   useEffect(() => {
@@ -64,16 +63,16 @@ export default function LoanEvaluationPanel({
   const save = async () => {
     const parsedApproved = Number(String(approvedPrincipal).replace(/,/g, ''))
     const parsedProposed = Number(String(proposedLoanAmount).replace(/,/g, ''))
-    const hasProposed = isChattel && proposedLoanAmount !== ''
+    const hasProposed = proposedLoanAmount !== ''
     const hasApproved = approvedPrincipal !== '' && Number.isFinite(parsedApproved) && parsedApproved > 0
 
     if (!hasProposed && !hasApproved) {
-      showToast(isChattel ? 'Enter a proposed and/or approved loan amount.' : 'Enter a valid approved loan amount.', 'error')
+      showToast('Enter a confirmed and/or approved loan amount.', 'error')
       return
     }
 
     if (hasProposed && (!Number.isFinite(parsedProposed) || parsedProposed <= 0)) {
-      showToast('Enter a valid proposed loan amount for the borrower.', 'error')
+      showToast('Enter a valid confirmed loan amount for the borrower.', 'error')
       return
     }
 
@@ -144,34 +143,30 @@ export default function LoanEvaluationPanel({
       </div>
 
       <p className={`text-xs ${admin.textMuted}`}>
-        {isChattel
-          ? 'Set the proposed loan amount shown to the borrower, then record the official approved amount after collateral review and credit investigation.'
-          : 'Determine the official loan amount after property appraisal, credit investigation, and product rules. Borrowers do not enter a loan amount during application.'}
+        Set the confirmed loan amount from the borrower&apos;s request, then record the official approved amount after evaluation and credit investigation.
       </p>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {isChattel ? (
-          <div>
-            <label className={`text-xs font-medium ${admin.textMuted}`} htmlFor="evaluation-proposed-amount">
-              Confirmed loan amount (CHM)
-            </label>
-            <input
-              id="evaluation-proposed-amount"
-              type="number"
-              min="0"
-              step="0.01"
-              value={proposedLoanAmount}
-              onChange={(e) => setProposedLoanAmount(e.target.value)}
-              readOnly={!canEdit}
-              className={`mt-1 w-full ${inputClass}`}
-            />
-            <p className={`mt-1 text-xs ${admin.textMuted}`}>
-              Official amount for this application. The borrower enters their own requested amount on the CHM form; this value overrides the preview when set.
-            </p>
-          </div>
-        ) : null}
+        <div>
+          <label className={`text-xs font-medium ${admin.textMuted}`} htmlFor="evaluation-proposed-amount">
+            Confirmed loan amount
+          </label>
+          <input
+            id="evaluation-proposed-amount"
+            type="number"
+            min="0"
+            step="0.01"
+            value={proposedLoanAmount}
+            onChange={(e) => setProposedLoanAmount(e.target.value)}
+            readOnly={!canEdit}
+            className={`mt-1 w-full ${inputClass}`}
+          />
+          <p className={`mt-1 text-xs ${admin.textMuted}`}>
+            Official amount for this application. The borrower enters their requested amount on the form; this value overrides the preview when set.
+          </p>
+        </div>
 
-        {legacyRequested != null && !isChattel ? (
+        {legacyRequested != null ? (
           <div>
             <label className={`text-xs font-medium ${admin.textMuted}`}>Legacy requested amount</label>
             <p className="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">{formatCurrencyPhp(legacyRequested)}</p>

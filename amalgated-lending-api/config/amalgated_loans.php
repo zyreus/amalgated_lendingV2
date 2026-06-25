@@ -87,6 +87,7 @@ return [
             'loan' => [
                 ['key' => 'loan_product_id', 'label' => 'Loan Product', 'type' => 'loan_product', 'required' => true],
                 ['key' => 'term_months', 'label' => 'Loan Term', 'type' => 'numeric', 'required' => true],
+                ['key' => 'loan_amount', 'label' => 'Loan Amount (PHP)', 'type' => 'numeric', 'required' => true],
                 ['key' => 'loan_purpose', 'label' => 'Loan Purpose', 'type' => 'textarea', 'required' => true],
             ],
         ],
@@ -134,6 +135,7 @@ return [
             'loan' => [
                 ['key' => 'loan_product_id', 'label' => 'Loan Product', 'type' => 'loan_product', 'required' => true],
                 ['key' => 'term_months', 'label' => 'Loan Term', 'type' => 'numeric', 'required' => true],
+                ['key' => 'loan_amount', 'label' => 'Loan Amount (PHP)', 'type' => 'numeric', 'required' => true],
                 ['key' => 'loan_purpose', 'label' => 'Loan Purpose', 'type' => 'textarea', 'required' => true],
             ],
         ],
@@ -156,6 +158,7 @@ return [
             'loan' => [
                 ['key' => 'loan_product_id', 'label' => 'Loan Product', 'type' => 'loan_product', 'required' => true],
                 ['key' => 'term_months', 'label' => 'Loan Term (months)', 'type' => 'numeric', 'required' => true],
+                ['key' => 'loan_amount', 'label' => 'Loan Amount (PHP)', 'type' => 'numeric', 'required' => true],
                 ['key' => 'application_nature', 'label' => 'Application Nature', 'type' => 'select', 'required' => true, 'options' => ['new', 'reloan']],
                 ['key' => 'loan_purpose', 'label' => 'Loan Purpose', 'type' => 'textarea', 'required' => true],
             ],
@@ -208,6 +211,7 @@ return [
             'loan' => [
                 ['key' => 'loan_product_id', 'label' => 'Loan Product', 'type' => 'loan_product', 'required' => true],
                 ['key' => 'term_months', 'label' => 'Loan Term', 'type' => 'numeric', 'required' => true],
+                ['key' => 'loan_amount', 'label' => 'Loan Amount (PHP)', 'type' => 'numeric', 'required' => true],
                 ['key' => 'loan_purpose', 'label' => 'Purpose of Loan', 'type' => 'select', 'required' => true, 'options' => ['Airfare Assistance', 'Visa Processing', 'Placement Fee', 'Medical Examination', 'Travel Expenses', 'Educational Travel Expenses', 'Emergency Travel']],
                 ['key' => 'repayment_frequency', 'label' => 'Repayment Frequency', 'type' => 'select', 'required' => true, 'options' => ['Weekly', 'Semi-Monthly', 'Monthly']],
             ],

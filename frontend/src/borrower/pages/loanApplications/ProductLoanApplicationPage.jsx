@@ -31,13 +31,14 @@ import { useWizardStepValidation } from '../../hooks/useWizardStepValidation.js'
 import {
   buildWizardValidationRegistry,
   parseValidationErrors,
+  scrollToWizardTarget,
   validateCurrentStepClient,
 } from '../../validation/wizardValidationUtils.js'
 import { DEFAULT_CO_MAKER_DOCUMENT_CATEGORIES, resolveRequiresCoMakers } from '../../../shared/coMaker/coMakerSchema.js'
 
 const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/png']
 const MAX_UPLOAD_MB = 20
-const BORROWER_HIDDEN_FIELD_KEYS = new Set(['loan_amount', 'requested_loan_amount', 'prospected_loan_amount'])
+const BORROWER_HIDDEN_FIELD_KEYS = new Set(['requested_loan_amount', 'prospected_loan_amount'])
 const PENSION_BORROWER_HIDDEN_KEYS = new Set(['loan_product_id', ...BORROWER_HIDDEN_FIELD_KEYS])
 const TRAVEL_COST_KEYS = [
   'airfare_cost',
@@ -57,7 +58,7 @@ const SECTION_HINTS = {
   employment: 'Employment details help us assess repayment capacity.',
   employment_financial: 'Income and employment details support your application review.',
   income: 'Declare salary and other income sources honestly.',
-  loan: 'Choose your loan product, purpose, and repayment term. Loan amount is computed automatically for pension loans.',
+  loan: 'Choose your loan product, term, purpose, and requested loan amount.',
   vehicle: 'Vehicle details must match OR/CR documents.',
   property: 'Describe the property location and upload any documents or photos you have. Exact measurements and values will be verified by our team.',
   pension: 'Enter your pension details and monthly benefit amount. Your capacity preview updates as you type.',
@@ -296,7 +297,6 @@ export default function ProductLoanApplicationPage({ loanType }) {
 
   const isBorrowerHiddenField = (field) => {
     if (field?.borrower_readonly) return false
-    if (loanType === 'chattel' && field?.key === 'loan_amount') return false
     const hiddenKeys = loanType === 'sss_pension' ? PENSION_BORROWER_HIDDEN_KEYS : BORROWER_HIDDEN_FIELD_KEYS
     return hiddenKeys.has(field?.key)
   }
@@ -395,9 +395,9 @@ export default function ProductLoanApplicationPage({ loanType }) {
     const placeholder = fieldPlaceholder(field)
     const required = Boolean(field.required || field.required_if)
     const spanClass = field.type === 'textarea' || field.type === 'loan_product' || field.type === 'computed_sum' ? 'md:col-span-2' : ''
-    const isChattelLoanAmount = loanType === 'chattel' && field.key === 'loan_amount'
+    const isRequestedLoanAmount = field.key === 'loan_amount'
     const teamConfirmedAmount =
-      isChattelLoanAmount && app?.loan_amount != null && Number(app.loan_amount) > 0
+      isRequestedLoanAmount && app?.loan_amount != null && Number(app.loan_amount) > 0
         ? formatReadonlyPhpAmount(app.loan_amount)
         : null
     const fieldError = validation.getFieldError(field.key)
@@ -427,10 +427,12 @@ export default function ProductLoanApplicationPage({ loanType }) {
       )
     }
 
-    const chattelLoanAmountHint = isChattelLoanAmount
+    const loanAmountHint = isRequestedLoanAmount
       ? teamConfirmedAmount
         ? `Your requested amount. Amount confirmed by our team: ${teamConfirmedAmount}.`
-        : 'Enter the loan amount you are requesting. Our team may adjust this after collateral review.'
+        : loanType === 'sss_pension'
+          ? 'Enter the loan amount you are requesting. It must not exceed your estimated loanable amount shown below.'
+          : 'Enter the loan amount you are requesting. Our team may adjust this after review.'
       : null
 
     if (field.type === 'loan_product') {
@@ -526,7 +528,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
         required={required}
         className={spanClass}
         fieldKey={field.key}
-        hint={chattelLoanAmountHint || undefined}
+        hint={loanAmountHint || undefined}
         invalid={fieldInvalid}
         errorMessage={fieldError}
         shake={fieldShake}
@@ -656,6 +658,10 @@ export default function ProductLoanApplicationPage({ loanType }) {
     if (validation.applyValidationResult(clientResult, step)) return
 
     try {
+      await borrowerApi(`/borrower/loan-applications/${applicationId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ draft_step: step, form_data: formData, loan_type: loanType }),
+      })
       const res = await borrowerApi(`/borrower/loan-applications/${applicationId}/submit`, {
         method: 'POST',
         body: '{}',
@@ -683,6 +689,23 @@ export default function ProductLoanApplicationPage({ loanType }) {
     })
   }
 
+  const handleReviewMissingItems = () => {
+    validation.closeModal()
+    const loanStep = steps.find((s) => s.section === 'loan')
+    const hasLoanAmountIssue =
+      Boolean(validation.getFieldError('loan_amount')) ||
+      validation.groupedErrors.some((group) => group.items.some((item) => item.key === 'loan_amount'))
+    if (hasLoanAmountIssue && loanStep && currentSection !== 'loan') {
+      goToStep(Number(loanStep.id))
+      window.setTimeout(
+        () => scrollToWizardTarget({ type: 'field', key: 'loan_amount', section: 'loan' }),
+        320,
+      )
+      return
+    }
+    validation.handleReviewMissing()
+  }
+
   const reviewItems = [
     ...Object.entries(fieldsBySection)
       .flatMap(([, rows]) => rows)
@@ -693,7 +716,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
         key: field.key,
         label: field.label,
         value:
-          field.key === 'loan_amount' && loanType === 'chattel'
+          field.key === 'loan_amount'
             ? [
                 formatAmountForDisplay(formData[field.key]) || 'Not provided',
                 app?.loan_amount != null && Number(app.loan_amount) > 0
@@ -784,7 +807,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
               title={currentStep?.title || 'Application'}
               description={
                 currentSection === 'loan' && loanType === 'sss_pension'
-                  ? 'Choose your preferred term and loan purpose. Your maximum loanable amount is computed automatically from pension capacity and company rules.'
+                  ? 'Choose your preferred term, loan purpose, and requested amount. Your maximum loanable amount is computed from pension capacity and company rules.'
                   : currentSection === 'pension' && loanType === 'sss_pension'
                     ? SECTION_HINTS.pension
                     : SECTION_HINTS[currentSection] || 'Fill in the required details below.'
@@ -819,12 +842,12 @@ export default function ProductLoanApplicationPage({ loanType }) {
                       ) : null}
                       {currentSection === 'loan' && loanType === 'sss_pension' ? (
                         <div className="rounded-xl border border-amber-100 bg-amber-50/60 px-4 py-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-100 md:col-span-2">
-                          You do not enter a loan amount. The system computes your maximum eligible loan from your monthly pension, term, interest rate, and required pension excess.
+                          Enter your requested loan amount. It must not exceed your estimated loanable amount from pension capacity rules.
                         </div>
                       ) : null}
-                      {currentSection === 'loan' && loanType === 'chattel' ? (
+                      {currentSection === 'loan' && loanType !== 'sss_pension' ? (
                         <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-xs text-slate-700 dark:border-[#1F2937] dark:bg-[#0F172A]/40 dark:text-gray-300 md:col-span-2">
-                          Enter your requested loan amount. Our lending team may review and set the final amount after collateral evaluation.
+                          Enter your requested loan amount. Our lending team may review and set the final amount after evaluation.
                         </div>
                       ) : null}
                       {currentSection === 'loan' && selectedProduct ? <ProductRulesCard product={selectedProduct} /> : null}
@@ -1007,7 +1030,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
         open={validation.modalOpen}
         grouped={validation.groupedErrors}
         onClose={validation.closeModal}
-        onReview={validation.handleReviewMissing}
+        onReview={handleReviewMissingItems}
       />
       <PrivacyPolicyModal open={privacyModalOpen} onClose={() => setPrivacyModalOpen(false)} />
     </div>

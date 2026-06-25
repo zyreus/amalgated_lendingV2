@@ -191,6 +191,10 @@ class LoanController extends Controller
             'loanApplication.coMakers.documents.uploadedBy',
             'loanApplication.coMaker',
             'loanApplication.realEstateDetail.evaluator',
+            'loanApplication.chattelMortgageDetail',
+            'loanApplication.salaryLoanDetail',
+            'loanApplication.pensionLoanDetail',
+            'loanApplication.travelAssistanceDetail',
             'loanApplication.travelLoanWizardForm',
             'loanApplication.dependents',
             'loanApplication.contactPersons',
@@ -1458,7 +1462,7 @@ class LoanController extends Controller
     }
 
     /**
-     * Set proposed loan amount on a chattel application (shown read-only to borrower).
+     * Set confirmed loan amount on an application (shown to borrower after review).
      */
     public function updateApplicationLoanAmount(Request $request, Loan $loan, ActivityLogger $logger): JsonResponse
     {
@@ -1485,16 +1489,12 @@ class LoanController extends Controller
             return response()->json(['ok' => false, 'message' => 'No linked loan application found.'], 422);
         }
 
-        if ($app->loan_type !== LoanApplication::TYPE_CHATTEL) {
-            return response()->json(['ok' => false, 'message' => 'Proposed amount can only be set for chattel mortgage applications.'], 422);
-        }
-
         $newAmount = round((float) $request->input('loan_amount'), 2);
         $previous = $app->loan_amount !== null ? round((float) $app->loan_amount, 2) : null;
 
         DB::transaction(function () use ($loan, $app, $newAmount) {
             $app->loan_amount = $newAmount;
-            $this->recomputeChattelApplication($app);
+            $this->recomputeApplicationLoanAmount($app);
             $app->save();
 
             if ($loan->requested_principal === null || (float) $loan->requested_principal <= 0) {
@@ -1679,7 +1679,7 @@ class LoanController extends Controller
         ]);
     }
 
-    private function recomputeChattelApplication(LoanApplication $app): void
+    private function recomputeApplicationLoanAmount(LoanApplication $app): void
     {
         if (! $app->loan_product_id) {
             $app->computed_values = null;

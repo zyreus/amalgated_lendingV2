@@ -13,6 +13,7 @@ import CreditWellnessSummaryPanel from '../../components/wellness/CreditWellness
 import LoanDocumentManagerPanel from '../components/LoanDocumentManagerPanel.jsx'
 import PropertyAppraisalPanel from '../components/PropertyAppraisalPanel.jsx'
 import LoanEvaluationPanel from '../components/LoanEvaluationPanel.jsx'
+import CollateralInformationPanel from '../components/CollateralInformationPanel.jsx'
 import UniversalCoMakerModule from '../../shared/coMaker/UniversalCoMakerModule.jsx'
 import { DEFAULT_CO_MAKER_DOCUMENT_CATEGORIES } from '../../shared/coMaker/coMakerSchema.js'
 
@@ -834,24 +835,19 @@ export default function LoanDetailPage() {
       )}
 
       {activeTab === 'collateral' && app && (
-        <div className={`space-y-6 text-sm ${admin.cardNoHover}`}>
+        <div className="space-y-6">
           {app.loan_type === 'real_estate' ? (
-            <PropertyAppraisalPanel
-              loanId={loan.id}
-              detail={realEstateDetail}
-              borrowerSubmission={borrowerPropertyInfo}
-              canEdit={can('loans.approve')}
-              onSaved={load}
-            />
+            <div className={`text-sm ${admin.cardNoHover}`}>
+              <PropertyAppraisalPanel
+                loanId={loan.id}
+                detail={realEstateDetail}
+                borrowerSubmission={borrowerPropertyInfo}
+                canEdit={can('loans.approve')}
+                onSaved={load}
+              />
+            </div>
           ) : (
-            <>
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Collateral information</h2>
-              <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-                {app.property_location ? <div><dt className={`text-xs ${admin.textMuted}`}>Property location</dt><dd>{app.property_location}</dd></div> : null}
-                {app.property_value != null ? <div><dt className={`text-xs ${admin.textMuted}`}>Market / property value</dt><dd>{formatCurrencyPhp(app.property_value)}</dd></div> : null}
-                {app.stencil_text ? <div><dt className={`text-xs ${admin.textMuted}`}>Stencil / identifier</dt><dd>{app.stencil_text}</dd></div> : null}
-              </dl>
-            </>
+            <CollateralInformationPanel application={app} />
           )}
         </div>
       )}
@@ -964,7 +960,7 @@ export default function LoanDetailPage() {
         </div>
       ) : null}
 
-      {loan.loan_application ? (
+      {loan.loan_application && activeTab !== 'collateral' ? (
         <div className={`text-sm ${admin.cardNoHover}`}>
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             {loan.loan_application.loan_type === 'real_estate'

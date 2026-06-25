@@ -146,6 +146,17 @@ export function parseValidationErrors(errorMessages, registry, { currentStepTitl
       matched = true
     }
 
+    if (!matched && /loan amount/i.test(msg)) {
+      fieldErrors.loan_amount = msg
+      addGroupItem(grouped, 'Loan Details', {
+        type: 'field',
+        key: 'loan_amount',
+        label: 'Loan Amount (PHP)',
+      })
+      rememberFirst({ type: 'field', key: 'loan_amount', section: 'loan' })
+      matched = true
+    }
+
     if (!matched && /privacy policy/i.test(msg)) {
       fieldErrors.privacy_consent = msg
       addGroupItem(grouped, 'Review & Submit', { type: 'field', key: 'privacy_consent', label: 'Privacy Policy agreement' })

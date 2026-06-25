@@ -551,9 +551,6 @@ class BorrowerLoanApplicationWizardController extends Controller
     private function stripStaffOnlyFormKeys(LoanApplication $app, array $form): array
     {
         $staffOnly = ['requested_loan_amount', 'prospected_loan_amount'];
-        if ($app->loan_type !== LoanApplication::TYPE_CHATTEL) {
-            $staffOnly[] = 'loan_amount';
-        }
 
         foreach ($staffOnly as $key) {
             unset($form[$key]);
@@ -984,11 +981,6 @@ class BorrowerLoanApplicationWizardController extends Controller
         }
 
         $loanAmount = (float) ($app->loan_amount ?? 0);
-        if ($loanAmount <= 0 && $app->loan_type === LoanApplication::TYPE_CHATTEL) {
-            $loanAmount = isset($form['loan_amount']) && $form['loan_amount'] !== ''
-                ? (float) $form['loan_amount']
-                : 0.0;
-        }
         if ($app->loan_type === LoanApplication::TYPE_SSS_PENSION) {
             $monthlyPension = isset($form['monthly_pension']) && $form['monthly_pension'] !== ''
                 ? (float) $form['monthly_pension']
@@ -1011,8 +1003,8 @@ class BorrowerLoanApplicationWizardController extends Controller
                 'application_nature' => $nature,
                 'pension_type' => $form['pension_type'] ?? null,
             ]);
-            $loanAmount = (float) ($estimate['estimated_loanable_amount'] ?? 0);
-            if ($loanAmount <= 0) {
+            $estimated = (float) ($estimate['estimated_loanable_amount'] ?? 0);
+            if ($estimated <= 0) {
                 $app->computed_values = [
                     'pension_preview' => $estimate,
                     'validation_errors' => $estimate['validation_errors'] ?? [],
@@ -1021,19 +1013,30 @@ class BorrowerLoanApplicationWizardController extends Controller
 
                 return;
             }
+
+            if ($loanAmount <= 0) {
+                $requested = $this->parseMoneyAmount($form['loan_amount'] ?? null);
+                $loanAmount = $requested > 0 ? $requested : $estimated;
+            }
         } elseif ($app->loan_type === LoanApplication::TYPE_TRAVEL_ASSISTANCE) {
-            $quoted = isset($form['travel_cost']) && $form['travel_cost'] !== ''
-                ? (float) $form['travel_cost']
-                : 0.0;
-            if ($quoted <= 0) {
+            if ($loanAmount <= 0) {
+                $requested = $this->parseMoneyAmount($form['loan_amount'] ?? null);
+                $quoted = $requested > 0
+                    ? $requested
+                    : (isset($form['travel_cost']) && $form['travel_cost'] !== '' ? (float) $form['travel_cost'] : 0.0);
+                $loanAmount = $quoted;
+            }
+            if ($loanAmount <= 0) {
                 $app->computed_values = null;
                 $app->computation_breakdown = null;
 
                 return;
             }
-            $loanAmount = $quoted;
         } elseif ($loanAmount <= 0) {
-            return;
+            $loanAmount = $this->parseMoneyAmount($form['loan_amount'] ?? null);
+            if ($loanAmount <= 0) {
+                return;
+            }
         }
 
         $payload = [
@@ -1092,6 +1095,15 @@ class BorrowerLoanApplicationWizardController extends Controller
         }
 
         return 12.0;
+    }
+
+    private function parseMoneyAmount(mixed $value): float
+    {
+        if ($value === null || $value === '') {
+            return 0.0;
+        }
+
+        return (float) str_replace(',', '', (string) $value);
     }
 
     private function buildLoanPayloadFromApplication(LoanApplication $app): array

@@ -442,11 +442,6 @@ class LoanApplicationWorkflowValidator
 
         $form = is_array($app->form_data) ? $app->form_data : [];
         $loanAmount = (float) ($app->loan_amount ?? 0);
-        if ($loanAmount <= 0 && $app->loan_type === LoanApplication::TYPE_CHATTEL) {
-            $loanAmount = isset($form['loan_amount']) && $form['loan_amount'] !== ''
-                ? (float) $form['loan_amount']
-                : 0.0;
-        }
 
         if ($app->loan_type === LoanApplication::TYPE_SSS_PENSION) {
             if (! $app->loan_product_id) {
@@ -477,8 +472,20 @@ class LoanApplicationWorkflowValidator
                 return $flat !== [] ? $flat : ['Pension capacity is insufficient for the selected term.'];
             }
 
-            $loanAmount = (float) $estimate['estimated_loanable_amount'];
-        } elseif (! $app->loan_product_id || $loanAmount <= 0) {
+            $estimated = (float) ($estimate['estimated_loanable_amount'] ?? 0);
+            $requested = $this->parseMoneyAmount($form['loan_amount'] ?? null);
+            if ($requested > 0 && $requested > $estimated) {
+                return ['Requested loan amount exceeds your estimated loanable amount.'];
+            }
+
+            if ($loanAmount <= 0) {
+                $loanAmount = $requested > 0 ? $requested : $estimated;
+            }
+        } elseif ($loanAmount <= 0) {
+            $loanAmount = $this->parseMoneyAmount($form['loan_amount'] ?? null);
+        }
+
+        if (! $app->loan_product_id || $loanAmount <= 0) {
             return [];
         }
 
@@ -487,7 +494,7 @@ class LoanApplicationWorkflowValidator
         try {
             $this->loanCalculator->compute([
                 'product_id' => (int) $app->loan_product_id,
-                'loan_amount' => (float) $app->loan_amount,
+                'loan_amount' => $loanAmount,
                 'term_months' => max(1, (int) ($app->term_months ?? 1)),
                 'application_nature' => $nature,
                 'age' => isset($form['age']) && $form['age'] !== '' ? (int) $form['age'] : null,
@@ -507,6 +514,15 @@ class LoanApplicationWorkflowValidator
         }
 
         return [];
+    }
+
+    private function parseMoneyAmount(mixed $value): float
+    {
+        if ($value === null || $value === '') {
+            return 0.0;
+        }
+
+        return (float) str_replace(',', '', (string) $value);
     }
 
     /**
