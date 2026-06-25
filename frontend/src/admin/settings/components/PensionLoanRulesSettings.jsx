@@ -79,7 +79,7 @@ export default function PensionLoanRulesSettings({ readOnly = false }) {
       }
       const rules = {
         ...(productBase.rules || {}),
-        pension_retention_threshold: Number(form.pension_retention_threshold) || 1000,
+        pension_retention_threshold: Number(form.pension_retention_threshold) || 300,
         pension_retention_threshold_nw_sss: form.pension_retention_threshold_nw_sss !== ''
           ? Number(form.pension_retention_threshold_nw_sss)
           : undefined,
@@ -149,7 +149,7 @@ export default function PensionLoanRulesSettings({ readOnly = false }) {
                 disabled={readOnly}
               />
             </SettingsField>
-            <SettingsField label="Default minimum remaining pension (₱)" htmlFor="pen-min-excess" helper="Fallback when SSS/GSIS-specific rules are not set.">
+            <SettingsField label="Default minimum remaining pension (₱)" htmlFor="pen-min-excess" helper="Fallback when SSS/GSIS-specific rules are not set. Typical range: ₱100 (SSS) to ₱300 (GSIS).">
               <input
                 id="pen-min-excess"
                 className={`w-full ${settingsInputClass}`}

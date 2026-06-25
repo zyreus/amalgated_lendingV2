@@ -7,6 +7,10 @@ import { admin } from '../components/AdminUi.jsx'
 import { AdminPageSkeleton } from '../../components/AppSkeletons.jsx'
 import { getLaravelStorageFileUrl, resolvePublicFileUrl } from '../../utils/lendingLaravelApi.js'
 import { applicationPayloadRows } from '../utils/loanApplicationPayloadDisplay.js'
+import {
+  coMakerSubmittedFormRows,
+  resolveCoMakersFromLoanApplication,
+} from '../../shared/coMaker/coMakerDisplayUtils.js'
 import BorrowerUploadedFilesPanel from '../components/BorrowerUploadedFilesPanel.jsx'
 import CreditWellnessSummaryPanel from '../../components/wellness/CreditWellnessSummaryPanel.jsx'
 
@@ -421,24 +425,14 @@ export default function BorrowerDetailPage() {
           </p>
           {loans.map((ln) => {
             const payload = ln.application_payload
-            const rows = applicationPayloadRows(payload)
+            const loanApplication = ln.loan_application || ln.loanApplication
+            const coMakers = resolveCoMakersFromLoanApplication(loanApplication, payload)
+            const rows = [
+              ...applicationPayloadRows(payload),
+              ...coMakerSubmittedFormRows(coMakers),
+            ]
             const hasKyc =
               Boolean(ln.face_photo_path) || (Array.isArray(ln.kyc_documents) && ln.kyc_documents.length > 0)
-            const loanApplication = ln.loanApplication
-            const coMakerName =
-              loanApplication?.coMaker?.name ||
-              loanApplication?.co_maker_name ||
-              payload?.co_maker_name ||
-              '—'
-            const coMakerEmail =
-              loanApplication?.coMaker?.email ||
-              loanApplication?.co_maker_email ||
-              payload?.co_maker_email ||
-              '—'
-            const hasCoMaker =
-              coMakerName !== '—' ||
-              coMakerEmail !== '—' ||
-              Boolean(loanApplication?.co_maker_id)
 
             return (
               <div key={ln.id} className={`${admin.cardNoHover} space-y-5`}>
@@ -503,15 +497,27 @@ export default function BorrowerDetailPage() {
                         </dd>
                       </div>
                       <div className="grid grid-cols-1 gap-0.5 border-b border-gray-100 pb-2 dark:border-[#1F2937] sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] sm:gap-4">
-                        <dt className={admin.textMuted}>Co-maker</dt>
+                        <dt className={admin.textMuted}>Co-maker{coMakers.length > 1 ? 's' : ''}</dt>
                         <dd className="text-gray-900 dark:text-gray-100">
-                          {hasCoMaker ? (
-                            <>
-                              <div>{coMakerName}</div>
-                              <div className={`text-xs ${admin.textMuted}`}>{coMakerEmail}</div>
-                            </>
-                          ) : (
+                          {coMakers.length === 0 ? (
                             'No co-maker'
+                          ) : (
+                            <ul className="space-y-3">
+                              {coMakers.map((cm, cmIndex) => (
+                                <li key={cm.id || `cm-${cmIndex}`}>
+                                  <div className="font-medium">{cm.full_name}</div>
+                                  {cm.email ? <div className={`text-xs ${admin.textMuted}`}>{cm.email}</div> : null}
+                                  {cm.contact_number ? (
+                                    <div className={`text-xs ${admin.textMuted}`}>{cm.contact_number}</div>
+                                  ) : null}
+                                  {cm.relationship_to_borrower ? (
+                                    <div className={`text-xs ${admin.textMuted}`}>
+                                      Relationship: {cm.relationship_to_borrower}
+                                    </div>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
                           )}
                         </dd>
                       </div>

@@ -36,7 +36,8 @@ class PensionLoanFormulaTest extends TestCase
                 'doc_stamp_per_200' => 1.5,
                 'notarial_fee_nw_sss' => 350,
                 'notarial_fee_rl_sss' => 175,
-                'pension_retention_threshold' => 1000,
+                'pension_retention_threshold' => 100,
+                'pension_retention_threshold_sss' => 100,
             ],
         ]);
     }
@@ -72,7 +73,7 @@ class PensionLoanFormulaTest extends TestCase
             'loan_amount' => 30000,
             'term_months' => 24,
             'application_nature' => 'reloan',
-            'monthly_pension' => 2500,
+            'monthly_pension' => 2000,
             'pension_type' => 'SSS',
         ]);
     }

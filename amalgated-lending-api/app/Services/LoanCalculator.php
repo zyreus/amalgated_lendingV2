@@ -191,7 +191,7 @@ class LoanCalculator
         $pensionRetentionThreshold = null;
         $remainingPension = null;
         if ($product->slug === 'sss-pension-loan' && $monthlyPensionInput !== null) {
-            $pensionRetentionThreshold = $this->resolvePensionPolicyAmount($rules, 'pension_retention_threshold', $normalizedNature, $pensionSystem, 1000.0);
+            $pensionRetentionThreshold = $this->resolvePensionPolicyAmount($rules, 'pension_retention_threshold', $normalizedNature, $pensionSystem, 300.0);
             $remainingPension = $this->money($monthlyPensionInput - $monthlyAmortization);
             if ($remainingPension < $pensionRetentionThreshold) {
                 throw ValidationException::withMessages([

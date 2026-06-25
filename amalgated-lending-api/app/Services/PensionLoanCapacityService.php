@@ -177,6 +177,6 @@ class PensionLoanCapacityService
             return max(0.0, (float) $specific);
         }
 
-        return max(0.0, (float) ($rules['pension_retention_threshold'] ?? 1000.0));
+        return max(0.0, (float) ($rules['pension_retention_threshold'] ?? 300.0));
     }
 }

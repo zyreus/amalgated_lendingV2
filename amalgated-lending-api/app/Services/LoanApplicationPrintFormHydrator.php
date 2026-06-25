@@ -44,6 +44,12 @@ class LoanApplicationPrintFormHydrator
         $fullName = $this->firstNonEmpty(
             $detail['full_name'] ?? null,
             trim(implode(' ', array_filter([
+                $form['first_name'] ?? null,
+                $form['middle_name'] ?? null,
+                $form['last_name'] ?? null,
+                $form['suffix'] ?? null,
+            ]))),
+            trim(implode(' ', array_filter([
                 $personal['first_name'] ?? null,
                 $personal['middle_name'] ?? null,
                 $personal['last_name'] ?? null,
@@ -103,6 +109,7 @@ class LoanApplicationPrintFormHydrator
             ),
             'loan_term_months' => $this->firstNonEmpty(
                 $loan['desired_term'] ?? null,
+                $form['term_months'] ?? null,
                 $form['loan_term_months'] ?? null,
                 $loanApplication->term_months,
                 $loanApplication->loan?->term_months,
@@ -238,6 +245,27 @@ class LoanApplicationPrintFormHydrator
                     $form['purpose'] ?? null,
                     $loanApplication->purpose,
                 ),
+                'loan_purpose' => $this->firstNonEmpty(
+                    $detail['loan_purpose'] ?? null,
+                    $form['loan_purpose'] ?? null,
+                    $form['purpose'] ?? null,
+                    $loanApplication->purpose,
+                ),
+                'repayment_frequency' => $this->firstNonEmpty(
+                    $form['repayment_frequency'] ?? null,
+                ),
+                'travel_cost' => $this->firstNonEmpty(
+                    $form['travel_cost'] ?? null,
+                ),
+                'bank_account_number' => $this->firstNonEmpty(
+                    $detail['bank_account_number'] ?? null,
+                    $form['bank_account_number'] ?? null,
+                ),
+                'emergency_contact_name' => $this->firstNonEmpty($form['emergency_contact_name'] ?? null),
+                'emergency_contact_phone' => $this->firstNonEmpty($form['emergency_contact_phone'] ?? null),
+                'emergency_contact_relationship' => $this->firstNonEmpty($form['emergency_contact_relationship'] ?? null),
+                'emergency_contact_address' => $this->firstNonEmpty($form['emergency_contact_address'] ?? null),
+                'gender' => $this->firstNonEmpty($form['gender'] ?? null),
                 'referred_by' => $this->firstNonEmpty($loan['referred_by'] ?? null, $form['referred_by'] ?? null),
                 'employment_type' => $this->firstNonEmpty(
                     $detail['employment_type'] ?? null,
@@ -249,6 +277,19 @@ class LoanApplicationPrintFormHydrator
                     $form['spouse_employment_type'] ?? null,
                 ),
                 'monthly_salary' => $monthlyNet,
+                'monthly_gross_salary' => $monthlyGross,
+                'monthly_income' => $this->firstNonEmpty(
+                    $detail['monthly_income'] ?? null,
+                    $form['monthly_income'] ?? null,
+                ),
+                'other_income_sources' => $this->firstNonEmpty(
+                    $detail['other_income_sources'] ?? null,
+                    $form['other_income_sources'] ?? null,
+                ),
+                'employment_status' => $this->firstNonEmpty(
+                    $detail['employment_status'] ?? null,
+                    $form['employment_status'] ?? null,
+                ),
                 'monthly_pension' => $monthlyPension,
                 'pension_type' => $this->firstNonEmpty(
                     $detail['pension_type'] ?? null,

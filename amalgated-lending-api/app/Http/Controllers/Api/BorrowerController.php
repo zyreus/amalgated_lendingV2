@@ -386,6 +386,9 @@ class BorrowerController extends Controller
                 $q->with([
                     'loanApplication:id,loan_id,loan_type,co_maker_id,co_maker_name,co_maker_email,co_maker_phone',
                     'loanApplication.coMaker:id,name,email',
+                    'loanApplication.coMakers' => function ($cm) {
+                        $cm->orderBy('sort_order')->orderBy('id');
+                    },
                 ])
                     ->orderByDesc('id')
                     ->limit(50);

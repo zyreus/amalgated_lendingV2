@@ -16,7 +16,7 @@ function resolveMinRemaining(product, applicationNature = 'new', pensionType = '
     rules[`pension_retention_threshold_${natureKey}_${system}`]
       ?? rules[`pension_retention_threshold_${system}`]
       ?? rules.pension_retention_threshold
-      ?? 1000,
+      ?? 300,
   )
 }
 

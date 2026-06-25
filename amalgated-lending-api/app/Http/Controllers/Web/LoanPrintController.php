@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Loan;
 use App\Models\LoanApplication;
 use App\Models\TravelApplication;
+use App\Services\LoanApplicationPortalPrintSections;
 use App\Services\LoanApplicationPrintFormHydrator;
 use App\Services\LoanStatementOfAccountService;
 use App\Support\LoanApplicationCategoryResolver;
@@ -18,6 +19,7 @@ class LoanPrintController extends Controller
     public function __construct(
         private LoanStatementOfAccountService $soa,
         private LoanApplicationPrintFormHydrator $printFormHydrator,
+        private LoanApplicationPortalPrintSections $portalPrintSections,
     ) {}
 
     public function generalLoan(Request $request, LoanApplication $loanApplication): View
@@ -34,6 +36,7 @@ class LoanPrintController extends Controller
             'pensionLoanDetail',
             'travelAssistanceDetail',
             'dependents',
+            'coMakers',
         ]);
 
         $documents = $loanApplication->documents ?? [];
@@ -49,6 +52,7 @@ class LoanPrintController extends Controller
         $form = $this->resolveLoanCategoriesOnForm($form, $loanApplication);
 
         $loanTypeLabel = config('amalgated_loans.general_loan_types')[$loanApplication->loan_type] ?? $loanApplication->loan_type;
+        $portalSections = $this->portalPrintSections->build($loanApplication, $form);
 
         return view('print.general_loan_application', [
             'app' => $loanApplication,
@@ -57,6 +61,8 @@ class LoanPrintController extends Controller
             'documents' => $documents,
             'docStatus' => $docStatus,
             'loanTypeLabel' => $loanTypeLabel,
+            'portalSections' => $portalSections,
+            'coMakers' => $loanApplication->coMakers ?? collect(),
         ]);
     }
 

@@ -23,6 +23,7 @@ use App\Services\ActivityLogger;
 use App\Services\BorrowerLoanApplicationNotifier;
 use App\Services\CreditWellnessService;
 use App\Services\LoanAmountAdjustmentService;
+use App\Services\LoanApplicationPortalPrintSections;
 use App\Services\PropertyAppraisalService;
 use App\Services\StaffScopeService;
 use App\Services\LoanAmortizationService;
@@ -1295,6 +1296,12 @@ class LoanController extends Controller
 
             return $row;
         })->values());
+
+        $form = is_array($app->form_data) ? $app->form_data : [];
+        $app->setAttribute(
+            'portal_review_sections',
+            app(LoanApplicationPortalPrintSections::class)->build($app, $form),
+        );
     }
 
     /**

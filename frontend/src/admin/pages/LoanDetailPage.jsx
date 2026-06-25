@@ -14,8 +14,10 @@ import LoanDocumentManagerPanel from '../components/LoanDocumentManagerPanel.jsx
 import PropertyAppraisalPanel from '../components/PropertyAppraisalPanel.jsx'
 import LoanEvaluationPanel from '../components/LoanEvaluationPanel.jsx'
 import CollateralInformationPanel from '../components/CollateralInformationPanel.jsx'
+import BorrowerApplicationReviewPanel from '../components/BorrowerApplicationReviewPanel.jsx'
 import UniversalCoMakerModule from '../../shared/coMaker/UniversalCoMakerModule.jsx'
 import { DEFAULT_CO_MAKER_DOCUMENT_CATEGORIES } from '../../shared/coMaker/coMakerSchema.js'
+import { resolveCoMakersFromLoanApplication } from '../../shared/coMaker/coMakerDisplayUtils.js'
 
 function mergeLoanFromApi(res) {
   if (!res?.loan) return null
@@ -481,6 +483,10 @@ export default function LoanDetailPage() {
     const records = loan?.loan_application?.documents_records || []
     return records.filter((d) => d.co_maker_id)
   }, [loan])
+  const appraisalDocuments = useMemo(() => {
+    const records = loan?.loan_application?.documents_records || []
+    return records.filter((d) => !d.co_maker_id && d.document_type === 'ci_appraisal')
+  }, [loan])
 
   useEffect(() => {
     if (!loan) return
@@ -538,11 +544,7 @@ export default function LoanDetailPage() {
     : null
   const coMakers = structuredCoMakers.length
     ? structuredCoMakers
-    : app?.co_makers?.length
-      ? app.co_makers
-      : app?.co_maker_name
-        ? [{ full_name: app.co_maker_name, email: app.co_maker_email, contact_number: app.co_maker_phone }]
-        : []
+    : resolveCoMakersFromLoanApplication(app, loan.application_payload)
   const normalizedStatus = normalizeApplicationStatus(loan.status)
   const canApproveFlow = ['pending', 'partially-approved', 'for-evaluation', 'under-review'].includes(normalizedStatus)
   const canEditAmount = (can('loans.edit_amount') || can('loans.approve')) && !['rejected', 'cancelled', 'completed'].includes(normalizedStatus)
@@ -684,6 +686,33 @@ export default function LoanDetailPage() {
             <p className="mt-2 text-gray-800 dark:text-gray-100">{loan.borrower?.name}</p>
           )}
           <p className={admin.textMuted}>{loan.borrower?.email}</p>
+          {app?.form_data?.phone || loan.borrower?.phone ? (
+            <p className={`mt-1 text-sm ${admin.textMuted}`}>{app?.form_data?.phone || loan.borrower?.phone}</p>
+          ) : null}
+          {app?.form_data?.address ? (
+            <p className={`mt-1 text-sm whitespace-pre-wrap ${admin.textMuted}`}>{app.form_data.address}</p>
+          ) : null}
+          <div className="mt-4">
+            <p className={`text-xs font-medium uppercase tracking-wider ${admin.textMuted}`}>
+              Co-maker{coMakers.length > 1 ? 's' : ''}
+            </p>
+            {coMakers.length === 0 ? (
+              <p className={`mt-2 text-sm ${admin.textMuted}`}>No co-maker on file.</p>
+            ) : (
+              <ul className="mt-2 space-y-2 text-sm">
+                {coMakers.map((cm, cmIndex) => (
+                  <li key={cm.id || `cm-${cmIndex}`} className="text-gray-900 dark:text-gray-100">
+                    <div className="font-medium">{cm.full_name}</div>
+                    {cm.email ? <div className={`text-xs ${admin.textMuted}`}>{cm.email}</div> : null}
+                    {cm.contact_number ? <div className={`text-xs ${admin.textMuted}`}>{cm.contact_number}</div> : null}
+                    {cm.relationship_to_borrower ? (
+                      <div className={`text-xs ${admin.textMuted}`}>Relationship: {cm.relationship_to_borrower}</div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <p className={`mt-4 ${admin.textMuted}`}>
             {loan.term_months} months · Rate: {describeLoanRate(loan)}
           </p>
@@ -763,6 +792,14 @@ export default function LoanDetailPage() {
         <CreditWellnessSummaryPanel borrowerId={loan.borrower.id} variant="full" />
       ) : null}
 
+      {activeTab === 'borrower' && app ? (
+        <BorrowerApplicationReviewPanel
+          application={app}
+          applicationPayload={loan.application_payload}
+          coMakers={coMakers}
+        />
+      ) : null}
+
       {activeTab === 'evaluation' && (
         <div className={`text-sm ${admin.cardNoHover}`}>
           <LoanEvaluationPanel
@@ -776,6 +813,8 @@ export default function LoanDetailPage() {
             realEstateDetail={realEstateDetail}
             amountModifierName={amountModifierName}
             amountModifiedAt={amountModifiedAt}
+            appraisalDocuments={appraisalDocuments}
+            documentPermissions={documentPermissions}
             canEdit={canEditAmount}
             onSaved={load}
           />
@@ -960,7 +999,7 @@ export default function LoanDetailPage() {
         </div>
       ) : null}
 
-      {loan.loan_application && activeTab !== 'collateral' ? (
+      {loan.loan_application && activeTab !== 'collateral' && activeTab !== 'borrower' ? (
         <div className={`text-sm ${admin.cardNoHover}`}>
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             {loan.loan_application.loan_type === 'real_estate'

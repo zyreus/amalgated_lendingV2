@@ -280,16 +280,21 @@
     <div class="grid-3">
         <div class="field">
             <div class="field-label">Requested Loan Amount</div>
-            <div class="field-line">{{ $line($extForm['loan_principal_php'] ?? ($form['loan_amount'] ?? $app->loan?->principal ?? null)) }}</div>
+            <div class="field-line">{{ $line($extForm['loan_principal_php'] ?? ($form['loan_amount'] ?? $app->loan_amount ?? $app->loan?->principal ?? null)) }}</div>
         </div>
         <div class="field">
             <div class="field-label">Term</div>
-            <div class="field-line">{{ $line($extForm['loan_term_months'] ?? ($form['loan_term_months'] ?? $app->loan?->term_months ?? null)) }}</div>
+            <div class="field-line">{{ $line($extForm['loan_term_months'] ?? ($form['term_months'] ?? $form['loan_term_months'] ?? $app->term_months ?? $app->loan?->term_months ?? null)) }}</div>
         </div>
         <div class="field">
             <div class="field-label">Loan Product</div>
             <div class="field-line">{{ $line($loanTypeLabel) }}</div>
         </div>
+    </div>
+
+    <div class="field" style="margin-top: 8px;">
+        <div class="field-label">Loan Purpose</div>
+        <div class="field-line">{{ $line($productExtra['loan_purpose'] ?? ($form['loan_purpose'] ?? $app->purpose ?? null)) }}</div>
     </div>
 
     <div class="section-title">Employment / Business Information</div>
@@ -533,6 +538,38 @@
                 @endfor
             </tbody>
         </table>
+    @endif
+
+    @if (!empty($portalSections))
+        <div class="section-title">Borrower portal — complete application data</div>
+        @foreach ($portalSections as $portalSection)
+            <div class="section-title" style="margin-top:10px; font-size:9px;">{{ $portalSection['title'] }}</div>
+            <div class="grid-2">
+                @foreach ($portalSection['fields'] as $portalField)
+                    <div class="field">
+                        <div class="field-label">{{ $portalField['label'] }}</div>
+                        <div class="field-line">{{ $line($portalField['value']) }}</div>
+                    </div>
+                @endforeach
+            </div>
+        @endforeach
+    @endif
+
+    @if (!empty($coMakers) && count($coMakers))
+        <div class="section-title">Co-maker information (borrower portal)</div>
+        @foreach ($coMakers as $index => $coMaker)
+            <div class="section-title" style="margin-top:8px; font-size:9px;">Co-maker {{ $index + 1 }}</div>
+            <div class="grid-2">
+                <div class="field"><div class="field-label">Full name</div><div class="field-line">{{ $line($coMaker->full_name ?? trim(implode(' ', array_filter([$coMaker->first_name, $coMaker->middle_name, $coMaker->last_name, $coMaker->suffix])))) }}</div></div>
+                <div class="field"><div class="field-label">Relationship</div><div class="field-line">{{ $line($coMaker->relationship_to_borrower) }}</div></div>
+                <div class="field"><div class="field-label">Contact number</div><div class="field-line">{{ $line($coMaker->contact_number) }}</div></div>
+                <div class="field"><div class="field-label">Email</div><div class="field-line">{{ $line($coMaker->email) }}</div></div>
+                <div class="field"><div class="field-label">Address</div><div class="field-line">{{ $line($coMaker->complete_address ?? $coMaker->address) }}</div></div>
+                <div class="field"><div class="field-label">Employment / business</div><div class="field-line">{{ $line($coMaker->employer_business_name) }}</div></div>
+                <div class="field"><div class="field-label">Occupation</div><div class="field-line">{{ $line($coMaker->occupation) }}</div></div>
+                <div class="field"><div class="field-label">Monthly income</div><div class="field-line">{{ $line($coMaker->monthly_income) }}</div></div>
+            </div>
+        @endforeach
     @endif
 
     <div class="section-title">Document Checklist</div>

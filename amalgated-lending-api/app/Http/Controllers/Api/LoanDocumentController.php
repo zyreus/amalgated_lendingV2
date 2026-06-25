@@ -18,7 +18,7 @@ class LoanDocumentController extends Controller
 {
     private const MAX_FILE_KB = 20480; // 20 MB
 
-    private const ALLOWED_MIMES = 'jpg,jpeg,png,pdf';
+    private const ALLOWED_MIMES = 'jpg,jpeg,png,pdf,webp';
 
     public function __construct(private DocumentAccessService $documentAccess)
     {
@@ -91,7 +91,10 @@ class LoanDocumentController extends Controller
         }
 
         $file = $request->file('file');
-        $subdir = $coMakerId ? "co-makers/{$coMakerId}" : 'borrower';
+        $docType = (string) $request->input('document_type');
+        $subdir = $coMakerId
+            ? "co-makers/{$coMakerId}"
+            : ($docType === 'ci_appraisal' ? 'staff/ci-appraisal' : 'borrower');
         $path = $file->store("loan-documents/{$loanApp->id}/{$subdir}", 'public');
 
         $doc = LoanDocument::create([
@@ -145,7 +148,9 @@ class LoanDocumentController extends Controller
         }
 
         $coMakerId = $document->co_maker_id;
-        $subdir = $coMakerId ? "co-makers/{$coMakerId}" : 'borrower';
+        $subdir = $coMakerId
+            ? "co-makers/{$coMakerId}"
+            : ($document->document_type === 'ci_appraisal' ? 'staff/ci-appraisal' : 'borrower');
         $path = $file->store("loan-documents/{$loanApp->id}/{$subdir}", 'public');
 
         $document->file_path = $path;

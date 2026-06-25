@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client.js'
 import { useToast } from '../context/ToastContext.jsx'
+import AppraisalDocumentsPanel from './AppraisalDocumentsPanel.jsx'
 import { admin } from './AdminUi.jsx'
 import { applicationStatusLabel, formatCurrencyPhp } from './applications/applicationStatus.js'
 
@@ -31,6 +32,8 @@ export default function LoanEvaluationPanel({
   realEstateDetail = null,
   amountModifierName = null,
   amountModifiedAt = null,
+  appraisalDocuments = [],
+  documentPermissions = {},
   canEdit = false,
   onSaved,
 }) {
@@ -259,6 +262,18 @@ export default function LoanEvaluationPanel({
             className={`mt-1 w-full ${inputClass}`}
           />
         </div>
+
+        {isRealEstate ? (
+          <div className="sm:col-span-2">
+            <AppraisalDocumentsPanel
+              loanId={loanId}
+              documents={appraisalDocuments}
+              permissions={documentPermissions}
+              canEdit={canEdit}
+              onChanged={onSaved}
+            />
+          </div>
+        ) : null}
       </div>
 
       {canEdit ? (
