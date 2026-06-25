@@ -550,11 +550,12 @@ class BorrowerLoanApplicationWizardController extends Controller
      */
     private function stripStaffOnlyFormKeys(LoanApplication $app, array $form): array
     {
-        foreach ([
-            'loan_amount',
-            'requested_loan_amount',
-            'prospected_loan_amount',
-        ] as $key) {
+        $staffOnly = ['requested_loan_amount', 'prospected_loan_amount'];
+        if ($app->loan_type !== LoanApplication::TYPE_CHATTEL) {
+            $staffOnly[] = 'loan_amount';
+        }
+
+        foreach ($staffOnly as $key) {
             unset($form[$key]);
         }
 
@@ -983,6 +984,11 @@ class BorrowerLoanApplicationWizardController extends Controller
         }
 
         $loanAmount = (float) ($app->loan_amount ?? 0);
+        if ($loanAmount <= 0 && $app->loan_type === LoanApplication::TYPE_CHATTEL) {
+            $loanAmount = isset($form['loan_amount']) && $form['loan_amount'] !== ''
+                ? (float) $form['loan_amount']
+                : 0.0;
+        }
         if ($app->loan_type === LoanApplication::TYPE_SSS_PENSION) {
             $monthlyPension = isset($form['monthly_pension']) && $form['monthly_pension'] !== ''
                 ? (float) $form['monthly_pension']

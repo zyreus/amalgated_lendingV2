@@ -153,7 +153,7 @@ export default function LoanEvaluationPanel({
         {isChattel ? (
           <div>
             <label className={`text-xs font-medium ${admin.textMuted}`} htmlFor="evaluation-proposed-amount">
-              Proposed loan amount (borrower view)
+              Confirmed loan amount (CHM)
             </label>
             <input
               id="evaluation-proposed-amount"
@@ -165,7 +165,9 @@ export default function LoanEvaluationPanel({
               readOnly={!canEdit}
               className={`mt-1 w-full ${inputClass}`}
             />
-            <p className={`mt-1 text-xs ${admin.textMuted}`}>Read-only on the borrower CHM application form</p>
+            <p className={`mt-1 text-xs ${admin.textMuted}`}>
+              Official amount for this application. The borrower enters their own requested amount on the CHM form; this value overrides the preview when set.
+            </p>
           </div>
         ) : null}
 

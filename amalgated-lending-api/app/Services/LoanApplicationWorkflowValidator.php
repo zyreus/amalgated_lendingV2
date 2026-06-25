@@ -442,6 +442,11 @@ class LoanApplicationWorkflowValidator
 
         $form = is_array($app->form_data) ? $app->form_data : [];
         $loanAmount = (float) ($app->loan_amount ?? 0);
+        if ($loanAmount <= 0 && $app->loan_type === LoanApplication::TYPE_CHATTEL) {
+            $loanAmount = isset($form['loan_amount']) && $form['loan_amount'] !== ''
+                ? (float) $form['loan_amount']
+                : 0.0;
+        }
 
         if ($app->loan_type === LoanApplication::TYPE_SSS_PENSION) {
             if (! $app->loan_product_id) {

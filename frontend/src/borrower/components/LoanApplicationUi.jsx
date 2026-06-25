@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import {
+  AlertTriangle,
   BadgePercent,
   Building2,
   Car,
@@ -62,11 +63,11 @@ const FIELD_PLACEHOLDERS = {
   property_address: 'Full property location',
   company_address: 'Office or business address',
   term_months: 'e.g. 12',
-  monthly_income: 'e.g. 35000',
-  monthly_gross_salary: 'e.g. 45000',
-  monthly_net_salary: 'e.g. 38000',
-  monthly_pension: 'e.g. 15000',
-  loan_amount: 'e.g. 500000',
+  monthly_income: 'e.g. 35,000',
+  monthly_gross_salary: 'e.g. 45,000',
+  monthly_net_salary: 'e.g. 38,000',
+  monthly_pension: 'e.g. 15,000',
+  loan_amount: 'e.g. 500,000.00',
   loan_purpose: 'Describe how you plan to use the loan',
   destination_country: 'e.g. Japan',
   destination_city: 'e.g. Tokyo',
@@ -75,12 +76,17 @@ const FIELD_PLACEHOLDERS = {
   model: 'e.g. Vios',
 }
 
-export function textInputClass(disabled = false) {
-  return `w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 shadow-sm outline-none transition placeholder:text-gray-400 hover:border-gray-300 focus:border-brand-primary/60 focus:ring-2 focus:ring-brand-primary/15 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-70 dark:border-[#1F2937] dark:bg-[#0F172A] dark:text-gray-100 dark:placeholder:text-gray-500 dark:hover:border-[#374151] ${disabled ? '' : ''}`
+const INPUT_INVALID_CLASS =
+  'border-[#DC2626] bg-[#FEF2F2] ring-2 ring-[#FECACA]/70 hover:border-[#DC2626] focus:border-[#DC2626] focus:ring-[#FECACA]/80 dark:border-red-500 dark:bg-red-950/30 dark:ring-red-900/40'
+
+export function textInputClass(disabled = false, invalid = false) {
+  const base =
+    'w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 shadow-sm outline-none transition placeholder:text-gray-400 hover:border-gray-300 focus:border-brand-primary/60 focus:ring-2 focus:ring-brand-primary/15 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-70 dark:border-[#1F2937] dark:bg-[#0F172A] dark:text-gray-100 dark:placeholder:text-gray-500 dark:hover:border-[#374151]'
+  return `${base} ${invalid ? INPUT_INVALID_CLASS : ''}`
 }
 
-export function selectInputClass() {
-  return textInputClass()
+export function selectInputClass(invalid = false) {
+  return textInputClass(false, invalid)
 }
 
 export function fieldPlaceholder(field) {
@@ -88,9 +94,23 @@ export function fieldPlaceholder(field) {
   return FIELD_PLACEHOLDERS[field.key] || `Enter ${String(field.label || 'value').toLowerCase()}`
 }
 
-export function Field({ label, hint, required, children, className = '' }) {
+export function Field({
+  label,
+  hint,
+  required,
+  children,
+  className = '',
+  fieldKey = '',
+  invalid = false,
+  errorMessage = '',
+  shake = false,
+}) {
   return (
-    <label className={`block ${className}`}>
+    <label
+      className={`block ${className}`}
+      id={fieldKey ? `wizard-field-${fieldKey}` : undefined}
+      data-wizard-field={fieldKey || undefined}
+    >
       <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">
         {label}
         {required ? <span className="ml-0.5 text-brand-primary">*</span> : null}
@@ -100,7 +120,12 @@ export function Field({ label, hint, required, children, className = '' }) {
           {hint}
         </span>
       ) : null}
-      <div className="mt-2">{children}</div>
+      <div className={`mt-2 ${shake ? 'animate-wizard-field-shake' : ''}`}>{children}</div>
+      {invalid && errorMessage ? (
+        <p className="mt-1.5 text-xs font-medium text-[#DC2626] dark:text-red-400" role="alert">
+          {errorMessage}
+        </p>
+      ) : null}
     </label>
   )
 }
@@ -179,7 +204,14 @@ export function LoanTypeSelector({ loanTypes, value, onChange, disabled = false 
   )
 }
 
-export function WizardStepSidebar({ steps, step, loanLabel, onStepClick, allowJump = true }) {
+export function WizardStepSidebar({
+  steps,
+  step,
+  loanLabel,
+  onStepClick,
+  allowJump = true,
+  stepStatuses = {},
+}) {
   const currentIndex = steps.findIndex((s) => Number(s.id) === Number(step))
   const progress = steps.length ? Math.round(((currentIndex + 1) / steps.length) * 100) : 0
 
@@ -211,33 +243,46 @@ export function WizardStepSidebar({ steps, step, loanLabel, onStepClick, allowJu
 
       <ol className="relative mt-6 space-y-2.5">
         {steps.map((s, index) => {
-          const active = Number(s.id) === Number(step)
-          const done = index < currentIndex
-          const clickable = allowJump && (done || active)
+          const stepId = Number(s.id)
+          const status = stepStatuses[stepId] || (index < currentIndex ? 'complete' : stepId === Number(step) ? 'current' : 'pending')
+          const active = status === 'current'
+          const done = status === 'complete'
+          const hasError = status === 'error'
+          const clickable = allowJump && (done || active || hasError)
           return (
             <li key={s.id}>
               <button
                 type="button"
                 disabled={!clickable}
-                onClick={() => clickable && onStepClick?.(Number(s.id))}
+                onClick={() => clickable && onStepClick?.(stepId)}
                 className={`flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition disabled:cursor-default ${
                   active
                     ? 'bg-white/15 shadow-sm'
-                    : done
-                      ? 'bg-white/5 hover:bg-white/10'
-                      : 'opacity-60'
+                    : hasError
+                      ? 'bg-red-500/20 shadow-sm'
+                      : done
+                        ? 'bg-white/5 hover:bg-white/10'
+                        : 'opacity-60'
                 }`}
               >
                 <span
                   className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                     done
                       ? 'bg-emerald-400/90 text-white'
-                      : active
-                        ? 'bg-white text-brand-primary'
-                        : 'bg-white/15 text-red-100'
+                      : hasError
+                        ? 'bg-red-100 text-[#DC2626]'
+                        : active
+                          ? 'bg-white text-brand-primary'
+                          : 'bg-white/15 text-red-100'
                   }`}
                 >
-                  {done ? <Check className="size-3.5" strokeWidth={3} /> : index + 1}
+                  {done ? (
+                    <Check className="size-3.5" strokeWidth={3} />
+                  ) : hasError ? (
+                    <AlertTriangle className="size-3.5" strokeWidth={2.5} />
+                  ) : (
+                    index + 1
+                  )}
                 </span>
                 <span className="min-w-0">
                   <span className="block text-xs font-semibold leading-snug">{s.title}</span>
@@ -334,6 +379,9 @@ export function DocumentUploadZone({
   uploadProgress = 0,
   canRemove = true,
   maxMb = 20,
+  invalid = false,
+  errorMessage = '',
+  shake = false,
 }) {
   const fileCount = uploadedItems?.length || 0
   const uploaded = fileCount > 0
@@ -348,10 +396,22 @@ export function DocumentUploadZone({
   }
 
   return (
-    <li className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-[#1F2937] dark:bg-[#0F172A]/30">
+    <li
+      data-wizard-doc={docKey}
+      className={`rounded-2xl border p-4 shadow-sm transition ${
+        invalid
+          ? 'border-[#FECACA] bg-[#FEF2F2] dark:border-red-800/60 dark:bg-red-950/20'
+          : 'border-gray-100 bg-white dark:border-[#1F2937] dark:bg-[#0F172A]/30'
+      } ${shake ? 'animate-wizard-field-shake' : ''}`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{meta.label}</p>
+          {invalid && errorMessage ? (
+            <p className="mt-1 text-xs font-medium text-[#DC2626] dark:text-red-400" role="alert">
+              ⚠ {errorMessage}
+            </p>
+          ) : null}
           {meta.description ? (
             <p className="mt-1 text-xs leading-relaxed text-gray-600 dark:text-gray-400">{meta.description}</p>
           ) : null}
@@ -387,9 +447,11 @@ export function DocumentUploadZone({
           handleFiles(e.dataTransfer?.files)
         }}
         className={`mt-3 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-4 py-6 text-center transition ${
-          dragging
-            ? 'border-brand-primary bg-red-50/70 dark:border-red-500 dark:bg-red-900/20'
-            : 'border-gray-200 bg-gray-50/60 hover:border-brand-primary/40 hover:bg-red-50/30 dark:border-gray-600 dark:bg-[#0F172A]/50'
+          invalid
+            ? 'border-[#DC2626] bg-[#FEF2F2]/80 dark:border-red-500 dark:bg-red-950/30'
+            : dragging
+              ? 'border-brand-primary bg-red-50/70 dark:border-red-500 dark:bg-red-900/20'
+              : 'border-gray-200 bg-gray-50/60 hover:border-brand-primary/40 hover:bg-red-50/30 dark:border-gray-600 dark:bg-[#0F172A]/50'
         }`}
       >
         <input

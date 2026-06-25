@@ -112,7 +112,7 @@ return [
             'loan' => [
                 ['key' => 'loan_product_id', 'label' => 'Loan Product', 'type' => 'loan_product', 'required' => true],
                 ['key' => 'term_months', 'label' => 'Loan Term', 'type' => 'numeric', 'required' => true],
-                ['key' => 'loan_amount', 'label' => 'Loan Amount (PHP)', 'type' => 'numeric', 'required' => false, 'borrower_readonly' => true],
+                ['key' => 'loan_amount', 'label' => 'Loan Amount (PHP)', 'type' => 'numeric', 'required' => true],
                 ['key' => 'loan_purpose', 'label' => 'Loan Purpose', 'type' => 'textarea', 'required' => true],
             ],
         ],

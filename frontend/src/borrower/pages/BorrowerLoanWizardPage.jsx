@@ -11,6 +11,12 @@ import PrivacyConsentCheckbox from '../../components/privacy/PrivacyConsentCheck
 import { PRIVACY_POLICY_VERSION } from '../../components/privacy/PrivacyPolicyContent.jsx'
 import { resolvePublicFileUrl } from '../../utils/lendingLaravelApi.js'
 import { AlertBanner, LoanTypeSelector } from '../components/LoanApplicationUi.jsx'
+import WizardValidationModal from '../components/WizardValidationModal.jsx'
+import { useWizardStepValidation } from '../hooks/useWizardStepValidation.js'
+import {
+  buildLegacyWizardValidationRegistry,
+  validateLegacyWizardStep,
+} from '../validation/wizardValidationUtils.js'
 import { useToast } from '../../admin/context/ToastContext.jsx'
 
 const STEPS = [
@@ -157,14 +163,6 @@ export default function BorrowerLoanWizardPage() {
     }
   }, 800)
 
-  const onField = (key, value) => {
-    setFormData((prev) => {
-      const next = { ...prev, [key]: value }
-      persist(next, step, loanType)
-      return next
-    })
-  }
-
   const changeLoanType = async (v) => {
     setLoanType(v)
     if (!applicationId || !app) return
@@ -240,18 +238,52 @@ export default function BorrowerLoanWizardPage() {
     return g
   }, [schema])
 
+  const validationRegistry = useMemo(
+    () => buildLegacyWizardValidationRegistry({ groupedCommon, docDefs, steps: STEPS, loanFields }),
+    [groupedCommon, docDefs, loanFields],
+  )
+  const validation = useWizardStepValidation({ steps: STEPS, step })
+
+  const onField = (key, value) => {
+    validation.clearFieldError(key)
+    setFormData((prev) => {
+      const next = { ...prev, [key]: value }
+      persist(next, step, loanType)
+      return next
+    })
+  }
+
+  const runStepValidation = useCallback(
+    () =>
+      validateLegacyWizardStep({
+        step,
+        registry: validationRegistry,
+        formData,
+        app,
+        docDefs,
+      }),
+    [step, validationRegistry, formData, app, docDefs],
+  )
+
   const validateAndNext = async () => {
     setError('')
+    const clientResult = runStepValidation()
+    if (validation.applyValidationResult(clientResult, step)) return
+
     try {
       const v = await borrowerApi(`/borrower/loan-applications/${applicationId}/validate-step`, {
         method: 'POST',
         body: JSON.stringify({ step }),
       })
       if (v.ok === false && Array.isArray(v.errors) && v.errors.length) {
-        setError(v.errors.join(' '))
+        validation.applyApiErrors(v.errors, validationRegistry, {
+          stepId: step,
+          currentStepTitle: STEPS.find((s) => s.id === step)?.title,
+        })
         return
       }
       const next = step >= 2 ? 4 : 2
+      validation.markStepComplete(step)
       setStep(next)
       await borrowerApi(`/borrower/loan-applications/${applicationId}`, {
         method: 'PATCH',
@@ -282,6 +314,7 @@ export default function BorrowerLoanWizardPage() {
         body,
       })
       setApp(res.data)
+      validation.clearDocError(docKey)
     } catch (e) {
       setError(e.message || 'Upload failed.')
     }
@@ -289,11 +322,9 @@ export default function BorrowerLoanWizardPage() {
 
   const submitFinal = async () => {
     setError('')
-    const consent = formData?.privacy_consent
-    if (!consent?.agreed) {
-      setError('You must agree to the Privacy Policy to proceed with your loan application.')
-      return
-    }
+    const clientResult = runStepValidation()
+    if (validation.applyValidationResult(clientResult, step)) return
+
     try {
       const res = await borrowerApi(`/borrower/loan-applications/${applicationId}/submit`, {
         method: 'POST',
@@ -303,8 +334,14 @@ export default function BorrowerLoanWizardPage() {
       navigate('/borrower/applications', { replace: true })
     } catch (e) {
       const body = e.body || {}
-      const msg = Array.isArray(body.errors) ? body.errors.join(' ') : body.message || e.message || 'Submit failed.'
-      setError(msg)
+      if (Array.isArray(body.errors) && body.errors.length) {
+        validation.applyApiErrors(body.errors, validationRegistry, {
+          stepId: step,
+          currentStepTitle: STEPS.find((s) => s.id === step)?.title,
+        })
+        return
+      }
+      setError(body.message || e.message || 'Submit failed.')
     }
   }
 
@@ -315,7 +352,6 @@ export default function BorrowerLoanWizardPage() {
       policy_version: PRIVACY_POLICY_VERSION,
     }
     onField('privacy_consent', nextConsent)
-    setError('')
   }
 
   useEffect(() => {
@@ -712,6 +748,12 @@ export default function BorrowerLoanWizardPage() {
         </div>
       ) : null}
       <PrivacyPolicyModal open={privacyModalOpen} onClose={() => setPrivacyModalOpen(false)} />
+      <WizardValidationModal
+        open={validation.modalOpen}
+        grouped={validation.groupedErrors}
+        onClose={validation.closeModal}
+        onReview={validation.handleReviewMissing}
+      />
       <ConfirmDialog
         open={confirmDeleteOpen}
         title="Confirm deletion"

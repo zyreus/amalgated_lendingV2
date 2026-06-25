@@ -26,6 +26,13 @@ import { useToast } from '../../../admin/context/ToastContext.jsx'
 
 import CoMakerFormSection from '../../components/CoMakerFormSection.jsx'
 import PensionLoanPreviewCard from '../../components/PensionLoanPreviewCard.jsx'
+import WizardValidationModal from '../../components/WizardValidationModal.jsx'
+import { useWizardStepValidation } from '../../hooks/useWizardStepValidation.js'
+import {
+  buildWizardValidationRegistry,
+  parseValidationErrors,
+  validateCurrentStepClient,
+} from '../../validation/wizardValidationUtils.js'
 import { DEFAULT_CO_MAKER_DOCUMENT_CATEGORIES, resolveRequiresCoMakers } from '../../../shared/coMaker/coMakerSchema.js'
 
 const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/png']
@@ -87,6 +94,32 @@ function formatValue(value) {
   if (value == null || value === '') return 'Not provided'
   if (typeof value === 'object') return value.agreed ? 'Agreed' : 'Not agreed'
   return String(value)
+}
+
+/** Display amount with comma thousands + optional decimals (e.g. 500,000.00). */
+function formatAmountForDisplay(value) {
+  if (value === '' || value == null) return ''
+  const cleaned = String(value).replace(/,/g, '')
+  if (!cleaned) return ''
+  const [whole = '', fraction = ''] = cleaned.split('.')
+  const digits = whole.replace(/\D/g, '')
+  if (!digits && !fraction) return ''
+  const withCommas = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  if (cleaned.includes('.')) {
+    return `${withCommas || '0'}.${fraction.replace(/\D/g, '').slice(0, 2)}`
+  }
+  return withCommas
+}
+
+function formatReadonlyPhpAmount(value) {
+  if (value == null || value === '') return ''
+  const n = Number(String(value).replace(/,/g, ''))
+  if (!Number.isFinite(n) || n <= 0) return ''
+  return `₱${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function sanitizeAmountInput(value) {
+  return String(value ?? '').replace(/,/g, '')
 }
 
 export default function ProductLoanApplicationPage({ loanType }) {
@@ -183,14 +216,6 @@ export default function ProductLoanApplicationPage({ loanType }) {
     }
   }, 700)
 
-  const onField = (key, value) => {
-    setFormData((prev) => {
-      const next = { ...prev, [key]: value }
-      persist(next, step)
-      return next
-    })
-  }
-
   const fieldsBySection = schema?.product_application_fields?.[loanType] || {}
   const loanLabel = schema?.loan_types?.[loanType] || 'Loan Application'
   const productMap = schema?.loan_type_product_map || {}
@@ -264,6 +289,71 @@ export default function ProductLoanApplicationPage({ loanType }) {
       ? `TAL-${new Date().getFullYear()}-${String(applicationId).padStart(6, '0')}`
       : ''
 
+  const shouldShowField = (field) => {
+    if (!field.required_if) return true
+    return Object.entries(field.required_if).every(([key, expected]) => formData[key] === expected)
+  }
+
+  const isBorrowerHiddenField = (field) => {
+    if (field?.borrower_readonly) return false
+    if (loanType === 'chattel' && field?.key === 'loan_amount') return false
+    const hiddenKeys = loanType === 'sss_pension' ? PENSION_BORROWER_HIDDEN_KEYS : BORROWER_HIDDEN_FIELD_KEYS
+    return hiddenKeys.has(field?.key)
+  }
+
+  const validationRegistry = useMemo(
+    () =>
+      buildWizardValidationRegistry({
+        schema,
+        loanType,
+        steps,
+        docDefs,
+        propertyDocDefs,
+        documentsStepDefs,
+      }),
+    [schema, loanType, steps, docDefs, propertyDocDefs, documentsStepDefs],
+  )
+
+  const validation = useWizardStepValidation({ steps, step })
+
+  const onField = (key, value) => {
+    validation.clearFieldError(key)
+    setFormData((prev) => {
+      const next = { ...prev, [key]: value }
+      persist(next, step)
+      return next
+    })
+  }
+
+  const runStepValidation = useCallback(() => {
+    return validateCurrentStepClient({
+      step,
+      steps,
+      registry: validationRegistry,
+      formData,
+      app,
+      currentSection,
+      docDefs,
+      propertyDocDefs,
+      documentsStepDefs,
+      shouldShowField,
+      isBorrowerHiddenField,
+      requiresCoMakers,
+    })
+  }, [
+    step,
+    steps,
+    validationRegistry,
+    formData,
+    app,
+    currentSection,
+    docDefs,
+    propertyDocDefs,
+    documentsStepDefs,
+    requiresCoMakers,
+    formData,
+  ])
+
   useEffect(() => {
     if (loanType !== 'travel_assistance') return
     const total = TRAVEL_COST_KEYS.reduce((sum, key) => sum + (Number(formData[key]) || 0), 0)
@@ -294,17 +384,6 @@ export default function ProductLoanApplicationPage({ loanType }) {
     if (preferred?.id) onField('loan_product_id', String(preferred.id))
   }, [expectedSlug, filteredProducts, formData.loan_product_id, loanType, products, schema])
 
-  const shouldShowField = (field) => {
-    if (!field.required_if) return true
-    return Object.entries(field.required_if).every(([key, expected]) => formData[key] === expected)
-  }
-
-  const isBorrowerHiddenField = (field) => {
-    if (field?.borrower_readonly) return false
-    const hiddenKeys = loanType === 'sss_pension' ? PENSION_BORROWER_HIDDEN_KEYS : BORROWER_HIDDEN_FIELD_KEYS
-    return hiddenKeys.has(field?.key)
-  }
-
   const goToStep = (nextStep) => {
     setDirection(nextStep > step ? 1 : -1)
     setStep(nextStep)
@@ -316,22 +395,31 @@ export default function ProductLoanApplicationPage({ loanType }) {
     const placeholder = fieldPlaceholder(field)
     const required = Boolean(field.required || field.required_if)
     const spanClass = field.type === 'textarea' || field.type === 'loan_product' || field.type === 'computed_sum' ? 'md:col-span-2' : ''
-    const readonlyValue = field.borrower_readonly && field.key === 'loan_amount'
-      ? (app?.loan_amount ?? '')
-      : (formData[field.key] ?? '')
+    const isChattelLoanAmount = loanType === 'chattel' && field.key === 'loan_amount'
+    const teamConfirmedAmount =
+      isChattelLoanAmount && app?.loan_amount != null && Number(app.loan_amount) > 0
+        ? formatReadonlyPhpAmount(app.loan_amount)
+        : null
+    const fieldError = validation.getFieldError(field.key)
+    const fieldInvalid = Boolean(fieldError)
+    const fieldShake = validation.shouldShakeField(field.key)
 
     if (field.borrower_readonly) {
+      const readonlyValue = field.key === 'loan_amount'
+        ? formatReadonlyPhpAmount(app?.loan_amount)
+        : formatAmountForDisplay(formData[field.key] ?? '')
       return (
         <Field
           key={field.key}
           label={field.label}
           hint="Set by our lending team after review. Refresh this page if it was recently updated."
           className={spanClass}
+          fieldKey={field.key}
         >
           <input
-            type={field.type === 'numeric' ? 'number' : 'text'}
+            type="text"
             className={textInputClass(true)}
-            placeholder={placeholder}
+            placeholder={field.key === 'loan_amount' ? 'Amount will appear here after team review' : placeholder}
             value={readonlyValue}
             readOnly
           />
@@ -339,11 +427,26 @@ export default function ProductLoanApplicationPage({ loanType }) {
       )
     }
 
+    const chattelLoanAmountHint = isChattelLoanAmount
+      ? teamConfirmedAmount
+        ? `Your requested amount. Amount confirmed by our team: ${teamConfirmedAmount}.`
+        : 'Enter the loan amount you are requesting. Our team may adjust this after collateral review.'
+      : null
+
     if (field.type === 'loan_product') {
       return (
-        <Field key={field.key} label={field.label} required={required} className={spanClass}>
+        <Field
+          key={field.key}
+          label={field.label}
+          required={required}
+          className={spanClass}
+          fieldKey={field.key}
+          invalid={fieldInvalid}
+          errorMessage={fieldError}
+          shake={fieldShake}
+        >
           <select
-            className={selectInputClass()}
+            className={selectInputClass(fieldInvalid)}
             value={formData[field.key] ?? ''}
             onChange={(e) => onField(field.key, e.target.value)}
             disabled={formReadOnly}
@@ -360,9 +463,18 @@ export default function ProductLoanApplicationPage({ loanType }) {
     }
     if (field.type === 'textarea') {
       return (
-        <Field key={field.key} label={field.label} required={required} className={spanClass}>
+        <Field
+          key={field.key}
+          label={field.label}
+          required={required}
+          className={spanClass}
+          fieldKey={field.key}
+          invalid={fieldInvalid}
+          errorMessage={fieldError}
+          shake={fieldShake}
+        >
           <textarea
-            className={textInputClass()}
+            className={textInputClass(false, fieldInvalid)}
             rows={3}
             placeholder={placeholder}
             value={formData[field.key] ?? ''}
@@ -374,9 +486,18 @@ export default function ProductLoanApplicationPage({ loanType }) {
     }
     if (field.type === 'select') {
       return (
-        <Field key={field.key} label={field.label} required={required} className={spanClass}>
+        <Field
+          key={field.key}
+          label={field.label}
+          required={required}
+          className={spanClass}
+          fieldKey={field.key}
+          invalid={fieldInvalid}
+          errorMessage={fieldError}
+          shake={fieldShake}
+        >
           <select
-            className={selectInputClass()}
+            className={selectInputClass(fieldInvalid)}
             value={formData[field.key] ?? ''}
             onChange={(e) => onField(field.key, e.target.value)}
             disabled={formReadOnly}
@@ -393,21 +514,47 @@ export default function ProductLoanApplicationPage({ loanType }) {
     }
     if (field.type === 'computed_sum') {
       return (
-        <Field key={field.key} label={field.label} hint="Auto-calculated from travel cost fields" className={spanClass}>
+        <Field key={field.key} label={field.label} hint="Auto-calculated from travel cost fields" className={spanClass} fieldKey={field.key}>
           <input type="number" readOnly className={textInputClass(true)} value={formData[field.key] ?? ''} />
         </Field>
       )
     }
     return (
-      <Field key={field.key} label={field.label} required={required} className={spanClass}>
-        <input
-          type={field.type === 'numeric' ? 'number' : field.type === 'date' ? 'date' : field.type === 'email' ? 'email' : 'text'}
-          className={textInputClass()}
-          placeholder={placeholder}
-          value={formData[field.key] ?? ''}
-          onChange={(e) => onField(field.key, e.target.value)}
-          readOnly={formReadOnly}
-        />
+      <Field
+        key={field.key}
+        label={field.label}
+        required={required}
+        className={spanClass}
+        fieldKey={field.key}
+        hint={chattelLoanAmountHint || undefined}
+        invalid={fieldInvalid}
+        errorMessage={fieldError}
+        shake={fieldShake}
+      >
+        {field.type === 'numeric' ? (
+          <input
+            type="text"
+            inputMode="decimal"
+            className={textInputClass(false, fieldInvalid)}
+            placeholder={placeholder}
+            value={formatAmountForDisplay(formData[field.key] ?? '')}
+            onChange={(e) => {
+              const raw = e.target.value
+              if (raw !== '' && !/^[\d,.]*$/.test(raw)) return
+              onField(field.key, sanitizeAmountInput(raw))
+            }}
+            readOnly={formReadOnly}
+          />
+        ) : (
+          <input
+            type={field.type === 'date' ? 'date' : field.type === 'email' ? 'email' : 'text'}
+            className={textInputClass(false, fieldInvalid)}
+            placeholder={placeholder}
+            value={formData[field.key] ?? ''}
+            onChange={(e) => onField(field.key, e.target.value)}
+            readOnly={formReadOnly}
+          />
+        )}
       </Field>
     )
   }
@@ -415,6 +562,9 @@ export default function ProductLoanApplicationPage({ loanType }) {
   const validateAndNext = async () => {
     if (!applicationId) return
     setError('')
+    const clientResult = runStepValidation()
+    if (validation.applyValidationResult(clientResult, step)) return
+
     try {
       await borrowerApi(`/borrower/loan-applications/${applicationId}`, {
         method: 'PATCH',
@@ -425,10 +575,14 @@ export default function ProductLoanApplicationPage({ loanType }) {
         body: JSON.stringify({ step }),
       })
       if (v.ok === false && Array.isArray(v.errors) && v.errors.length) {
-        setError(v.errors.join(' '))
+        validation.applyApiErrors(v.errors, validationRegistry, {
+          stepId: step,
+          currentStepTitle: currentStep?.title,
+        })
         return
       }
       const next = Math.min(maxStep, step + 1)
+      validation.markStepComplete(step)
       goToStep(next)
       await borrowerApi(`/borrower/loan-applications/${applicationId}`, {
         method: 'PATCH',
@@ -448,7 +602,10 @@ export default function ProductLoanApplicationPage({ loanType }) {
 
   const handleCoMakersChange = useCallback((nextCoMakers) => {
     setApp((prev) => (prev ? { ...prev, co_makers: nextCoMakers } : prev))
-  }, [])
+    if ((nextCoMakers || []).length > 0) {
+      validation.clearFieldError('co_makers')
+    }
+  }, [validation])
 
   const uploadDoc = async (docKey, file) => {
     if (!file || !applicationId) return
@@ -471,6 +628,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
         body,
       })
       setApp(res.data)
+      validation.clearDocError(docKey)
     } catch (e) {
       setError(e.message || 'Upload failed.')
     } finally {
@@ -494,10 +652,9 @@ export default function ProductLoanApplicationPage({ loanType }) {
 
   const submitFinal = async () => {
     setError('')
-    if (!formData?.privacy_consent?.agreed) {
-      setError('You must agree to the Privacy Policy to proceed with your loan application.')
-      return
-    }
+    const clientResult = runStepValidation()
+    if (validation.applyValidationResult(clientResult, step)) return
+
     try {
       const res = await borrowerApi(`/borrower/loan-applications/${applicationId}/submit`, {
         method: 'POST',
@@ -507,8 +664,14 @@ export default function ProductLoanApplicationPage({ loanType }) {
       navigate('/borrower/applications', { replace: true })
     } catch (e) {
       const body = e.body || {}
-      const msg = Array.isArray(body.errors) ? body.errors.join(' ') : body.message || e.message || 'Submit failed.'
-      setError(msg)
+      if (Array.isArray(body.errors) && body.errors.length) {
+        validation.applyApiErrors(body.errors, validationRegistry, {
+          stepId: step,
+          currentStepTitle: currentStep?.title,
+        })
+        return
+      }
+      setError(body.message || e.message || 'Submit failed.')
     }
   }
 
@@ -518,7 +681,6 @@ export default function ProductLoanApplicationPage({ loanType }) {
       agreed_at: agreed ? new Date().toISOString() : null,
       policy_version: PRIVACY_POLICY_VERSION,
     })
-    setError('')
   }
 
   const reviewItems = [
@@ -530,9 +692,21 @@ export default function ProductLoanApplicationPage({ loanType }) {
       .map((field) => ({
         key: field.key,
         label: field.label,
-        value: field.borrower_readonly && field.key === 'loan_amount'
-          ? formatValue(app?.loan_amount)
-          : formatValue(formData[field.key]),
+        value:
+          field.key === 'loan_amount' && loanType === 'chattel'
+            ? [
+                formatAmountForDisplay(formData[field.key]) || 'Not provided',
+                app?.loan_amount != null && Number(app.loan_amount) > 0
+                  ? `Team confirmed: ${formatReadonlyPhpAmount(app.loan_amount)}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')
+            : field.borrower_readonly && field.key === 'loan_amount'
+              ? formatReadonlyPhpAmount(app?.loan_amount) || 'Not provided'
+              : field.type === 'numeric'
+                ? formatAmountForDisplay(formData[field.key]) || 'Not provided'
+                : formatValue(formData[field.key]),
       })),
     ...(loanType === 'sss_pension' && app?.computed_values?.estimated_loanable_amount
       ? [
@@ -602,6 +776,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
             loanLabel={loanLabel}
             onStepClick={goToStep}
             allowJump={app?.is_draft !== false}
+            stepStatuses={validation.stepStatuses}
           />
 
           <div className="flex min-h-[480px] flex-col">
@@ -629,6 +804,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
                   exit="exit"
                   transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                   className="flex flex-1 flex-col overflow-y-auto px-5 py-5 sm:px-6 sm:py-6"
+                  data-wizard-section={currentSection}
                 >
                   {!isDocumentsStep && !isReviewStep && !isCoMakersStep ? (
                     <div className="grid gap-4 md:grid-cols-2">
@@ -648,7 +824,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
                       ) : null}
                       {currentSection === 'loan' && loanType === 'chattel' ? (
                         <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-xs text-slate-700 dark:border-[#1F2937] dark:bg-[#0F172A]/40 dark:text-gray-300 md:col-span-2">
-                          Loan amount is determined by our team after collateral review. It will appear here once set — you cannot edit it yourself.
+                          Enter your requested loan amount. Our lending team may review and set the final amount after collateral evaluation.
                         </div>
                       ) : null}
                       {currentSection === 'loan' && selectedProduct ? <ProductRulesCard product={selectedProduct} /> : null}
@@ -674,7 +850,9 @@ export default function ProductLoanApplicationPage({ loanType }) {
                         </p>
                       </div>
                       <ul className="space-y-4">
-                        {Object.entries(propertyDocDefs).map(([key, meta]) => (
+                        {Object.entries(propertyDocDefs).map(([key, meta]) => {
+                          const docError = validation.getDocError(key)
+                          return (
                           <DocumentUploadZone
                             key={key}
                             docKey={key}
@@ -688,13 +866,18 @@ export default function ProductLoanApplicationPage({ loanType }) {
                             uploading={uploadingDocKey === key}
                             canRemove={canManageDocs}
                             maxMb={MAX_UPLOAD_MB}
+                            invalid={Boolean(docError)}
+                            errorMessage={docError || 'Required document'}
+                            shake={validation.shouldShakeDoc(key)}
                           />
-                        ))}
+                          )
+                        })}
                       </ul>
                     </div>
                   ) : null}
 
                   {isCoMakersStep ? (
+                    <div data-wizard-section="co_makers">
                     <CoMakerFormSection
                       applicationId={applicationId}
                       coMakers={app?.co_makers || []}
@@ -704,11 +887,14 @@ export default function ProductLoanApplicationPage({ loanType }) {
                       onError={setError}
                       readOnly={app?.is_draft === false}
                     />
+                    </div>
                   ) : null}
 
                   {isDocumentsStep ? (
                     <ul className="space-y-4">
-                      {Object.entries(documentsStepDefs).map(([key, meta]) => (
+                      {Object.entries(documentsStepDefs).map(([key, meta]) => {
+                        const docError = validation.getDocError(key)
+                        return (
                         <DocumentUploadZone
                           key={key}
                           docKey={key}
@@ -722,8 +908,12 @@ export default function ProductLoanApplicationPage({ loanType }) {
                           uploading={uploadingDocKey === key}
                           canRemove={canManageDocs}
                           maxMb={MAX_UPLOAD_MB}
+                          invalid={Boolean(docError)}
+                          errorMessage={docError || 'Required document'}
+                          shake={validation.shouldShakeDoc(key)}
                         />
-                      ))}
+                        )
+                      })}
                     </ul>
                   ) : null}
 
@@ -783,7 +973,7 @@ export default function ProductLoanApplicationPage({ loanType }) {
                             checked={Boolean(formData?.privacy_consent?.agreed)}
                             onChange={onPrivacyConsentChange}
                             onOpenPolicy={() => setPrivacyModalOpen(true)}
-                            error={error.includes('Privacy Policy') ? error : ''}
+                            error={validation.getFieldError('privacy_consent')}
                           />
                           <button
                             type="button"
@@ -813,6 +1003,12 @@ export default function ProductLoanApplicationPage({ loanType }) {
         </div>
       </motion.div>
 
+      <WizardValidationModal
+        open={validation.modalOpen}
+        grouped={validation.groupedErrors}
+        onClose={validation.closeModal}
+        onReview={validation.handleReviewMissing}
+      />
       <PrivacyPolicyModal open={privacyModalOpen} onClose={() => setPrivacyModalOpen(false)} />
     </div>
   )
